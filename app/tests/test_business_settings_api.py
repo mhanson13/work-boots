@@ -3,8 +3,9 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.deps import get_db
+from app.api.deps import TenantContext, get_db, get_tenant_context
 from app.api.routes.businesses import router as businesses_router
+from app.models.principal import Principal, PrincipalRole
 
 
 def _detail_contains_field(detail: object, field_name: str) -> bool:
@@ -23,7 +24,29 @@ def _detail_contains_field(detail: object, field_name: str) -> bool:
     return False
 
 
-def _make_client(db_session) -> TestClient:
+def _make_client(
+    db_session,
+    *,
+    business_id: str,
+    principal_id: str = "settings-admin",
+    principal_role: PrincipalRole = PrincipalRole.ADMIN,
+) -> TestClient:
+    principal = db_session.get(Principal, (business_id, principal_id))
+    if principal is None:
+        db_session.add(
+            Principal(
+                business_id=business_id,
+                id=principal_id,
+                display_name=principal_id,
+                role=principal_role,
+                is_active=True,
+            )
+        )
+    else:
+        principal.role = principal_role
+        principal.is_active = True
+    db_session.commit()
+
     app = FastAPI()
     app.include_router(businesses_router)
 
@@ -33,12 +56,20 @@ def _make_client(db_session) -> TestClient:
         finally:
             pass
 
+    def override_tenant_context() -> TenantContext:
+        return TenantContext(
+            business_id=business_id,
+            principal_id=principal_id,
+            auth_source="test",
+        )
+
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_tenant_context] = override_tenant_context
     return TestClient(app)
 
 
 def test_get_business_settings_endpoint(db_session, seeded_business) -> None:
-    client = _make_client(db_session)
+    client = _make_client(db_session, business_id=seeded_business.id)
 
     response = client.get(f"/api/businesses/{seeded_business.id}")
 
@@ -52,7 +83,7 @@ def test_get_business_settings_endpoint(db_session, seeded_business) -> None:
 
 
 def test_patch_business_settings_valid_partial_update_succeeds(db_session, seeded_business) -> None:
-    client = _make_client(db_session)
+    client = _make_client(db_session, business_id=seeded_business.id)
 
     response = client.patch(
         f"/api/businesses/{seeded_business.id}/settings",
@@ -70,7 +101,7 @@ def test_patch_business_settings_valid_partial_update_succeeds(db_session, seede
 
 
 def test_patch_business_settings_normalizes_email_and_phone(db_session, seeded_business) -> None:
-    client = _make_client(db_session)
+    client = _make_client(db_session, business_id=seeded_business.id)
 
     response = client.patch(
         f"/api/businesses/{seeded_business.id}/settings",
@@ -87,7 +118,7 @@ def test_patch_business_settings_normalizes_email_and_phone(db_session, seeded_b
 
 
 def test_patch_business_settings_normalizes_global_e164_phone(db_session, seeded_business) -> None:
-    client = _make_client(db_session)
+    client = _make_client(db_session, business_id=seeded_business.id)
 
     response = client.patch(
         f"/api/businesses/{seeded_business.id}/settings",
@@ -102,7 +133,7 @@ def test_patch_business_settings_normalizes_global_e164_phone(db_session, seeded
 
 
 def test_patch_business_settings_invalid_email_rejected(db_session, seeded_business) -> None:
-    client = _make_client(db_session)
+    client = _make_client(db_session, business_id=seeded_business.id)
 
     response = client.patch(
         f"/api/businesses/{seeded_business.id}/settings",
@@ -114,7 +145,7 @@ def test_patch_business_settings_invalid_email_rejected(db_session, seeded_busin
 
 
 def test_patch_business_settings_invalid_phone_rejected_when_sms_enabled(db_session, seeded_business) -> None:
-    client = _make_client(db_session)
+    client = _make_client(db_session, business_id=seeded_business.id)
 
     response = client.patch(
         f"/api/businesses/{seeded_business.id}/settings",
@@ -129,7 +160,7 @@ def test_patch_business_settings_invalid_phone_rejected_when_sms_enabled(db_sess
 
 
 def test_patch_business_settings_invalid_timezone_rejected(db_session, seeded_business) -> None:
-    client = _make_client(db_session)
+    client = _make_client(db_session, business_id=seeded_business.id)
 
     response = client.patch(
         f"/api/businesses/{seeded_business.id}/settings",
@@ -144,7 +175,7 @@ def test_patch_business_settings_rejects_contractor_alerts_with_no_channels(
     db_session,
     seeded_business,
 ) -> None:
-    client = _make_client(db_session)
+    client = _make_client(db_session, business_id=seeded_business.id)
 
     response = client.patch(
         f"/api/businesses/{seeded_business.id}/settings",
@@ -163,7 +194,7 @@ def test_patch_business_settings_rejects_customer_ack_with_no_channels(
     db_session,
     seeded_business,
 ) -> None:
-    client = _make_client(db_session)
+    client = _make_client(db_session, business_id=seeded_business.id)
 
     response = client.patch(
         f"/api/businesses/{seeded_business.id}/settings",
@@ -177,3 +208,22 @@ def test_patch_business_settings_rejects_customer_ack_with_no_channels(
 
     assert response.status_code == 422
     assert "customer_auto_ack_enabled" in response.json()["detail"]
+
+
+def test_patch_business_settings_requires_admin_principal_role(
+    db_session,
+    seeded_business,
+) -> None:
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        principal_id="settings-operator",
+        principal_role=PrincipalRole.OPERATOR,
+    )
+
+    response = client.patch(
+        f"/api/businesses/{seeded_business.id}/settings",
+        json={"timezone": "America/Chicago"},
+    )
+
+    assert response.status_code == 403

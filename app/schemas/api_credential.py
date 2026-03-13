@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.models.principal import PrincipalRole
+
 
 class APICredentialRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -12,6 +14,7 @@ class APICredentialRead(BaseModel):
     business_id: str
     principal_id: str
     principal_display_name: str
+    principal_role: PrincipalRole
     is_active: bool
     revoked_at: datetime | None
     created_at: datetime
@@ -21,6 +24,7 @@ class APICredentialRead(BaseModel):
 class APICredentialCreateRequest(BaseModel):
     principal_id: str = Field(min_length=1, max_length=64)
     principal_display_name: str | None = Field(default=None, max_length=255)
+    principal_role: PrincipalRole | None = None
 
     @field_validator("principal_id", mode="before")
     @classmethod

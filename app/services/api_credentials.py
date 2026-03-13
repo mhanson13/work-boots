@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
 from app.models.api_credential import APICredential
-from app.models.principal import Principal
+from app.models.principal import Principal, PrincipalRole
 from app.repositories.api_credential_repository import APICredentialRepository
 from app.repositories.business_repository import BusinessRepository
 from app.repositories.principal_repository import PrincipalRepository
@@ -53,6 +53,7 @@ class APICredentialService:
         business_id: str,
         principal_id: str,
         principal_display_name: str | None = None,
+        principal_role: PrincipalRole | None = None,
     ) -> IssuedAPICredential:
         self._ensure_business_exists(business_id)
         normalized_principal_id = self._normalize_principal_id(principal_id)
@@ -60,6 +61,7 @@ class APICredentialService:
             business_id=business_id,
             principal_id=normalized_principal_id,
             principal_display_name=principal_display_name,
+            principal_role=principal_role,
         )
         return self._issue_new_credential(
             business_id=business_id,
@@ -171,6 +173,7 @@ class APICredentialService:
         business_id: str,
         principal_id: str,
         principal_display_name: str | None,
+        principal_role: PrincipalRole | None,
     ) -> Principal:
         principal = self.principal_repository.get_for_business(business_id, principal_id)
         normalized_display_name = self._normalize_principal_display_name(principal_display_name)
@@ -180,6 +183,7 @@ class APICredentialService:
                 business_id=business_id,
                 id=principal_id,
                 display_name=normalized_display_name or principal_id,
+                role=principal_role or PrincipalRole.OPERATOR,
                 is_active=True,
             )
             self.principal_repository.create(principal)
@@ -188,8 +192,14 @@ class APICredentialService:
         if not principal.is_active:
             raise APICredentialValidationError("Principal is inactive.")
 
+        changed = False
         if normalized_display_name and principal.display_name != normalized_display_name:
             principal.display_name = normalized_display_name
+            changed = True
+        if principal_role is not None and principal.role != principal_role:
+            principal.role = principal_role
+            changed = True
+        if changed:
             self.principal_repository.save(principal)
 
         return principal

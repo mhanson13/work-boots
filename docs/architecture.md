@@ -37,6 +37,7 @@ work-boots/
 - Tenant scope is resolved at the API boundary via server-side request context dependency (`get_tenant_context`).
 - Primary auth path is persisted API credentials: bearer token -> `api_credentials` lookup -> `principal_id` + `business_id`.
 - Credentials now bind to persisted principals in `principals` via `(business_id, principal_id)` ownership constraints.
+- Principals carry a minimal business-scoped authorization role: `admin` or `operator`.
 - API credentials are operationally managed via business-scoped endpoints:
   - `POST /api/businesses/{business_id}/credentials` (issue new token)
   - `POST /api/businesses/{business_id}/credentials/{credential_id}/disable`
@@ -51,6 +52,7 @@ work-boots/
 - Legacy shared-token auth (`API_AUTH_TOKEN` / `API_AUTH_BUSINESS_ID`) is no longer used for runtime tenant auth.
 - Dev/test-only fallback uses `DEFAULT_BUSINESS_ID` only when no auth config is present.
 - Inactive credentials (`is_active=false`) and revoked credentials (`revoked_at` set) are rejected.
+- Credential-management routes require an `admin` principal role.
 - Service/repository/database tenant checks remain in place as defense in depth.
 
 ## Current Out Of Scope

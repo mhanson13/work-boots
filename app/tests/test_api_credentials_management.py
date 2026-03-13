@@ -15,7 +15,7 @@ from app.core.time import utc_now
 from app.models.api_credential import APICredential
 from app.models.business import Business
 from app.models.lead import Lead, LeadSource, LeadStatus
-from app.models.principal import Principal
+from app.models.principal import Principal, PrincipalRole
 from app.repositories.api_credential_repository import hash_bearer_token
 
 PROD_PEPPER = "prod-pepper"
@@ -39,18 +39,40 @@ def _set_production_auth_defaults(monkeypatch: pytest.MonkeyPatch, *, default_bu
     monkeypatch.delenv("API_AUTH_PRINCIPALS_JSON", raising=False)
 
 
-def _override_tenant_context(business_id: str):
+def _override_tenant_context(business_id: str, principal_id: str):
     def _resolver() -> TenantContext:
         return TenantContext(
             business_id=business_id,
-            principal_id=f"test-admin:{business_id}",
+            principal_id=principal_id,
             auth_source="test",
         )
 
     return _resolver
 
 
-def _make_management_client(db_session, *, business_id: str) -> TestClient:
+def _make_management_client(
+    db_session,
+    *,
+    business_id: str,
+    principal_id: str = "management-admin",
+    principal_role: PrincipalRole = PrincipalRole.ADMIN,
+) -> TestClient:
+    principal = db_session.get(Principal, (business_id, principal_id))
+    if principal is None:
+        db_session.add(
+            Principal(
+                business_id=business_id,
+                id=principal_id,
+                display_name=principal_id,
+                role=principal_role,
+                is_active=True,
+            )
+        )
+    else:
+        principal.role = principal_role
+        principal.is_active = True
+    db_session.commit()
+
     app = FastAPI()
     app.include_router(businesses_router)
 
@@ -61,7 +83,7 @@ def _make_management_client(db_session, *, business_id: str) -> TestClient:
             pass
 
     app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[get_tenant_context] = _override_tenant_context(business_id)
+    app.dependency_overrides[get_tenant_context] = _override_tenant_context(business_id, principal_id)
     return TestClient(app)
 
 
@@ -298,3 +320,23 @@ def test_create_credential_can_set_principal_display_name(
     stored_principal = db_session.get(Principal, (seeded_business.id, "owner-user-5"))
     assert stored_principal is not None
     assert stored_principal.display_name == "Owner Operator"
+
+
+def test_operator_principal_cannot_manage_credentials(
+    db_session,
+    seeded_business,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
+    management_client = _make_management_client(
+        db_session,
+        business_id=seeded_business.id,
+        principal_id="operator-principal",
+        principal_role=PrincipalRole.OPERATOR,
+    )
+
+    response = management_client.post(
+        f"/api/businesses/{seeded_business.id}/credentials",
+        json={"principal_id": "owner-user-6"},
+    )
+    assert response.status_code == 403

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.time import utc_now
 from app.db.base import Base
+from app.models.principal import PrincipalRole
 
 
 class APICredential(Base):
@@ -40,3 +41,9 @@ class APICredential(Base):
         if self.principal is None:
             return self.principal_id
         return self.principal.display_name
+
+    @property
+    def principal_role(self) -> PrincipalRole:
+        if self.principal is None:
+            return PrincipalRole.OPERATOR
+        return self.principal.role

@@ -5,10 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.deps import (
     get_api_credential_service,
     get_business_settings_service,
+    require_credential_manager_principal,
     get_tenant_context,
     resolve_tenant_business_id,
     TenantContext,
 )
+from app.models.principal import Principal
 from app.schemas.api_credential import (
     APICredentialCreateRequest,
     APICredentialIssueResponse,
@@ -52,6 +54,7 @@ def get_business(
 def patch_business_settings(
     business_id: str,
     payload: BusinessSettingsUpdateRequest,
+    _: Principal = Depends(require_credential_manager_principal),
     tenant_context: TenantContext = Depends(get_tenant_context),
     business_settings_service: BusinessSettingsService = Depends(get_business_settings_service),
 ) -> BusinessSettingsRead:
@@ -71,6 +74,7 @@ def patch_business_settings(
 @router.get("/{business_id}/credentials", response_model=APICredentialListResponse)
 def list_api_credentials(
     business_id: str,
+    _: Principal = Depends(require_credential_manager_principal),
     tenant_context: TenantContext = Depends(get_tenant_context),
     api_credential_service: APICredentialService = Depends(get_api_credential_service),
 ) -> APICredentialListResponse:
@@ -96,6 +100,7 @@ def list_api_credentials(
 def create_api_credential(
     business_id: str,
     payload: APICredentialCreateRequest,
+    _: Principal = Depends(require_credential_manager_principal),
     tenant_context: TenantContext = Depends(get_tenant_context),
     api_credential_service: APICredentialService = Depends(get_api_credential_service),
 ) -> APICredentialIssueResponse:
@@ -108,6 +113,7 @@ def create_api_credential(
             business_id=scoped_business_id,
             principal_id=payload.principal_id,
             principal_display_name=payload.principal_display_name,
+            principal_role=payload.principal_role,
         )
     except APICredentialNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -126,6 +132,7 @@ def create_api_credential(
 def disable_api_credential(
     business_id: str,
     credential_id: str,
+    _: Principal = Depends(require_credential_manager_principal),
     tenant_context: TenantContext = Depends(get_tenant_context),
     api_credential_service: APICredentialService = Depends(get_api_credential_service),
 ) -> APICredentialRead:
@@ -150,6 +157,7 @@ def disable_api_credential(
 def revoke_api_credential(
     business_id: str,
     credential_id: str,
+    _: Principal = Depends(require_credential_manager_principal),
     tenant_context: TenantContext = Depends(get_tenant_context),
     api_credential_service: APICredentialService = Depends(get_api_credential_service),
 ) -> APICredentialRead:
@@ -175,6 +183,7 @@ def revoke_api_credential(
 def rotate_api_credential(
     business_id: str,
     credential_id: str,
+    _: Principal = Depends(require_credential_manager_principal),
     tenant_context: TenantContext = Depends(get_tenant_context),
     api_credential_service: APICredentialService = Depends(get_api_credential_service),
 ) -> APICredentialRotateResponse:

@@ -21,6 +21,7 @@ from app.integrations import (
     TwilioSMSProvider,
 )
 from app.jobs.lead_reminders import LeadReminderJob
+from app.models.principal import Principal, PrincipalRole
 from app.repositories.api_credential_repository import APICredentialRepository
 from app.repositories.business_repository import BusinessRepository
 from app.repositories.lead_repository import LeadRepository
@@ -341,3 +342,29 @@ def resolve_tenant_business_id(
     if requested_business_id and requested_business_id != tenant_context.business_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Business not found")
     return tenant_context.business_id
+
+
+def get_authenticated_principal(
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    principal_repository: PrincipalRepository = Depends(get_principal_repository),
+) -> Principal:
+    principal = principal_repository.get_for_business(
+        tenant_context.business_id,
+        tenant_context.principal_id,
+    )
+    if principal is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Principal not found")
+    if not principal.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Principal is inactive")
+    return principal
+
+
+def require_credential_manager_principal(
+    principal: Principal = Depends(get_authenticated_principal),
+) -> Principal:
+    if principal.role != PrincipalRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Principal is not allowed to manage credentials.",
+        )
+    return principal

@@ -79,11 +79,13 @@ When using `twilio` or `smtp`, configure the corresponding credentials in `.env`
 ## API Credential Auth
 - Primary auth path is DB-backed bearer credentials in `api_credentials`.
 - Credentials are tied to persisted principals in `principals` scoped by business.
+- Principals have minimal roles (`admin`, `operator`) for sensitive business actions.
 - Manage credentials per business:
   - `POST /api/businesses/{business_id}/credentials`
   - `POST /api/businesses/{business_id}/credentials/{credential_id}/disable`
   - `POST /api/businesses/{business_id}/credentials/{credential_id}/revoke`
   - `POST /api/businesses/{business_id}/credentials/{credential_id}/rotate`
+- Credential-management endpoints require an `admin` principal role.
 - Issued token plaintext is shown once at creation/rotation; only `token_hash` is persisted.
 - `API_TOKEN_HASH_PEPPER` is required in production.
 - Legacy unpeppered hash verification is off by default and can be enabled temporarily with `ALLOW_LEGACY_TOKEN_HASH_FALLBACK=true`.
