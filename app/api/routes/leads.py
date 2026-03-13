@@ -60,10 +60,11 @@ def get_lead(
 @router.get("/{lead_id}/timeline", response_model=LeadTimelineResponse)
 def get_lead_timeline(
     lead_id: str,
+    business_id: str = Query(...),
     timeline_service: LeadTimelineService = Depends(get_timeline_service),
 ) -> LeadTimelineResponse:
     try:
-        events = timeline_service.get_timeline(lead_id=lead_id)
+        events = timeline_service.get_timeline(business_id=business_id, lead_id=lead_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -77,10 +78,12 @@ def get_lead_timeline(
 def patch_lead_status(
     lead_id: str,
     payload: LeadStatusPatchRequest,
+    business_id: str = Query(...),
     lifecycle_service: LeadLifecycleService = Depends(get_lifecycle_service),
 ) -> StatusPatchResponse:
     try:
         lead, previous = lifecycle_service.patch_status(
+            business_id=business_id,
             lead_id=lead_id,
             next_status=payload.status,
             actor_type=payload.actor_type,

@@ -8,8 +8,8 @@ class LeadTimelineService:
     def __init__(self, lead_repository: LeadRepository) -> None:
         self.lead_repository = lead_repository
 
-    def get_timeline(self, *, lead_id: str) -> list[LeadEvent]:
-        lead = self.lead_repository.get(lead_id)
+    def get_timeline(self, *, business_id: str, lead_id: str) -> list[LeadEvent]:
+        lead = self.lead_repository.get_for_business(business_id, lead_id)
         if not lead:
             raise ValueError("Lead not found")
-        return self.lead_repository.list_events_for_business_lead(lead.business_id, lead_id)
+        return self.lead_repository.list_events_for_business_lead(business_id, lead_id)

@@ -97,9 +97,12 @@ def test_timeline_endpoint_returns_events_chronologically(db_session, seeded_bus
     app.dependency_overrides[get_db] = override_get_db
     client = TestClient(app)
 
-    response = client.get(f"/api/leads/{lead.id}/timeline")
+    response = client.get(f"/api/leads/{lead.id}/timeline?business_id={seeded_business.id}")
 
     assert response.status_code == 200
     payload = response.json()
     event_types = [event["event_type"] for event in payload["events"]]
     assert event_types == ["lead_created", "note", "status_changed"]
+
+    wrong_scope_response = client.get(f"/api/leads/{lead.id}/timeline?business_id={other_business.id}")
+    assert wrong_scope_response.status_code == 404

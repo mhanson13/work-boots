@@ -40,13 +40,14 @@ class LeadLifecycleService:
     def patch_status(
         self,
         *,
+        business_id: str,
         lead_id: str,
         next_status: LeadStatus,
         actor_type: ActorType,
         actor_id: str | None,
         event_note: str | None,
     ) -> tuple[Lead, LeadStatus]:
-        lead = self.lead_repository.get(lead_id)
+        lead = self.lead_repository.get_for_business(business_id, lead_id)
         if not lead:
             raise ValueError(f"Lead not found: {lead_id}")
 
