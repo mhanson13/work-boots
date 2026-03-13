@@ -4,7 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import get_business_settings_service
 from app.schemas.business import BusinessSettingsRead, BusinessSettingsUpdateRequest
-from app.services.business_settings import BusinessSettingsService
+from app.services.business_settings import (
+    BusinessSettingsNotFoundError,
+    BusinessSettingsService,
+    BusinessSettingsValidationError,
+)
 
 router = APIRouter(prefix="/api/businesses", tags=["businesses"])
 
@@ -16,7 +20,7 @@ def get_business(
 ) -> BusinessSettingsRead:
     try:
         business = business_settings_service.get(business_id=business_id)
-    except ValueError as exc:
+    except BusinessSettingsNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return BusinessSettingsRead.model_validate(business)
 
@@ -29,6 +33,8 @@ def patch_business_settings(
 ) -> BusinessSettingsRead:
     try:
         business = business_settings_service.update_settings(business_id=business_id, payload=payload)
-    except ValueError as exc:
+    except BusinessSettingsNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except BusinessSettingsValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return BusinessSettingsRead.model_validate(business)

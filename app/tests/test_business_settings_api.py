@@ -7,7 +7,7 @@ from app.api.deps import get_db
 from app.api.routes.businesses import router as businesses_router
 
 
-def test_get_business_settings_endpoint(db_session, seeded_business) -> None:
+def _make_client(db_session) -> TestClient:
     app = FastAPI()
     app.include_router(businesses_router)
 
@@ -18,7 +18,11 @@ def test_get_business_settings_endpoint(db_session, seeded_business) -> None:
             pass
 
     app.dependency_overrides[get_db] = override_get_db
-    client = TestClient(app)
+    return TestClient(app)
+
+
+def test_get_business_settings_endpoint(db_session, seeded_business) -> None:
+    client = _make_client(db_session)
 
     response = client.get(f"/api/businesses/{seeded_business.id}")
 
@@ -31,34 +35,114 @@ def test_get_business_settings_endpoint(db_session, seeded_business) -> None:
     assert payload["contractor_alerts_enabled"] is True
 
 
-def test_patch_business_settings_endpoint(db_session, seeded_business) -> None:
-    app = FastAPI()
-    app.include_router(businesses_router)
-
-    def override_get_db():
-        try:
-            yield db_session
-        finally:
-            pass
-
-    app.dependency_overrides[get_db] = override_get_db
-    client = TestClient(app)
+def test_patch_business_settings_valid_partial_update_succeeds(db_session, seeded_business) -> None:
+    client = _make_client(db_session)
 
     response = client.patch(
         f"/api/businesses/{seeded_business.id}/settings",
         json={
-            "sms_enabled": False,
-            "email_enabled": True,
-            "customer_auto_ack_enabled": False,
-            "contractor_alerts_enabled": True,
+            "notification_email": "  OWNER+ALERTS@TMFIRE.EXAMPLE  ",
             "timezone": "America/Chicago",
-            "notification_phone": "+13035551234",
         },
     )
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["sms_enabled"] is False
-    assert payload["customer_auto_ack_enabled"] is False
+    assert payload["notification_email"] == "owner+alerts@tmfire.example"
     assert payload["timezone"] == "America/Chicago"
-    assert payload["notification_phone"] == "+13035551234"
+    assert payload["sms_enabled"] is True
+
+
+def test_patch_business_settings_normalizes_email_and_phone(db_session, seeded_business) -> None:
+    client = _make_client(db_session)
+
+    response = client.patch(
+        f"/api/businesses/{seeded_business.id}/settings",
+        json={
+            "notification_email": "  MHANSON13@GMAIL.COM ",
+            "notification_phone": " (303) 210-2035 ",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["notification_email"] == "mhanson13@gmail.com"
+    assert payload["notification_phone"] == "+13032102035"
+
+
+def test_patch_business_settings_invalid_email_rejected(db_session, seeded_business) -> None:
+    client = _make_client(db_session)
+
+    response = client.patch(
+        f"/api/businesses/{seeded_business.id}/settings",
+        json={"notification_email": "bad-email"},
+    )
+
+    assert response.status_code == 422
+    assert "notification_email" in response.json()["detail"]
+
+
+def test_patch_business_settings_invalid_phone_rejected_when_sms_enabled(db_session, seeded_business) -> None:
+    client = _make_client(db_session)
+
+    response = client.patch(
+        f"/api/businesses/{seeded_business.id}/settings",
+        json={
+            "sms_enabled": True,
+            "notification_phone": "1234",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "notification_phone" in response.json()["detail"]
+
+
+def test_patch_business_settings_invalid_timezone_rejected(db_session, seeded_business) -> None:
+    client = _make_client(db_session)
+
+    response = client.patch(
+        f"/api/businesses/{seeded_business.id}/settings",
+        json={"timezone": "Mars/Olympus"},
+    )
+
+    assert response.status_code == 422
+    assert "timezone" in response.json()["detail"]
+
+
+def test_patch_business_settings_rejects_contractor_alerts_with_no_channels(
+    db_session,
+    seeded_business,
+) -> None:
+    client = _make_client(db_session)
+
+    response = client.patch(
+        f"/api/businesses/{seeded_business.id}/settings",
+        json={
+            "sms_enabled": False,
+            "email_enabled": False,
+            "contractor_alerts_enabled": True,
+        },
+    )
+
+    assert response.status_code == 422
+    assert "contractor_alerts_enabled" in response.json()["detail"]
+
+
+def test_patch_business_settings_rejects_customer_ack_with_no_channels(
+    db_session,
+    seeded_business,
+) -> None:
+    client = _make_client(db_session)
+
+    response = client.patch(
+        f"/api/businesses/{seeded_business.id}/settings",
+        json={
+            "sms_enabled": False,
+            "email_enabled": False,
+            "contractor_alerts_enabled": False,
+            "customer_auto_ack_enabled": True,
+        },
+    )
+
+    assert response.status_code == 422
+    assert "customer_auto_ack_enabled" in response.json()["detail"]
