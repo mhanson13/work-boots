@@ -16,7 +16,11 @@ from app.models.lead import Lead, LeadSource, LeadStatus
 
 def _override_tenant_context(business_id: str):
     def _resolver() -> TenantContext:
-        return TenantContext(business_id=business_id, auth_source="test")
+        return TenantContext(
+            business_id=business_id,
+            principal_id=f"test-principal:{business_id}",
+            auth_source="test",
+        )
 
     return _resolver
 

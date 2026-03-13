@@ -7,7 +7,7 @@ import secrets
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
+from app.core.config import PrincipalCredential, get_settings
 from app.db.session import get_db_session
 from app.integrations import (
     DevEmailProvider,
@@ -38,6 +38,7 @@ from app.services.timeline import LeadTimelineService
 @dataclass(frozen=True)
 class TenantContext:
     business_id: str
+    principal_id: str
     auth_source: str
 
 
@@ -211,12 +212,42 @@ def _parse_bearer_token(authorization: str | None) -> str | None:
     return token.strip()
 
 
+def _match_principal_credential(
+    *,
+    token: str,
+    credentials: tuple[PrincipalCredential, ...],
+) -> PrincipalCredential | None:
+    for credential in credentials:
+        if secrets.compare_digest(token, credential.token):
+            return credential
+    return None
+
+
 def get_tenant_context(authorization: str | None = Header(default=None)) -> TenantContext:
     """Resolve tenant scope from server-side auth context (not request business_id fields)."""
     settings = get_settings()
 
-    # Incremental auth mode: when API_AUTH_TOKEN is configured, require Bearer auth
-    # and derive tenant scope from server-side settings.
+    # Primary auth mode: credential-backed principal -> business tenant binding.
+    if settings.api_principal_credentials:
+        token = _parse_bearer_token(authorization)
+        if token is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unauthorized.",
+            )
+        credential = _match_principal_credential(token=token, credentials=settings.api_principal_credentials)
+        if credential is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unauthorized.",
+            )
+        return TenantContext(
+            business_id=credential.business_id,
+            principal_id=credential.principal_id,
+            auth_source="principal_token",
+        )
+
+    # Compatibility fallback for earlier shared-token deployments.
     if settings.api_auth_token:
         token = _parse_bearer_token(authorization)
         if token is None or not secrets.compare_digest(token, settings.api_auth_token):
@@ -226,12 +257,20 @@ def get_tenant_context(authorization: str | None = Header(default=None)) -> Tena
             )
         return TenantContext(
             business_id=settings.api_auth_business_id or settings.default_business_id,
-            auth_source="api_token",
+            principal_id="legacy_api_token",
+            auth_source="legacy_api_token",
         )
 
-    # Local/dev fallback: single-tenant scope from server config only.
+    # Dev/test fallback only: keep local workflows operational without auth setup.
+    if settings.environment.strip().lower() not in {"development", "dev", "test"}:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized.",
+        )
+
     return TenantContext(
         business_id=settings.default_business_id,
+        principal_id="dev-default-principal",
         auth_source="default_business",
     )
 

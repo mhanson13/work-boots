@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 from functools import lru_cache
+
+
+@dataclass(frozen=True)
+class PrincipalCredential:
+    token: str
+    principal_id: str
+    business_id: str
 
 
 @dataclass(frozen=True)
@@ -11,6 +19,7 @@ class Settings:
     environment: str
     database_url: str
     default_business_id: str
+    api_principal_credentials: tuple[PrincipalCredential, ...]
     api_auth_token: str | None
     api_auth_business_id: str | None
     sms_provider: str
@@ -34,6 +43,49 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _parse_principal_credentials(raw: str | None) -> tuple[PrincipalCredential, ...]:
+    if not raw:
+        return ()
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            "API_AUTH_PRINCIPALS_JSON is invalid JSON. "
+            "Expected a JSON list of objects with token, principal_id, and business_id."
+        ) from exc
+
+    if not isinstance(payload, list):
+        raise RuntimeError("API_AUTH_PRINCIPALS_JSON must be a JSON list.")
+
+    credentials: list[PrincipalCredential] = []
+    seen_tokens: set[str] = set()
+    for index, item in enumerate(payload):
+        if not isinstance(item, dict):
+            raise RuntimeError(f"API_AUTH_PRINCIPALS_JSON[{index}] must be an object.")
+
+        token = str(item.get("token", "")).strip()
+        principal_id = str(item.get("principal_id", "")).strip()
+        business_id = str(item.get("business_id", "")).strip()
+        if not token or not principal_id or not business_id:
+            raise RuntimeError(
+                "Each API_AUTH_PRINCIPALS_JSON entry must include non-empty "
+                "token, principal_id, and business_id."
+            )
+        if token in seen_tokens:
+            raise RuntimeError("Duplicate token values found in API_AUTH_PRINCIPALS_JSON.")
+        seen_tokens.add(token)
+        credentials.append(
+            PrincipalCredential(
+                token=token,
+                principal_id=principal_id,
+                business_id=business_id,
+            )
+        )
+
+    return tuple(credentials)
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings(
@@ -44,6 +96,7 @@ def get_settings() -> Settings:
             "postgresql+psycopg://postgres:postgres@localhost:5432/work_boots_console",
         ),
         default_business_id=os.getenv("DEFAULT_BUSINESS_ID", "11111111-1111-1111-1111-111111111111"),
+        api_principal_credentials=_parse_principal_credentials(os.getenv("API_AUTH_PRINCIPALS_JSON")),
         api_auth_token=os.getenv("API_AUTH_TOKEN"),
         api_auth_business_id=os.getenv("API_AUTH_BUSINESS_ID"),
         sms_provider=os.getenv("SMS_PROVIDER", "mock").strip().lower(),
