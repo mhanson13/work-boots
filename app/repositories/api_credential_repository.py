@@ -22,7 +22,7 @@ class APICredentialRepository:
         session: Session,
         *,
         token_hash_pepper: str | None = None,
-        allow_legacy_hash_fallback: bool = True,
+        allow_legacy_hash_fallback: bool = False,
     ) -> None:
         self.session = session
         self.token_hash_pepper = token_hash_pepper

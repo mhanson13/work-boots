@@ -27,26 +27,23 @@ def _set_auth_env(
     monkeypatch: pytest.MonkeyPatch,
     *,
     principals: list[dict[str, str]] | None = None,
-    legacy_token: str | None = None,
-    legacy_business_id: str | None = None,
     allow_auth_compat_fallback: bool | None = None,
     environment: str = "test",
     default_business_id: str,
+    api_token_hash_pepper: str | None = None,
 ) -> None:
+    monkeypatch.delenv("API_AUTH_TOKEN", raising=False)
+    monkeypatch.delenv("API_AUTH_BUSINESS_ID", raising=False)
+
     if principals is None:
         monkeypatch.delenv("API_AUTH_PRINCIPALS_JSON", raising=False)
     else:
         monkeypatch.setenv("API_AUTH_PRINCIPALS_JSON", json.dumps(principals))
 
-    if legacy_token is None:
-        monkeypatch.delenv("API_AUTH_TOKEN", raising=False)
+    if api_token_hash_pepper is None:
+        monkeypatch.delenv("API_TOKEN_HASH_PEPPER", raising=False)
     else:
-        monkeypatch.setenv("API_AUTH_TOKEN", legacy_token)
-
-    if legacy_business_id is None:
-        monkeypatch.delenv("API_AUTH_BUSINESS_ID", raising=False)
-    else:
-        monkeypatch.setenv("API_AUTH_BUSINESS_ID", legacy_business_id)
+        monkeypatch.setenv("API_TOKEN_HASH_PEPPER", api_token_hash_pepper)
 
     if allow_auth_compat_fallback is None:
         monkeypatch.delenv("ALLOW_AUTH_COMPAT_FALLBACK", raising=False)
@@ -109,7 +106,7 @@ def test_principal_token_binds_tenant_scope_not_global_default(
             }
         ],
         allow_auth_compat_fallback=True,
-        environment="production",
+        environment="test",
         default_business_id=other_business.id,
     )
 
@@ -153,7 +150,7 @@ def test_principal_registry_requires_valid_bearer_token(
             }
         ],
         allow_auth_compat_fallback=True,
-        environment="production",
+        environment="test",
         default_business_id=seeded_business.id,
     )
 
@@ -176,7 +173,58 @@ def test_principal_registry_requires_valid_bearer_token(
     assert bad_token.status_code == 401
 
 
-def test_legacy_shared_token_compatibility_fallback_still_works(
+def test_env_principal_fallback_is_disabled_by_default_in_test_environment(
+    db_session,
+    seeded_business,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lead = Lead(
+        id=str(uuid4()),
+        business_id=seeded_business.id,
+        source=LeadSource.MANUAL,
+        source_ref=None,
+        submitted_at=utc_now() - timedelta(minutes=5),
+        customer_name="Tenant A Lead",
+        phone="3035550196",
+        status=LeadStatus.NEW,
+    )
+    db_session.add(lead)
+    db_session.commit()
+
+    _set_auth_env(
+        monkeypatch,
+        principals=[
+            {
+                "token": "tenant-a-token",
+                "principal_id": "user-a",
+                "business_id": seeded_business.id,
+            }
+        ],
+        allow_auth_compat_fallback=None,
+        environment="test",
+        default_business_id=seeded_business.id,
+    )
+
+    app = FastAPI()
+    app.include_router(leads_router)
+
+    def override_get_db():
+        try:
+            yield db_session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    client = TestClient(app)
+
+    response = client.get(
+        f"/api/leads/{lead.id}",
+        headers={"Authorization": "Bearer tenant-a-token"},
+    )
+    assert response.status_code == 401
+
+
+def test_legacy_shared_token_is_not_supported_anymore(
     db_session,
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
@@ -197,12 +245,13 @@ def test_legacy_shared_token_compatibility_fallback_still_works(
     _set_auth_env(
         monkeypatch,
         principals=None,
-        legacy_token="legacy-shared-token",
-        legacy_business_id=seeded_business.id,
         allow_auth_compat_fallback=True,
         environment="production",
         default_business_id=str(uuid4()),
+        api_token_hash_pepper="prod-pepper",
     )
+    monkeypatch.setenv("API_AUTH_TOKEN", "legacy-shared-token")
+    monkeypatch.setenv("API_AUTH_BUSINESS_ID", seeded_business.id)
 
     app = FastAPI()
     app.include_router(leads_router)
@@ -220,8 +269,7 @@ def test_legacy_shared_token_compatibility_fallback_still_works(
         f"/api/leads/{lead.id}",
         headers={"Authorization": "Bearer legacy-shared-token"},
     )
-    assert response.status_code == 200
-    assert response.json()["business_id"] == seeded_business.id
+    assert response.status_code == 401
 
 
 def test_no_auth_config_in_production_is_rejected(
@@ -232,10 +280,9 @@ def test_no_auth_config_in_production_is_rejected(
     _set_auth_env(
         monkeypatch,
         principals=None,
-        legacy_token=None,
-        legacy_business_id=None,
         environment="production",
         default_business_id=seeded_business.id,
+        api_token_hash_pepper="prod-pepper",
     )
 
     app = FastAPI()
@@ -284,6 +331,7 @@ def test_env_principal_fallback_is_disabled_in_production_by_default(
         allow_auth_compat_fallback=None,
         environment="production",
         default_business_id=seeded_business.id,
+        api_token_hash_pepper="prod-pepper",
     )
 
     app = FastAPI()
@@ -303,3 +351,85 @@ def test_env_principal_fallback_is_disabled_in_production_by_default(
         headers={"Authorization": "Bearer tenant-a-token"},
     )
     assert response.status_code == 401
+
+
+def test_env_principal_fallback_is_ignored_in_production_even_when_enabled(
+    db_session,
+    seeded_business,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lead = Lead(
+        id=str(uuid4()),
+        business_id=seeded_business.id,
+        source=LeadSource.MANUAL,
+        source_ref=None,
+        submitted_at=utc_now() - timedelta(minutes=5),
+        customer_name="Tenant A Lead",
+        phone="3035550197",
+        status=LeadStatus.NEW,
+    )
+    db_session.add(lead)
+    db_session.commit()
+
+    _set_auth_env(
+        monkeypatch,
+        principals=[
+            {
+                "token": "tenant-a-token",
+                "principal_id": "user-a",
+                "business_id": seeded_business.id,
+            }
+        ],
+        allow_auth_compat_fallback=True,
+        environment="production",
+        default_business_id=seeded_business.id,
+        api_token_hash_pepper="prod-pepper",
+    )
+
+    app = FastAPI()
+    app.include_router(leads_router)
+
+    def override_get_db():
+        try:
+            yield db_session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    client = TestClient(app)
+
+    response = client.get(
+        f"/api/leads/{lead.id}",
+        headers={"Authorization": "Bearer tenant-a-token"},
+    )
+    assert response.status_code == 401
+
+
+def test_production_requires_api_token_hash_pepper(
+    db_session,
+    seeded_business,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_auth_env(
+        monkeypatch,
+        principals=None,
+        allow_auth_compat_fallback=False,
+        environment="production",
+        default_business_id=seeded_business.id,
+        api_token_hash_pepper=None,
+    )
+
+    app = FastAPI()
+    app.include_router(leads_router)
+
+    def override_get_db():
+        try:
+            yield db_session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    client = TestClient(app)
+
+    with pytest.raises(RuntimeError, match="API_TOKEN_HASH_PEPPER is required"):
+        client.get("/api/leads", headers={"Authorization": "Bearer some-token"})

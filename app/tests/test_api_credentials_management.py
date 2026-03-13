@@ -17,6 +17,8 @@ from app.models.business import Business
 from app.models.lead import Lead, LeadSource, LeadStatus
 from app.repositories.api_credential_repository import hash_bearer_token
 
+PROD_PEPPER = "prod-pepper"
+
 
 @pytest.fixture(autouse=True)
 def _clear_settings_cache() -> None:
@@ -29,11 +31,11 @@ def _set_production_auth_defaults(monkeypatch: pytest.MonkeyPatch, *, default_bu
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("DEFAULT_BUSINESS_ID", default_business_id)
     monkeypatch.setenv("ALLOW_AUTH_COMPAT_FALLBACK", "false")
+    monkeypatch.setenv("API_TOKEN_HASH_PEPPER", PROD_PEPPER)
+    monkeypatch.setenv("ALLOW_LEGACY_TOKEN_HASH_FALLBACK", "false")
     monkeypatch.delenv("API_AUTH_TOKEN", raising=False)
     monkeypatch.delenv("API_AUTH_BUSINESS_ID", raising=False)
     monkeypatch.delenv("API_AUTH_PRINCIPALS_JSON", raising=False)
-    monkeypatch.delenv("API_TOKEN_HASH_PEPPER", raising=False)
-    monkeypatch.delenv("ALLOW_LEGACY_TOKEN_HASH_FALLBACK", raising=False)
 
 
 def _override_tenant_context(business_id: str):
@@ -120,7 +122,7 @@ def test_create_credential_returns_token_and_authenticates(
 
     stored_credential = db_session.get(APICredential, credential_payload["id"])
     assert stored_credential is not None
-    assert stored_credential.token_hash == hash_bearer_token(token)
+    assert stored_credential.token_hash == hash_bearer_token(token, pepper=PROD_PEPPER)
 
     leads_client = _make_leads_client(db_session)
     auth_response = leads_client.get(

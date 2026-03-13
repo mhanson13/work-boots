@@ -84,6 +84,11 @@ When using `twilio` or `smtp`, configure the corresponding credentials in `.env`
   - `POST /api/businesses/{business_id}/credentials/{credential_id}/revoke`
   - `POST /api/businesses/{business_id}/credentials/{credential_id}/rotate`
 - Issued token plaintext is shown once at creation/rotation; only `token_hash` is persisted.
-- Env compatibility auth fallbacks are gated by `ALLOW_AUTH_COMPAT_FALLBACK`.
+- `API_TOKEN_HASH_PEPPER` is required in production.
+- Legacy unpeppered hash verification is off by default and can be enabled temporarily with `ALLOW_LEGACY_TOKEN_HASH_FALLBACK=true`.
+- Env compatibility auth (`API_AUTH_PRINCIPALS_JSON`) is non-production only and gated by `ALLOW_AUTH_COMPAT_FALLBACK` (off by default).
+- Legacy shared-token auth (`API_AUTH_TOKEN` / `API_AUTH_BUSINESS_ID`) is no longer part of runtime auth resolution.
+
+Out of scope in this pass: full IAM/user-role management.
 
 Archived legacy scaffolding and deprecated files live under [`_archive/`](_archive).

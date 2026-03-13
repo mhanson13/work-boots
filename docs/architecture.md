@@ -44,11 +44,16 @@ work-boots/
 - Credential tokens are only returned at issue/rotate time; database stores `token_hash` only.
 - Tenant-sensitive routes pass only auth-derived tenant `business_id` into services/repositories.
 - Client-supplied `business_id` fields/query params are compatibility-only and are not trusted; mismatches are rejected.
-- Optional keyed hashing is supported via `API_TOKEN_HASH_PEPPER`; legacy SHA-256 hashes can remain readable during rollout with `ALLOW_LEGACY_TOKEN_HASH_FALLBACK=true`.
-- Env principal-token mode (`API_AUTH_PRINCIPALS_JSON`) and legacy shared-token mode are compatibility fallbacks gated by `ALLOW_AUTH_COMPAT_FALLBACK` (off by default in production).
+- `API_TOKEN_HASH_PEPPER` is required in production so token verification uses keyed hashing.
+- Legacy unpeppered SHA-256 verification is disabled by default and only enabled temporarily with `ALLOW_LEGACY_TOKEN_HASH_FALLBACK=true` during migration.
+- Env principal-token mode (`API_AUTH_PRINCIPALS_JSON`) is a non-production compatibility fallback gated by `ALLOW_AUTH_COMPAT_FALLBACK` (off by default).
+- Legacy shared-token auth (`API_AUTH_TOKEN` / `API_AUTH_BUSINESS_ID`) is no longer used for runtime tenant auth.
 - Dev/test-only fallback uses `DEFAULT_BUSINESS_ID` only when no auth config is present.
 - Inactive credentials (`is_active=false`) and revoked credentials (`revoked_at` set) are rejected.
 - Service/repository/database tenant checks remain in place as defense in depth.
+
+## Current Out Of Scope
+- Full IAM model (users, roles, memberships, session lifecycle).
 
 ## Design Principles
 - One deployable backend process.

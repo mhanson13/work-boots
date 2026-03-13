@@ -17,6 +17,8 @@ from app.models.business import Business
 from app.models.lead import Lead, LeadSource, LeadStatus
 from app.repositories.api_credential_repository import hash_bearer_token
 
+PROD_PEPPER = "prod-pepper"
+
 
 @pytest.fixture(autouse=True)
 def _clear_settings_cache() -> None:
@@ -28,9 +30,12 @@ def _clear_settings_cache() -> None:
 def _set_env_defaults(monkeypatch: pytest.MonkeyPatch, *, default_business_id: str) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("DEFAULT_BUSINESS_ID", default_business_id)
+    monkeypatch.setenv("API_TOKEN_HASH_PEPPER", PROD_PEPPER)
+    monkeypatch.setenv("ALLOW_AUTH_COMPAT_FALLBACK", "false")
+    monkeypatch.setenv("ALLOW_LEGACY_TOKEN_HASH_FALLBACK", "false")
+    monkeypatch.delenv("API_AUTH_PRINCIPALS_JSON", raising=False)
     monkeypatch.delenv("API_AUTH_TOKEN", raising=False)
     monkeypatch.delenv("API_AUTH_BUSINESS_ID", raising=False)
-    monkeypatch.delenv("API_AUTH_PRINCIPALS_JSON", raising=False)
 
 
 def _make_client(db_session) -> TestClient:
@@ -93,7 +98,7 @@ def test_db_credential_resolves_principal_and_tenant_scope(
             id=str(uuid4()),
             business_id=seeded_business.id,
             principal_id="user-a",
-            token_hash=hash_bearer_token("db-tenant-a-token"),
+            token_hash=hash_bearer_token("db-tenant-a-token", pepper=PROD_PEPPER),
             is_active=True,
             revoked_at=None,
         )
@@ -126,7 +131,7 @@ def test_inactive_db_credential_is_rejected(
             id=str(uuid4()),
             business_id=seeded_business.id,
             principal_id="user-a",
-            token_hash=hash_bearer_token("inactive-token"),
+            token_hash=hash_bearer_token("inactive-token", pepper=PROD_PEPPER),
             is_active=False,
             revoked_at=None,
         )
@@ -149,7 +154,7 @@ def test_revoked_db_credential_is_rejected(
             id=str(uuid4()),
             business_id=seeded_business.id,
             principal_id="user-a",
-            token_hash=hash_bearer_token("revoked-token"),
+            token_hash=hash_bearer_token("revoked-token", pepper=PROD_PEPPER),
             is_active=True,
             revoked_at=utc_now(),
         )
@@ -162,7 +167,7 @@ def test_revoked_db_credential_is_rejected(
     assert response.status_code == 401
 
 
-def test_db_credential_lookup_has_priority_over_env_principal_mapping(
+def test_db_credential_auth_ignores_env_principal_when_compat_is_disabled(
     db_session,
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
@@ -207,7 +212,7 @@ def test_db_credential_lookup_has_priority_over_env_principal_mapping(
             id=str(uuid4()),
             business_id=seeded_business.id,
             principal_id="db-user-a",
-            token_hash=hash_bearer_token("shared-token"),
+            token_hash=hash_bearer_token("shared-token", pepper=PROD_PEPPER),
             is_active=True,
             revoked_at=None,
         )
@@ -237,3 +242,50 @@ def test_db_credential_lookup_has_priority_over_env_principal_mapping(
 
     cross_tenant = client.get(f"/api/leads/{lead_b.id}", headers=headers)
     assert cross_tenant.status_code == 404
+
+
+def test_legacy_unpeppered_hash_is_rejected_by_default(
+    db_session,
+    seeded_business,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_session.add(
+        APICredential(
+            id=str(uuid4()),
+            business_id=seeded_business.id,
+            principal_id="legacy-hash-user",
+            token_hash=hash_bearer_token("legacy-hash-token"),
+            is_active=True,
+            revoked_at=None,
+        )
+    )
+    db_session.commit()
+
+    _set_env_defaults(monkeypatch, default_business_id=seeded_business.id)
+    client = _make_client(db_session)
+    response = client.get("/api/leads", headers={"Authorization": "Bearer legacy-hash-token"})
+    assert response.status_code == 401
+
+
+def test_legacy_unpeppered_hash_can_be_enabled_temporarily_for_migration(
+    db_session,
+    seeded_business,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_session.add(
+        APICredential(
+            id=str(uuid4()),
+            business_id=seeded_business.id,
+            principal_id="legacy-hash-user",
+            token_hash=hash_bearer_token("legacy-hash-token"),
+            is_active=True,
+            revoked_at=None,
+        )
+    )
+    db_session.commit()
+
+    _set_env_defaults(monkeypatch, default_business_id=seeded_business.id)
+    monkeypatch.setenv("ALLOW_LEGACY_TOKEN_HASH_FALLBACK", "true")
+    client = _make_client(db_session)
+    response = client.get("/api/leads", headers={"Authorization": "Bearer legacy-hash-token"})
+    assert response.status_code == 200
