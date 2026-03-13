@@ -7,6 +7,22 @@ from app.api.deps import get_db
 from app.api.routes.businesses import router as businesses_router
 
 
+def _detail_contains_field(detail: object, field_name: str) -> bool:
+    if isinstance(detail, str):
+        return field_name in detail
+    if isinstance(detail, list):
+        for item in detail:
+            if not isinstance(item, dict):
+                continue
+            loc = item.get("loc")
+            if isinstance(loc, list) and field_name in [str(value) for value in loc]:
+                return True
+            msg = item.get("msg")
+            if isinstance(msg, str) and field_name in msg:
+                return True
+    return False
+
+
 def _make_client(db_session) -> TestClient:
     app = FastAPI()
     app.include_router(businesses_router)
@@ -79,7 +95,7 @@ def test_patch_business_settings_invalid_email_rejected(db_session, seeded_busin
     )
 
     assert response.status_code == 422
-    assert "notification_email" in response.json()["detail"]
+    assert _detail_contains_field(response.json()["detail"], "notification_email")
 
 
 def test_patch_business_settings_invalid_phone_rejected_when_sms_enabled(db_session, seeded_business) -> None:
@@ -94,7 +110,7 @@ def test_patch_business_settings_invalid_phone_rejected_when_sms_enabled(db_sess
     )
 
     assert response.status_code == 422
-    assert "notification_phone" in response.json()["detail"]
+    assert _detail_contains_field(response.json()["detail"], "notification_phone")
 
 
 def test_patch_business_settings_invalid_timezone_rejected(db_session, seeded_business) -> None:
@@ -106,7 +122,7 @@ def test_patch_business_settings_invalid_timezone_rejected(db_session, seeded_bu
     )
 
     assert response.status_code == 422
-    assert "timezone" in response.json()["detail"]
+    assert _detail_contains_field(response.json()["detail"], "timezone")
 
 
 def test_patch_business_settings_rejects_contractor_alerts_with_no_channels(

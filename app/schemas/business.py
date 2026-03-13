@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, field_validator
+
+_EMAIL_REGEX = re.compile(r"^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$", re.IGNORECASE)
 
 
 class BusinessSettingsRead(BaseModel):
@@ -30,10 +34,41 @@ class BusinessSettingsUpdateRequest(BaseModel):
     contractor_alerts_enabled: bool | None = None
     timezone: str | None = None
 
-    @field_validator("notification_phone", "notification_email", "timezone", mode="before")
+    @field_validator("notification_email", mode="before")
     @classmethod
-    def normalize_optional_text_fields(cls, value):
-        return _clean_optional_text(value)
+    def normalize_and_validate_email(cls, value: str | None) -> str | None:
+        cleaned = _clean_optional_text(value)
+        if cleaned is None:
+            return None
+        normalized = cleaned.lower()
+        if not _EMAIL_REGEX.match(normalized):
+            raise ValueError("notification_email must be a valid email address.")
+        return normalized
+
+    @field_validator("notification_phone", mode="before")
+    @classmethod
+    def normalize_and_validate_phone(cls, value: str | None) -> str | None:
+        cleaned = _clean_optional_text(value)
+        if cleaned is None:
+            return None
+        normalized = _normalize_us_phone(cleaned)
+        if normalized is None:
+            raise ValueError(
+                "notification_phone must be a valid US phone number (10 digits, optional country code)."
+            )
+        return normalized
+
+    @field_validator("timezone", mode="before")
+    @classmethod
+    def normalize_and_validate_timezone(cls, value: str | None) -> str | None:
+        cleaned = _clean_optional_text(value)
+        if cleaned is None:
+            return None
+        try:
+            ZoneInfo(cleaned)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("timezone must be a valid IANA timezone.") from exc
+        return cleaned
 
 
 def _clean_optional_text(value: str | None) -> str | None:
@@ -43,3 +78,12 @@ def _clean_optional_text(value: str | None) -> str | None:
     if cleaned == "":
         return None
     return cleaned
+
+
+def _normalize_us_phone(value: str) -> str | None:
+    digits = re.sub(r"\D", "", value)
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    if len(digits) != 10:
+        return None
+    return f"+1{digits}"
