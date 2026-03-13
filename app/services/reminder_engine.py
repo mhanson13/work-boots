@@ -58,8 +58,9 @@ class ReminderEngineService:
 
         leads = self.lead_repository.list_awaiting_first_response(business_id)
         lead_ids = [lead.id for lead in leads]
-        existing_events = self.lead_repository.list_events_for_leads(
-            lead_ids,
+        existing_events = self.lead_repository.list_events_for_business(
+            business_id,
+            lead_ids=lead_ids,
             event_types=[event.value for _, event in self.THRESHOLDS],
         )
         sent_thresholds: dict[str, set[str]] = {}
@@ -95,6 +96,7 @@ class ReminderEngineService:
                 self.lead_repository.add_event(
                     LeadEvent(
                         id=str(uuid4()),
+                        business_id=lead.business_id,
                         lead_id=lead.id,
                         event_type=event_type.value,
                         actor_type=ActorType.SYSTEM,

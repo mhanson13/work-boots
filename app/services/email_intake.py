@@ -90,6 +90,7 @@ class EmailIntakeService:
             merged_fields = []
 
         self._add_event(
+            business_id=lead.business_id,
             lead_id=lead.id,
             event_type=LeadEventType.EMAIL_RECEIVED,
             payload={
@@ -104,6 +105,7 @@ class EmailIntakeService:
 
         if parsed.parse_status == "failed":
             self._add_event(
+                business_id=lead.business_id,
                 lead_id=lead.id,
                 event_type=LeadEventType.PARSING_FAILED,
                 payload={
@@ -114,6 +116,7 @@ class EmailIntakeService:
             )
         else:
             self._add_event(
+                business_id=lead.business_id,
                 lead_id=lead.id,
                 event_type=LeadEventType.LEAD_PARSED,
                 payload={
@@ -132,6 +135,7 @@ class EmailIntakeService:
 
         if duplicate and dedupe_match is not None:
             self._add_event(
+                business_id=lead.business_id,
                 lead_id=lead.id,
                 event_type=LeadEventType.DUPLICATE_DETECTED,
                 payload={
@@ -142,6 +146,7 @@ class EmailIntakeService:
             )
         else:
             self._add_event(
+                business_id=lead.business_id,
                 lead_id=lead.id,
                 event_type=LeadEventType.LEAD_CREATED,
                 payload={"source": LeadSource.GODADDY_EMAIL.value},
@@ -156,6 +161,7 @@ class EmailIntakeService:
         if customer_ack.sent:
             lead.customer_acknowledged_at = utc_now()
         self._add_event(
+            business_id=lead.business_id,
             lead_id=lead.id,
             event_type=LeadEventType.CUSTOMER_ACK_TRIGGERED,
             payload={
@@ -177,6 +183,7 @@ class EmailIntakeService:
         if contractor_alert.sent:
             lead.owner_notified_at = utc_now()
         self._add_event(
+            business_id=lead.business_id,
             lead_id=lead.id,
             event_type=LeadEventType.CONTRACTOR_NOTIFICATION_TRIGGERED,
             payload={
@@ -210,6 +217,7 @@ class EmailIntakeService:
     def _add_event(
         self,
         *,
+        business_id: str,
         lead_id: str,
         event_type: LeadEventType,
         payload: dict,
@@ -218,6 +226,7 @@ class EmailIntakeService:
         self.lead_repository.add_event(
             LeadEvent(
                 id=str(uuid4()),
+                business_id=business_id,
                 lead_id=lead_id,
                 event_type=event_type.value,
                 actor_type=ActorType.SYSTEM,

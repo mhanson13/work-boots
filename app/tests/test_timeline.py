@@ -9,12 +9,27 @@ from fastapi.testclient import TestClient
 from app.api.deps import get_db
 from app.api.routes.leads import router as leads_router
 from app.core.time import utc_now
+from app.models.business import Business
 from app.models.lead import Lead, LeadSource, LeadStatus
 from app.models.lead_event import ActorType, LeadEvent, LeadEventType
 
 
 def test_timeline_endpoint_returns_events_chronologically(db_session, seeded_business) -> None:
     submitted_at = utc_now() - timedelta(hours=1)
+    other_business = Business(
+        id=str(uuid4()),
+        name="Other Tenant",
+        notification_phone="+13035550199",
+        notification_email="owner@other.example",
+        sms_enabled=True,
+        email_enabled=True,
+        customer_auto_ack_enabled=True,
+        contractor_alerts_enabled=True,
+        timezone="America/Denver",
+    )
+    db_session.add(other_business)
+    db_session.flush()
+
     lead = Lead(
         id=str(uuid4()),
         business_id=seeded_business.id,
@@ -32,6 +47,7 @@ def test_timeline_endpoint_returns_events_chronologically(db_session, seeded_bus
         [
             LeadEvent(
                 id=str(uuid4()),
+                business_id=lead.business_id,
                 lead_id=lead.id,
                 event_type=LeadEventType.STATUS_CHANGED.value,
                 event_timestamp=submitted_at + timedelta(minutes=20),
@@ -40,6 +56,7 @@ def test_timeline_endpoint_returns_events_chronologically(db_session, seeded_bus
             ),
             LeadEvent(
                 id=str(uuid4()),
+                business_id=lead.business_id,
                 lead_id=lead.id,
                 event_type=LeadEventType.LEAD_CREATED.value,
                 event_timestamp=submitted_at + timedelta(minutes=1),
@@ -48,6 +65,16 @@ def test_timeline_endpoint_returns_events_chronologically(db_session, seeded_bus
             ),
             LeadEvent(
                 id=str(uuid4()),
+                business_id=other_business.id,
+                lead_id=lead.id,
+                event_type=LeadEventType.NOTE.value,
+                event_timestamp=submitted_at + timedelta(minutes=5),
+                actor_type=ActorType.SYSTEM,
+                payload_json={"note": "cross-tenant event should not appear"},
+            ),
+            LeadEvent(
+                id=str(uuid4()),
+                business_id=lead.business_id,
                 lead_id=lead.id,
                 event_type=LeadEventType.NOTE.value,
                 event_timestamp=submitted_at + timedelta(minutes=10),

@@ -50,6 +50,7 @@ class LeadIntakeService:
         self.lead_repository.add_event(
             LeadEvent(
                 id=str(uuid4()),
+                business_id=lead.business_id,
                 lead_id=lead.id,
                 event_type=LeadEventType.LEAD_CREATED.value,
                 actor_type=ActorType.OWNER,

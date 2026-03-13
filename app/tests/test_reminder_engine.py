@@ -78,16 +78,17 @@ def test_reminder_engine_eligibility_and_duplicate_suppression(db_session, seede
     assert first_run.reminders_sent == 3
 
     event_rows = list(
-        db_session.execute(select(LeadEvent.lead_id, LeadEvent.event_type)).all()
+        db_session.execute(select(LeadEvent.lead_id, LeadEvent.event_type, LeadEvent.business_id)).all()
     )
-    lead_16m_events = [event_type for lead_id, event_type in event_rows if lead_id == lead_16m_id]
-    lead_130m_events = [event_type for lead_id, event_type in event_rows if lead_id == lead_130m_id]
+    lead_16m_events = [event_type for lead_id, event_type, _ in event_rows if lead_id == lead_16m_id]
+    lead_130m_events = [event_type for lead_id, event_type, _ in event_rows if lead_id == lead_130m_id]
 
     assert "reminder_15m_triggered" in lead_16m_events
     assert "reminder_15m_triggered" in lead_130m_events
     assert "reminder_2h_triggered" in lead_130m_events
     assert "notification_dispatch_sent" in lead_16m_events
     assert "notification_dispatch_sent" in lead_130m_events
+    assert all(business_id == seeded_business.id for _, _, business_id in event_rows)
 
     second_run = engine.run_for_business(business_id=seeded_business.id)
     assert second_run.reminders_sent == 0

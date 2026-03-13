@@ -71,6 +71,7 @@ class NotificationDispatchService:
         if not business.customer_auto_ack_enabled:
             reason = "Customer auto acknowledgment is disabled for this business."
             self._record_event(
+                business_id=lead.business_id,
                 lead_id=lead.id,
                 event_type=LeadEventType.NOTIFICATION_DISPATCH_SKIPPED,
                 payload={
@@ -115,6 +116,7 @@ class NotificationDispatchService:
         if not business.contractor_alerts_enabled:
             reason = "Contractor alerts are disabled for this business."
             self._record_event(
+                business_id=lead.business_id,
                 lead_id=lead.id,
                 event_type=LeadEventType.NOTIFICATION_DISPATCH_SKIPPED,
                 payload={
@@ -167,6 +169,7 @@ class NotificationDispatchService:
         if not business.contractor_alerts_enabled:
             reason = "Contractor alerts are disabled for this business."
             self._record_event(
+                business_id=lead.business_id,
                 lead_id=lead.id,
                 event_type=LeadEventType.NOTIFICATION_DISPATCH_SKIPPED,
                 payload={
@@ -220,6 +223,7 @@ class NotificationDispatchService:
             payload_base.update(extra_payload)
 
         self._record_event(
+            business_id=lead.business_id,
             lead_id=lead.id,
             event_type=LeadEventType.NOTIFICATION_DISPATCH_REQUESTED,
             payload={**payload_base, "channel_count": len(channels)},
@@ -227,6 +231,7 @@ class NotificationDispatchService:
 
         if not channels:
             self._record_event(
+                business_id=lead.business_id,
                 lead_id=lead.id,
                 event_type=LeadEventType.NOTIFICATION_DISPATCH_SKIPPED,
                 payload={**payload_base, "reason": "No valid enabled notification target found."},
@@ -243,8 +248,14 @@ class NotificationDispatchService:
                 attempts=[],
             )
 
-        if idempotency_key and self._already_sent(lead_id=lead.id, kind=kind, idempotency_key=idempotency_key):
+        if idempotency_key and self._already_sent(
+            business_id=lead.business_id,
+            lead_id=lead.id,
+            kind=kind,
+            idempotency_key=idempotency_key,
+        ):
             self._record_event(
+                business_id=lead.business_id,
                 lead_id=lead.id,
                 event_type=LeadEventType.NOTIFICATION_DISPATCH_SKIPPED,
                 payload={**payload_base, "reason": "Duplicate idempotency key detected."},
@@ -266,6 +277,7 @@ class NotificationDispatchService:
             is_fallback = index > 0
             if is_fallback:
                 self._record_event(
+                    business_id=lead.business_id,
                     lead_id=lead.id,
                     event_type=LeadEventType.NOTIFICATION_FALLBACK_ATTEMPTED,
                     payload={**payload_base, "channel": channel, "recipient": recipient},
@@ -299,6 +311,7 @@ class NotificationDispatchService:
                     )
                 )
                 self._record_event(
+                    business_id=lead.business_id,
                     lead_id=lead.id,
                     event_type=LeadEventType.NOTIFICATION_DISPATCH_FAILED,
                     payload={
@@ -323,6 +336,7 @@ class NotificationDispatchService:
                 )
             )
             self._record_event(
+                business_id=lead.business_id,
                 lead_id=lead.id,
                 event_type=LeadEventType.NOTIFICATION_DISPATCH_SENT,
                 payload={
@@ -337,6 +351,7 @@ class NotificationDispatchService:
             )
             if is_fallback:
                 self._record_event(
+                    business_id=lead.business_id,
                     lead_id=lead.id,
                     event_type=LeadEventType.NOTIFICATION_FALLBACK_SENT,
                     payload={
@@ -400,10 +415,10 @@ class NotificationDispatchService:
                 channels.append(("email", normalized_email))
         return channels
 
-    def _already_sent(self, *, lead_id: str, kind: str, idempotency_key: str) -> bool:
+    def _already_sent(self, *, business_id: str, lead_id: str, kind: str, idempotency_key: str) -> bool:
         if self.lead_repository is None:
             return False
-        for event in self.lead_repository.list_events_for_lead(lead_id):
+        for event in self.lead_repository.list_events_for_business_lead(business_id, lead_id):
             if event.event_type != LeadEventType.NOTIFICATION_DISPATCH_SENT.value:
                 continue
             payload = event.payload_json or {}
@@ -411,12 +426,20 @@ class NotificationDispatchService:
                 return True
         return False
 
-    def _record_event(self, *, lead_id: str, event_type: LeadEventType, payload: dict) -> None:
+    def _record_event(
+        self,
+        *,
+        business_id: str,
+        lead_id: str,
+        event_type: LeadEventType,
+        payload: dict,
+    ) -> None:
         if self.lead_repository is None:
             return
         self.lead_repository.add_event(
             LeadEvent(
                 id=str(uuid4()),
+                business_id=business_id,
                 lead_id=lead_id,
                 event_type=event_type.value,
                 actor_type=ActorType.SYSTEM,
@@ -460,6 +483,7 @@ class NotificationDispatchService:
         if extra_payload:
             payload.update(extra_payload)
         self._record_event(
+            business_id=lead.business_id,
             lead_id=lead.id,
             event_type=LeadEventType.NOTIFICATION_DISPATCH_SKIPPED,
             payload=payload,

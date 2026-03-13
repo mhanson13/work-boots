@@ -65,6 +65,7 @@ class LeadLifecycleService:
         self.lead_repository.add_event(
             LeadEvent(
                 id=str(uuid4()),
+                business_id=lead.business_id,
                 lead_id=lead.id,
                 event_type=LeadEventType.STATUS_CHANGED.value,
                 actor_type=actor_type,

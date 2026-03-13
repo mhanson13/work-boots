@@ -38,7 +38,10 @@ class ResponseMetricsService:
         )
 
         missing_response_ids = [lead.id for lead in leads if lead.first_human_response_at is None]
-        fallback_response_map = self._fallback_response_map(missing_response_ids)
+        fallback_response_map = self._fallback_response_map(
+            business_id=business_id,
+            lead_ids=missing_response_ids,
+        )
 
         deltas_minutes: list[float] = []
         for lead in leads:
@@ -62,9 +65,10 @@ class ResponseMetricsService:
             stale_30m_count=self.lead_repository.count_stale_new_leads(business_id, minutes=30),
         )
 
-    def _fallback_response_map(self, lead_ids: list[str]) -> dict[str, datetime]:
-        events = self.lead_repository.list_events_for_leads(
-            lead_ids,
+    def _fallback_response_map(self, *, business_id: str, lead_ids: list[str]) -> dict[str, datetime]:
+        events = self.lead_repository.list_events_for_business(
+            business_id,
+            lead_ids=lead_ids,
             event_types=[LeadEventType.STATUS_CHANGED.value],
         )
         fallback: dict[str, datetime] = {}

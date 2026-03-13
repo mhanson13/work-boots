@@ -135,16 +135,15 @@ def test_dispatch_failure_records_and_fallback_succeeds(db_session, seeded_busin
     )
 
     result = service.send_owner_notification(lead=lead, business=seeded_business)
-    event_types = [
-        event.event_type
-        for event in db_session.query(LeadEvent).filter(LeadEvent.lead_id == lead.id).all()
-    ]
+    event_rows = db_session.query(LeadEvent).filter(LeadEvent.lead_id == lead.id).all()
+    event_types = [event.event_type for event in event_rows]
 
     assert result.sent is True
     assert result.channel == "email"
     assert "notification_dispatch_failed" in event_types
     assert "notification_fallback_attempted" in event_types
     assert "notification_fallback_sent" in event_types
+    assert all(event.business_id == seeded_business.id for event in event_rows)
 
 
 def test_dispatch_failure_does_not_raise_when_no_fallback(db_session, seeded_business) -> None:

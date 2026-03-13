@@ -27,4 +27,5 @@ class Business(Base):
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
     )
 
+    events = relationship("LeadEvent", back_populates="business")
     leads = relationship("Lead", back_populates="business")

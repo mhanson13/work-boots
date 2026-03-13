@@ -12,4 +12,4 @@ class LeadTimelineService:
         lead = self.lead_repository.get(lead_id)
         if not lead:
             raise ValueError("Lead not found")
-        return self.lead_repository.list_events_for_lead(lead_id)
+        return self.lead_repository.list_events_for_business_lead(lead.business_id, lead_id)

@@ -62,6 +62,7 @@ def test_response_metrics_with_status_fallback(db_session, seeded_business) -> N
     db_session.add(
         LeadEvent(
             id=str(uuid4()),
+            business_id=seeded_business.id,
             lead_id=responded_fallback.id,
             event_type=LeadEventType.STATUS_CHANGED.value,
             event_timestamp=now - timedelta(hours=3, minutes=15),  # 45 minutes after submit
