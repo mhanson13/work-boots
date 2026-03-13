@@ -50,6 +50,11 @@ class LeadLifecycleService:
         lead = self.lead_repository.get_for_business(business_id, lead_id)
         if not lead:
             raise ValueError(f"Lead not found: {lead_id}")
+        if lead.business_id != business_id:
+            raise ValueError(
+                "Lead/business scope mismatch in lifecycle status update: "
+                f"{lead.business_id} != {business_id}"
+            )
 
         previous = lead.status
         self.validate_transition(previous, next_status)

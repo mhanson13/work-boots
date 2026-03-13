@@ -73,6 +73,11 @@ class ReminderEngineService:
         now = utc_now()
 
         for lead in leads:
+            if lead.business_id != business_id:
+                raise ValueError(
+                    "Lead/business scope mismatch in reminder engine: "
+                    f"{lead.business_id} != {business_id}"
+                )
             submitted_at = ensure_utc(lead.submitted_at)
             age_minutes = max((now - submitted_at).total_seconds() / 60.0, 0.0)
             already_sent = sent_thresholds.setdefault(lead.id, set())
