@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum as PyEnum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Numeric, String, Text
+from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.time import utc_now
@@ -27,6 +27,9 @@ class LeadSource(str, PyEnum):
 
 class Lead(Base):
     __tablename__ = "leads"
+    __table_args__ = (
+        UniqueConstraint("id", "business_id", name="uq_leads_id_business_id"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     business_id: Mapped[str] = mapped_column(String(36), ForeignKey("businesses.id"), nullable=False, index=True)
@@ -55,4 +58,9 @@ class Lead(Base):
     )
 
     business = relationship("Business", back_populates="leads")
-    events = relationship("LeadEvent", back_populates="lead", cascade="all, delete-orphan")
+    events = relationship(
+        "LeadEvent",
+        back_populates="lead",
+        cascade="all, delete-orphan",
+        foreign_keys="LeadEvent.lead_id",
+    )

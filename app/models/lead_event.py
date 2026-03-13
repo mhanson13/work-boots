@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum as PyEnum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, JSON, String
+from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, ForeignKeyConstraint, Index, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.time import utc_now
@@ -39,6 +39,14 @@ class ActorType(str, PyEnum):
 
 class LeadEvent(Base):
     __tablename__ = "lead_events"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["lead_id", "business_id"],
+            ["leads.id", "leads.business_id"],
+            name="fk_lead_events_lead_id_business_id_leads",
+        ),
+        Index("ix_lead_events_business_id_lead_id", "business_id", "lead_id"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     business_id: Mapped[str] = mapped_column(
@@ -54,4 +62,4 @@ class LeadEvent(Base):
     payload_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     business = relationship("Business", back_populates="events")
-    lead = relationship("Lead", back_populates="events")
+    lead = relationship("Lead", back_populates="events", foreign_keys=[lead_id])

@@ -4,6 +4,8 @@ from datetime import timedelta
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from app.core.time import utc_now
 from app.models.business import Business
@@ -124,3 +126,39 @@ def test_add_event_rejects_mismatched_business_id(db_session, seeded_business) -
 
     with pytest.raises(ValueError, match="Event business_id does not match lead ownership"):
         repository.add_event(event)
+
+
+def test_db_allows_event_when_lead_and_business_match(db_session, seeded_business) -> None:
+    db_session.execute(text("PRAGMA foreign_keys=ON"))
+    lead = _seed_lead(db_session, seeded_business.id, customer_name="DB Match Lead")
+
+    event = LeadEvent(
+        id=str(uuid4()),
+        business_id=seeded_business.id,
+        lead_id=lead.id,
+        event_type=LeadEventType.NOTE.value,
+        actor_type=ActorType.SYSTEM,
+        payload_json={"note": "ok"},
+    )
+    db_session.add(event)
+    db_session.flush()
+
+
+def test_db_rejects_event_when_lead_and_business_mismatch(db_session, seeded_business) -> None:
+    db_session.execute(text("PRAGMA foreign_keys=ON"))
+    other_business = _seed_other_business(db_session)
+    lead = _seed_lead(db_session, seeded_business.id, customer_name="DB Mismatch Lead")
+
+    bad_event = LeadEvent(
+        id=str(uuid4()),
+        business_id=other_business.id,
+        lead_id=lead.id,
+        event_type=LeadEventType.NOTE.value,
+        actor_type=ActorType.SYSTEM,
+        payload_json={"note": "cross-tenant mismatch"},
+    )
+
+    db_session.add(bad_event)
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+    db_session.rollback()
