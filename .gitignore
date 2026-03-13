@@ -1,0 +1,26 @@
+# Python virtualenvs and caches
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# Python tooling caches
+.mypy_cache/
+
+# Local databases and artifacts
+*.db
+
+# Local environment files
+.env
+.env.local
+
+# Logs
+*.log
+
+# Frontend artifacts (if/when frontend is activated)
+node_modules/
+dist/
+coverage/
+
+# OS files
+.DS_Store
