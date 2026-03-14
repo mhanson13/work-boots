@@ -80,6 +80,12 @@ When using `twilio` or `smtp`, configure the corresponding credentials in `.env`
 - Primary auth path is DB-backed bearer credentials in `api_credentials`.
 - Credentials are tied to persisted principals in `principals` scoped by business.
 - Principals have minimal roles (`admin`, `operator`) for sensitive business actions.
+- Manage principals per business (admin only):
+  - `GET /api/businesses/{business_id}/principals`
+  - `POST /api/businesses/{business_id}/principals`
+  - `PATCH /api/businesses/{business_id}/principals/{principal_id}`
+  - `POST /api/businesses/{business_id}/principals/{principal_id}/activate`
+  - `POST /api/businesses/{business_id}/principals/{principal_id}/deactivate`
 - Manage credentials per business:
   - `POST /api/businesses/{business_id}/credentials`
   - `POST /api/businesses/{business_id}/credentials/{credential_id}/disable`
@@ -89,6 +95,7 @@ When using `twilio` or `smtp`, configure the corresponding credentials in `.env`
 - Issued token plaintext is shown once at creation/rotation; only `token_hash` is persisted.
 - Credentials store non-secret metadata for operations: `label`, `last_used_at`, `rotated_from_credential_id`.
 - Successful DB credential authentication updates `last_used_at`.
+- Inactive principals are blocked from authentication and admin operations immediately.
 - `API_TOKEN_HASH_PEPPER` is required in production.
 - Legacy unpeppered hash verification is off by default and can be enabled temporarily with `ALLOW_LEGACY_TOKEN_HASH_FALLBACK=true`.
 - Legacy shared-token auth (`API_AUTH_TOKEN` / `API_AUTH_BUSINESS_ID`) is no longer part of runtime auth resolution.

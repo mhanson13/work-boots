@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.deps import (
     get_api_credential_service,
     get_business_settings_service,
+    get_principal_service,
     require_credential_manager_principal,
     get_tenant_context,
     resolve_tenant_business_id,
@@ -19,6 +20,12 @@ from app.schemas.api_credential import (
     APICredentialRotateResponse,
 )
 from app.schemas.business import BusinessSettingsRead, BusinessSettingsUpdateRequest
+from app.schemas.principal import (
+    PrincipalCreateRequest,
+    PrincipalListResponse,
+    PrincipalRead,
+    PrincipalUpdateRequest,
+)
 from app.services.api_credentials import (
     APICredentialNotFoundError,
     APICredentialService,
@@ -29,6 +36,7 @@ from app.services.business_settings import (
     BusinessSettingsService,
     BusinessSettingsValidationError,
 )
+from app.services.principals import PrincipalNotFoundError, PrincipalService, PrincipalValidationError
 
 router = APIRouter(prefix="/api/businesses", tags=["businesses"])
 
@@ -206,3 +214,135 @@ def rotate_api_credential(
         credential=APICredentialRead.model_validate(issued.credential),
         token=issued.token,
     )
+
+
+@router.get("/{business_id}/principals", response_model=PrincipalListResponse)
+def list_principals(
+    business_id: str,
+    _: Principal = Depends(require_credential_manager_principal),
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    principal_service: PrincipalService = Depends(get_principal_service),
+) -> PrincipalListResponse:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        principals = principal_service.list_for_business(business_id=scoped_business_id)
+    except PrincipalNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return PrincipalListResponse(
+        items=[PrincipalRead.model_validate(principal) for principal in principals],
+        total=len(principals),
+    )
+
+
+@router.post(
+    "/{business_id}/principals",
+    response_model=PrincipalRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_principal(
+    business_id: str,
+    payload: PrincipalCreateRequest,
+    _: Principal = Depends(require_credential_manager_principal),
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    principal_service: PrincipalService = Depends(get_principal_service),
+) -> PrincipalRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        principal = principal_service.create_principal(
+            business_id=scoped_business_id,
+            principal_id=payload.principal_id,
+            display_name=payload.display_name,
+            role=payload.role,
+        )
+    except PrincipalNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PrincipalValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    return PrincipalRead.model_validate(principal)
+
+
+@router.patch(
+    "/{business_id}/principals/{principal_id}",
+    response_model=PrincipalRead,
+)
+def patch_principal(
+    business_id: str,
+    principal_id: str,
+    payload: PrincipalUpdateRequest,
+    _: Principal = Depends(require_credential_manager_principal),
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    principal_service: PrincipalService = Depends(get_principal_service),
+) -> PrincipalRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        principal = principal_service.update_principal(
+            business_id=scoped_business_id,
+            principal_id=principal_id,
+            payload=payload,
+        )
+    except PrincipalNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PrincipalValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    return PrincipalRead.model_validate(principal)
+
+
+@router.post(
+    "/{business_id}/principals/{principal_id}/activate",
+    response_model=PrincipalRead,
+)
+def activate_principal(
+    business_id: str,
+    principal_id: str,
+    _: Principal = Depends(require_credential_manager_principal),
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    principal_service: PrincipalService = Depends(get_principal_service),
+) -> PrincipalRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        principal = principal_service.activate_principal(
+            business_id=scoped_business_id,
+            principal_id=principal_id,
+        )
+    except PrincipalNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return PrincipalRead.model_validate(principal)
+
+
+@router.post(
+    "/{business_id}/principals/{principal_id}/deactivate",
+    response_model=PrincipalRead,
+)
+def deactivate_principal(
+    business_id: str,
+    principal_id: str,
+    _: Principal = Depends(require_credential_manager_principal),
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    principal_service: PrincipalService = Depends(get_principal_service),
+) -> PrincipalRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        principal = principal_service.deactivate_principal(
+            business_id=scoped_business_id,
+            principal_id=principal_id,
+        )
+    except PrincipalNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PrincipalValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    return PrincipalRead.model_validate(principal)

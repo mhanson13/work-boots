@@ -11,6 +11,7 @@ from app.services.lead_intake import LeadIntakeService
 from app.services.lifecycle import InvalidStatusTransitionError, LeadLifecycleService
 from app.services.notifications import NotificationDispatchService, NotificationService
 from app.services.parser import LeadParserService
+from app.services.principals import PrincipalNotFoundError, PrincipalService, PrincipalValidationError
 from app.services.reminder_engine import ReminderEngineService
 from app.services.response_metrics import ResponseMetricsService
 from app.services.summary import LeadSummaryService
@@ -33,5 +34,8 @@ __all__ = [
     "ResponseMetricsService",
     "LeadSummaryService",
     "NotificationService",
+    "PrincipalNotFoundError",
+    "PrincipalService",
+    "PrincipalValidationError",
     "IssuedAPICredential",
 ]

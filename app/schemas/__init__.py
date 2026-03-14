@@ -6,6 +6,12 @@ from app.schemas.api_credential import (
     APICredentialRotateResponse,
 )
 from app.schemas.business import BusinessSettingsRead, BusinessSettingsUpdateRequest
+from app.schemas.principal import (
+    PrincipalCreateRequest,
+    PrincipalListResponse,
+    PrincipalRead,
+    PrincipalUpdateRequest,
+)
 from app.schemas.lead import (
     EmailIntakeRequest,
     EmailIntakeResponse,
@@ -45,6 +51,10 @@ __all__ = [
     "ManualIntakeRequest",
     "ManualIntakeResponse",
     "ParsedLeadData",
+    "PrincipalCreateRequest",
+    "PrincipalListResponse",
+    "PrincipalRead",
+    "PrincipalUpdateRequest",
     "ReminderRunActionRead",
     "ReminderRunRequest",
     "ReminderRunResponse",

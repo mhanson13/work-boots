@@ -43,6 +43,12 @@ work-boots/
   - `POST /api/businesses/{business_id}/credentials/{credential_id}/disable`
   - `POST /api/businesses/{business_id}/credentials/{credential_id}/revoke`
   - `POST /api/businesses/{business_id}/credentials/{credential_id}/rotate`
+- Principals are now first-class business-scoped entities with admin-only lifecycle endpoints:
+  - `GET /api/businesses/{business_id}/principals`
+  - `POST /api/businesses/{business_id}/principals`
+  - `PATCH /api/businesses/{business_id}/principals/{principal_id}`
+  - `POST /api/businesses/{business_id}/principals/{principal_id}/activate`
+  - `POST /api/businesses/{business_id}/principals/{principal_id}/deactivate`
 - Credential tokens are only returned at issue/rotate time; database stores `token_hash` only.
 - Credential metadata includes `label`, `last_used_at`, and `rotated_from_credential_id` for operational auditability.
 - Successful DB credential authentication updates `last_used_at`.
@@ -53,7 +59,8 @@ work-boots/
 - Legacy shared-token auth (`API_AUTH_TOKEN` / `API_AUTH_BUSINESS_ID`) is no longer used for runtime tenant auth.
 - Dev/test-only fallback uses `DEFAULT_BUSINESS_ID` only when no auth config is present.
 - Inactive credentials (`is_active=false`) and revoked credentials (`revoked_at` set) are rejected.
-- Credential-management routes require an `admin` principal role.
+- Inactive principals are rejected during auth even when credentials are active.
+- Credential-management and principal-management routes require an `admin` principal role.
 - Service/repository/database tenant checks remain in place as defense in depth.
 
 ## Current Out Of Scope

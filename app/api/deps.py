@@ -33,6 +33,7 @@ from app.services.lead_intake import LeadIntakeService
 from app.services.lifecycle import LeadLifecycleService
 from app.services.notifications import NotificationDispatchService
 from app.services.parser import LeadParserService
+from app.services.principals import PrincipalService
 from app.services.reminder_engine import ReminderEngineService
 from app.services.response_metrics import ResponseMetricsService
 from app.services.summary import LeadSummaryService
@@ -231,6 +232,18 @@ def get_api_credential_service(
         business_repository=business_repository,
         principal_repository=principal_repository,
         api_credential_repository=api_credential_repository,
+    )
+
+
+def get_principal_service(
+    db: Session = Depends(get_db),
+    business_repository: BusinessRepository = Depends(get_business_repository),
+    principal_repository: PrincipalRepository = Depends(get_principal_repository),
+) -> PrincipalService:
+    return PrincipalService(
+        session=db,
+        business_repository=business_repository,
+        principal_repository=principal_repository,
     )
 
 

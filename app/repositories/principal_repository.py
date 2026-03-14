@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
-from app.models.principal import Principal
+from app.models.principal import Principal, PrincipalRole
 
 
 class PrincipalRepository:
@@ -27,3 +27,21 @@ class PrincipalRepository:
             .where(Principal.id == principal_id)
         )
         return self.session.scalar(stmt)
+
+    def list_for_business(self, business_id: str) -> list[Principal]:
+        stmt: Select[tuple[Principal]] = (
+            select(Principal)
+            .where(Principal.business_id == business_id)
+            .order_by(Principal.created_at.desc(), Principal.id.desc())
+        )
+        return list(self.session.scalars(stmt))
+
+    def count_active_admins(self, business_id: str) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(Principal)
+            .where(Principal.business_id == business_id)
+            .where(Principal.role == PrincipalRole.ADMIN)
+            .where(Principal.is_active.is_(True))
+        )
+        return int(self.session.scalar(stmt) or 0)
