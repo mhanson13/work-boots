@@ -105,6 +105,14 @@ When using `twilio` or `smtp`, configure the corresponding credentials in `.env`
   - `last_authenticated_at`
 - Auth/admin audit events are persisted for principal and credential lifecycle actions with business scope and actor/target context.
 - Audit payloads exclude secret fields (`token`, `token_hash`).
+- Application-level abuse protections are enabled by default:
+  - bearer-auth request throttling (client IP keyed)
+  - stricter admin-route throttling for principal/credential/audit management actions
+  - throttled requests return `429 Rate limit exceeded. Retry later.`
+- Rate limits are configurable via:
+  - `RATE_LIMIT_ENABLED`
+  - `AUTH_RATE_LIMIT_REQUESTS` / `AUTH_RATE_LIMIT_WINDOW_SECONDS`
+  - `ADMIN_RATE_LIMIT_REQUESTS` / `ADMIN_RATE_LIMIT_WINDOW_SECONDS`
 - `API_TOKEN_HASH_PEPPER` is required in production.
 - Legacy unpeppered hash verification is off by default and can be enabled temporarily with `ALLOW_LEGACY_TOKEN_HASH_FALLBACK=true`.
 - Legacy shared-token auth (`API_AUTH_TOKEN` / `API_AUTH_BUSINESS_ID`) is no longer part of runtime auth resolution.

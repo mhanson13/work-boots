@@ -4,10 +4,11 @@ from collections.abc import Generator
 from dataclasses import dataclass
 import logging
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.rate_limit import InMemoryRateLimiter, get_rate_limiter
 from app.db.session import get_db_session
 from app.integrations import (
     DevEmailProvider,
@@ -269,6 +270,20 @@ def get_principal_service(
     )
 
 
+def _client_ip(request: Request) -> str:
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _raise_rate_limit(*, category: str, retry_after_seconds: int) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail="Rate limit exceeded. Retry later.",
+        headers={"Retry-After": str(retry_after_seconds), "X-RateLimit-Category": category},
+    )
+
+
 def _parse_bearer_token(authorization: str | None) -> str | None:
     if not authorization:
         return None
@@ -283,15 +298,32 @@ def _parse_bearer_token(authorization: str | None) -> str | None:
 
 
 def get_tenant_context(
+    request: Request,
     authorization: str | None = Header(default=None),
     api_credential_repository: APICredentialRepository = Depends(get_api_credential_repository),
     principal_repository: PrincipalRepository = Depends(get_principal_repository),
+    rate_limiter: InMemoryRateLimiter = Depends(get_rate_limiter),
 ) -> TenantContext:
     """Resolve tenant scope from server-side auth context (not request business_id fields)."""
     settings = get_settings()
     token = _parse_bearer_token(authorization)
 
     if token is not None:
+        if settings.rate_limit_enabled:
+            ip = _client_ip(request)
+            decision = rate_limiter.check(
+                key=f"auth:{ip}",
+                limit=settings.auth_rate_limit_requests,
+                window_seconds=settings.auth_rate_limit_window_seconds,
+            )
+            if not decision.allowed:
+                logger.warning(
+                    "Auth rate limit exceeded client_ip=%s retry_after=%s",
+                    ip,
+                    decision.retry_after_seconds,
+                )
+                _raise_rate_limit(category="auth", retry_after_seconds=decision.retry_after_seconds)
+
         db_credential = api_credential_repository.get_active_by_token(token)
         if db_credential is not None:
             try:
@@ -367,3 +399,37 @@ def require_credential_manager_principal(
             detail="Principal is not allowed to manage credentials.",
         )
     return principal
+
+
+def require_admin_rate_limit(action: str):
+    def _enforce(
+        request: Request,
+        tenant_context: TenantContext = Depends(get_tenant_context),
+        principal: Principal = Depends(get_authenticated_principal),
+        rate_limiter: InMemoryRateLimiter = Depends(get_rate_limiter),
+    ) -> None:
+        settings = get_settings()
+        if not settings.rate_limit_enabled:
+            return
+
+        ip = _client_ip(request)
+        key = f"admin:{action}:{tenant_context.business_id}:{principal.id}:{ip}"
+        decision = rate_limiter.check(
+            key=key,
+            limit=settings.admin_rate_limit_requests,
+            window_seconds=settings.admin_rate_limit_window_seconds,
+        )
+        if decision.allowed:
+            return
+
+        logger.warning(
+            "Admin rate limit exceeded action=%s business_id=%s principal_id=%s client_ip=%s retry_after=%s",
+            action,
+            tenant_context.business_id,
+            principal.id,
+            ip,
+            decision.retry_after_seconds,
+        )
+        _raise_rate_limit(category=f"admin:{action}", retry_after_seconds=decision.retry_after_seconds)
+
+    return _enforce

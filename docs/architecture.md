@@ -60,6 +60,10 @@ work-boots/
 - Audit payloads intentionally exclude secret values (for example `token` and `token_hash`).
 - Tenant-sensitive routes pass only auth-derived tenant `business_id` into services/repositories.
 - Client-supplied `business_id` fields/query params are compatibility-only and are not trusted; mismatches are rejected.
+- Application-level abuse protections are enabled by default:
+  - auth attempt throttling (client IP keyed)
+  - stricter admin-route throttling (principal + business + action + client IP keyed)
+  - throttled responses return HTTP 429
 - `API_TOKEN_HASH_PEPPER` is required in production so token verification uses keyed hashing.
 - Legacy unpeppered SHA-256 verification is disabled by default and only enabled temporarily with `ALLOW_LEGACY_TOKEN_HASH_FALLBACK=true` during migration.
 - Legacy shared-token auth (`API_AUTH_TOKEN` / `API_AUTH_BUSINESS_ID`) is no longer used for runtime tenant auth.

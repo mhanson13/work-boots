@@ -5,6 +5,7 @@ Work Boots Console implements a multi-tenant SaaS security model centered on `bu
 
 The current implementation uses layered protections across:
 - API authentication
+- request-rate abuse protections
 - tenant-scoped authorization
 - service-layer validation
 - repository scoping
@@ -20,6 +21,8 @@ Defense in depth is applied from request entry to persistence:
 Client
   ↓
 API Authentication (Bearer token -> DB credential lookup)
+  ↓
+Rate limiting / abuse throttling
   ↓
 TenantContext resolution (business_id + principal_id + auth_source)
   ↓
@@ -57,6 +60,10 @@ Current runtime behavior notes:
 - Env-based principal mapping is not part of runtime auth resolution.
 - Legacy shared-token auth is not part of runtime auth resolution.
 - A dev/test fallback exists when no bearer token is supplied: non-production environments can fall back to `DEFAULT_BUSINESS_ID` for local workflows.
+- Application-level rate limiting is enabled by default:
+  - auth request throttling keyed by client IP
+  - stricter admin-route throttling keyed by action + business + principal + client IP
+  - throttled requests return HTTP 429
 
 ## 5) Credential Security
 - Plaintext tokens are not stored in the database.

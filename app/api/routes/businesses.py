@@ -7,6 +7,7 @@ from app.api.deps import (
     get_auth_audit_service,
     get_business_settings_service,
     get_principal_service,
+    require_admin_rate_limit,
     require_credential_manager_principal,
     get_tenant_context,
     resolve_tenant_business_id,
@@ -111,6 +112,7 @@ def list_api_credentials(
 def create_api_credential(
     business_id: str,
     payload: APICredentialCreateRequest,
+    _: None = Depends(require_admin_rate_limit("credential_create")),
     admin_principal: Principal = Depends(require_credential_manager_principal),
     tenant_context: TenantContext = Depends(get_tenant_context),
     api_credential_service: APICredentialService = Depends(get_api_credential_service),
@@ -145,6 +147,7 @@ def create_api_credential(
 def disable_api_credential(
     business_id: str,
     credential_id: str,
+    _: None = Depends(require_admin_rate_limit("credential_disable")),
     admin_principal: Principal = Depends(require_credential_manager_principal),
     tenant_context: TenantContext = Depends(get_tenant_context),
     api_credential_service: APICredentialService = Depends(get_api_credential_service),
@@ -171,6 +174,7 @@ def disable_api_credential(
 def revoke_api_credential(
     business_id: str,
     credential_id: str,
+    _: None = Depends(require_admin_rate_limit("credential_revoke")),
     admin_principal: Principal = Depends(require_credential_manager_principal),
     tenant_context: TenantContext = Depends(get_tenant_context),
     api_credential_service: APICredentialService = Depends(get_api_credential_service),
@@ -198,6 +202,7 @@ def revoke_api_credential(
 def rotate_api_credential(
     business_id: str,
     credential_id: str,
+    _: None = Depends(require_admin_rate_limit("credential_rotate")),
     admin_principal: Principal = Depends(require_credential_manager_principal),
     tenant_context: TenantContext = Depends(get_tenant_context),
     api_credential_service: APICredentialService = Depends(get_api_credential_service),
@@ -252,6 +257,7 @@ def list_principals(
 def create_principal(
     business_id: str,
     payload: PrincipalCreateRequest,
+    _: None = Depends(require_admin_rate_limit("principal_create")),
     admin_principal: Principal = Depends(require_credential_manager_principal),
     tenant_context: TenantContext = Depends(get_tenant_context),
     principal_service: PrincipalService = Depends(get_principal_service),
@@ -283,6 +289,7 @@ def patch_principal(
     business_id: str,
     principal_id: str,
     payload: PrincipalUpdateRequest,
+    _: None = Depends(require_admin_rate_limit("principal_update")),
     admin_principal: Principal = Depends(require_credential_manager_principal),
     tenant_context: TenantContext = Depends(get_tenant_context),
     principal_service: PrincipalService = Depends(get_principal_service),
@@ -312,6 +319,7 @@ def patch_principal(
 def activate_principal(
     business_id: str,
     principal_id: str,
+    _: None = Depends(require_admin_rate_limit("principal_activate")),
     admin_principal: Principal = Depends(require_credential_manager_principal),
     tenant_context: TenantContext = Depends(get_tenant_context),
     principal_service: PrincipalService = Depends(get_principal_service),
@@ -338,6 +346,7 @@ def activate_principal(
 def deactivate_principal(
     business_id: str,
     principal_id: str,
+    _: None = Depends(require_admin_rate_limit("principal_deactivate")),
     admin_principal: Principal = Depends(require_credential_manager_principal),
     tenant_context: TenantContext = Depends(get_tenant_context),
     principal_service: PrincipalService = Depends(get_principal_service),
@@ -365,7 +374,8 @@ def list_auth_audit_events(
     target_type: str | None = None,
     event_type: str | None = None,
     limit: int = 100,
-    _: Principal = Depends(require_credential_manager_principal),
+    _rate_limit: None = Depends(require_admin_rate_limit("auth_audit_read")),
+    _principal: Principal = Depends(require_credential_manager_principal),
     tenant_context: TenantContext = Depends(get_tenant_context),
     auth_audit_service: AuthAuditService = Depends(get_auth_audit_service),
 ) -> AuthAuditEventListResponse:

@@ -25,6 +25,11 @@ class Settings:
     smtp_from_address: str | None
     smtp_use_tls: bool
     notification_timeout_seconds: int
+    rate_limit_enabled: bool
+    auth_rate_limit_requests: int
+    auth_rate_limit_window_seconds: int
+    admin_rate_limit_requests: int
+    admin_rate_limit_window_seconds: int
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -64,4 +69,9 @@ def get_settings() -> Settings:
         smtp_from_address=os.getenv("SMTP_FROM_ADDRESS"),
         smtp_use_tls=_env_bool("SMTP_USE_TLS", True),
         notification_timeout_seconds=int(os.getenv("NOTIFICATION_TIMEOUT_SECONDS", "10")),
+        rate_limit_enabled=_env_bool("RATE_LIMIT_ENABLED", True),
+        auth_rate_limit_requests=int(os.getenv("AUTH_RATE_LIMIT_REQUESTS", "60")),
+        auth_rate_limit_window_seconds=int(os.getenv("AUTH_RATE_LIMIT_WINDOW_SECONDS", "60")),
+        admin_rate_limit_requests=int(os.getenv("ADMIN_RATE_LIMIT_REQUESTS", "20")),
+        admin_rate_limit_window_seconds=int(os.getenv("ADMIN_RATE_LIMIT_WINDOW_SECONDS", "60")),
     )
