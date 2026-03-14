@@ -15,6 +15,7 @@ from app.services.parser import LeadParserService
 from app.services.principals import PrincipalNotFoundError, PrincipalService, PrincipalValidationError
 from app.services.reminder_engine import ReminderEngineService
 from app.services.response_metrics import ResponseMetricsService
+from app.services.seo_sites import SEOSiteNotFoundError, SEOSiteService, SEOSiteValidationError
 from app.services.summary import LeadSummaryService
 from app.services.timeline import LeadTimelineService
 
@@ -35,6 +36,9 @@ __all__ = [
     "NotificationDispatchService",
     "ReminderEngineService",
     "ResponseMetricsService",
+    "SEOSiteNotFoundError",
+    "SEOSiteService",
+    "SEOSiteValidationError",
     "LeadSummaryService",
     "NotificationService",
     "PrincipalNotFoundError",

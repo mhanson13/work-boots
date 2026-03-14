@@ -13,6 +13,12 @@ from app.schemas.principal import (
     PrincipalRead,
     PrincipalUpdateRequest,
 )
+from app.schemas.seo_site import (
+    SEOSiteCreateRequest,
+    SEOSiteListResponse,
+    SEOSiteRead,
+    SEOSiteUpdateRequest,
+)
 from app.schemas.lead import (
     EmailIntakeRequest,
     EmailIntakeResponse,
@@ -61,5 +67,9 @@ __all__ = [
     "ReminderRunActionRead",
     "ReminderRunRequest",
     "ReminderRunResponse",
+    "SEOSiteCreateRequest",
+    "SEOSiteListResponse",
+    "SEOSiteRead",
+    "SEOSiteUpdateRequest",
     "StatusPatchResponse",
 ]

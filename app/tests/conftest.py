@@ -16,6 +16,10 @@ from app.models.auth_audit_event import AuthAuditEvent  # noqa: F401
 from app.models.business import Business
 from app.models.lead import Lead, LeadSource, LeadStatus
 from app.models.principal import Principal  # noqa: F401
+from app.models.seo_audit_finding import SEOAuditFinding  # noqa: F401
+from app.models.seo_audit_page import SEOAuditPage  # noqa: F401
+from app.models.seo_audit_run import SEOAuditRun  # noqa: F401
+from app.models.seo_site import SEOSite  # noqa: F401
 
 
 @pytest.fixture()

@@ -4,6 +4,10 @@ from app.models.business import Business
 from app.models.lead import Lead, LeadSource, LeadStatus
 from app.models.lead_event import ActorType, LeadEvent, LeadEventType
 from app.models.principal import Principal, PrincipalRole
+from app.models.seo_audit_finding import SEOAuditFinding
+from app.models.seo_audit_page import SEOAuditPage
+from app.models.seo_audit_run import SEOAuditRun, SEOAuditRunStatus
+from app.models.seo_site import SEOSite
 
 __all__ = [
     "APICredential",
@@ -17,4 +21,9 @@ __all__ = [
     "LeadStatus",
     "Principal",
     "PrincipalRole",
+    "SEOAuditFinding",
+    "SEOAuditPage",
+    "SEOAuditRun",
+    "SEOAuditRunStatus",
+    "SEOSite",
 ]

@@ -27,6 +27,8 @@ from app.repositories.auth_audit_repository import AuthAuditRepository
 from app.repositories.business_repository import BusinessRepository
 from app.repositories.lead_repository import LeadRepository
 from app.repositories.principal_repository import PrincipalRepository
+from app.repositories.seo_audit_repository import SEOAuditRepository
+from app.repositories.seo_site_repository import SEOSiteRepository
 from app.services.business_settings import BusinessSettingsService
 from app.services.api_credentials import APICredentialService
 from app.services.auth_audit import AuthAuditService
@@ -39,6 +41,7 @@ from app.services.parser import LeadParserService
 from app.services.principals import PrincipalService
 from app.services.reminder_engine import ReminderEngineService
 from app.services.response_metrics import ResponseMetricsService
+from app.services.seo_sites import SEOSiteService
 from app.services.summary import LeadSummaryService
 from app.services.timeline import LeadTimelineService
 
@@ -81,6 +84,14 @@ def get_auth_audit_repository(db: Session = Depends(get_db)) -> AuthAuditReposit
 
 def get_principal_repository(db: Session = Depends(get_db)) -> PrincipalRepository:
     return PrincipalRepository(db)
+
+
+def get_seo_site_repository(db: Session = Depends(get_db)) -> SEOSiteRepository:
+    return SEOSiteRepository(db)
+
+
+def get_seo_audit_repository(db: Session = Depends(get_db)) -> SEOAuditRepository:
+    return SEOAuditRepository(db)
 
 
 def get_parser_service() -> LeadParserService:
@@ -226,6 +237,18 @@ def get_business_settings_service(
     business_repository: BusinessRepository = Depends(get_business_repository),
 ) -> BusinessSettingsService:
     return BusinessSettingsService(session=db, business_repository=business_repository)
+
+
+def get_seo_site_service(
+    db: Session = Depends(get_db),
+    business_repository: BusinessRepository = Depends(get_business_repository),
+    seo_site_repository: SEOSiteRepository = Depends(get_seo_site_repository),
+) -> SEOSiteService:
+    return SEOSiteService(
+        session=db,
+        business_repository=business_repository,
+        seo_site_repository=seo_site_repository,
+    )
 
 
 def get_auth_audit_service(
