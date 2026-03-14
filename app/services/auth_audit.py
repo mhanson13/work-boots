@@ -80,10 +80,20 @@ class AuthAuditService:
         if isinstance(value, dict):
             sanitized: dict[str, Any] = {}
             for key, item in value.items():
-                if key.lower() in _SENSITIVE_DETAIL_KEYS:
+                if self._is_sensitive_key(key):
                     continue
                 sanitized[key] = self._sanitize_details(item)
             return sanitized
         if isinstance(value, list):
             return [self._sanitize_details(item) for item in value]
         return value
+
+    def _is_sensitive_key(self, key: str) -> bool:
+        key_lower = key.lower()
+        if key_lower in _SENSITIVE_DETAIL_KEYS:
+            return True
+        if "token" in key_lower:
+            return True
+        if "authorization" in key_lower:
+            return True
+        return False

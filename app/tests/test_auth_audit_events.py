@@ -12,7 +12,10 @@ from app.core.config import get_settings
 from app.models.api_credential import APICredential
 from app.models.business import Business
 from app.models.principal import Principal, PrincipalRole
+from app.repositories.auth_audit_repository import AuthAuditRepository
+from app.repositories.business_repository import BusinessRepository
 from app.repositories.api_credential_repository import hash_bearer_token
+from app.services.auth_audit import AuthAuditService
 
 PROD_PEPPER = "prod-pepper"
 
@@ -305,3 +308,42 @@ def test_operator_principal_cannot_access_admin_audit_view(
         headers={"Authorization": f"Bearer {operator_token}"},
     )
     assert response.status_code == 403
+
+
+def test_audit_event_details_scrub_token_like_keys(
+    db_session,
+    seeded_business,
+) -> None:
+    service = AuthAuditService(
+        session=db_session,
+        business_repository=BusinessRepository(db_session),
+        auth_audit_repository=AuthAuditRepository(db_session),
+    )
+    service.record_event(
+        business_id=seeded_business.id,
+        actor_principal_id="admin-audit-user",
+        target_type="principal",
+        target_id="principal-audit-target",
+        event_type="principal_updated",
+        details={
+            "token": "plaintext-should-not-persist",
+            "access_token": "also-removed",
+            "nested": {
+                "token_hash": "never-store",
+                "authorization_header": "remove-me",
+                "safe_flag": True,
+            },
+            "safe_label": "keep-this",
+        },
+    )
+    db_session.commit()
+
+    events = service.list_for_business(business_id=seeded_business.id, limit=10)
+    assert events
+    details = events[0].details_json
+    assert "token" not in details
+    assert "access_token" not in details
+    assert details["safe_label"] == "keep-this"
+    assert "token_hash" not in details["nested"]
+    assert "authorization_header" not in details["nested"]
+    assert details["nested"]["safe_flag"] is True

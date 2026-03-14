@@ -302,21 +302,19 @@ class APICredentialService:
             raise APICredentialValidationError("Principal is inactive.")
 
         changed = False
+        updated_fields: list[str] = []
         if normalized_display_name and principal.display_name != normalized_display_name:
             principal.display_name = normalized_display_name
             changed = True
+            updated_fields.append("display_name")
         if principal_role is not None and principal.role != principal_role:
             principal.role = principal_role
             changed = True
+            updated_fields.append("role")
         if changed and normalized_actor_principal_id is not None:
             principal.updated_by_principal_id = normalized_actor_principal_id
         if changed:
             self.principal_repository.save(principal)
-            updated_fields: list[str] = []
-            if normalized_display_name and principal.display_name == normalized_display_name:
-                updated_fields.append("display_name")
-            if principal_role is not None:
-                updated_fields.append("role")
             self.auth_audit_service.record_event(
                 business_id=business_id,
                 actor_principal_id=normalized_actor_principal_id,
