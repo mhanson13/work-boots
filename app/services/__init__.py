@@ -20,6 +20,7 @@ from app.services.seo_crawler import SEOCrawler, SEOCrawlerValidationError
 from app.services.seo_extractor import SEOExtractor
 from app.services.seo_finding_rules import SEOFindingRules
 from app.services.seo_sites import SEOSiteNotFoundError, SEOSiteService, SEOSiteValidationError
+from app.services.seo_summary import SEOSummaryNotFoundError, SEOSummaryService, SEOSummaryValidationError
 from app.services.summary import LeadSummaryService
 from app.services.timeline import LeadTimelineService
 
@@ -50,6 +51,9 @@ __all__ = [
     "SEOSiteNotFoundError",
     "SEOSiteService",
     "SEOSiteValidationError",
+    "SEOSummaryNotFoundError",
+    "SEOSummaryService",
+    "SEOSummaryValidationError",
     "LeadSummaryService",
     "NotificationService",
     "PrincipalNotFoundError",

@@ -6,6 +6,7 @@ from app.api.deps import (
     TenantContext,
     get_seo_audit_service,
     get_seo_site_service,
+    get_seo_summary_service,
     get_tenant_context,
     resolve_tenant_business_id,
 )
@@ -24,6 +25,8 @@ from app.schemas.seo_site import (
 )
 from app.services.seo_audit import SEOAuditNotFoundError, SEOAuditService, SEOAuditValidationError
 from app.services.seo_sites import SEOSiteNotFoundError, SEOSiteService, SEOSiteValidationError
+from app.services.seo_summary import SEOSummaryNotFoundError, SEOSummaryService, SEOSummaryValidationError
+from app.schemas.seo_summary import SEOAuditSummaryRead
 
 router = APIRouter(prefix="/api/businesses/{business_id}/seo", tags=["seo"])
 
@@ -192,3 +195,27 @@ def list_seo_audit_run_findings(
         items=[SEOAuditFindingRead.model_validate(item) for item in findings],
         total=len(findings),
     )
+
+
+@router.post("/audit-runs/{run_id}/summarize", response_model=SEOAuditSummaryRead, status_code=status.HTTP_201_CREATED)
+def summarize_seo_audit_run(
+    business_id: str,
+    run_id: str,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_summary_service: SEOSummaryService = Depends(get_seo_summary_service),
+) -> SEOAuditSummaryRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        result = seo_summary_service.summarize_run(
+            business_id=scoped_business_id,
+            run_id=run_id,
+            created_by_principal_id=tenant_context.principal_id,
+        )
+    except SEOSummaryNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except SEOSummaryValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    return SEOAuditSummaryRead.model_validate(result.summary)

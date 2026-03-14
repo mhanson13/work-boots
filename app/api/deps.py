@@ -14,8 +14,10 @@ from app.integrations import (
     DevEmailProvider,
     DevSMSProvider,
     EmailProvider,
+    MockSEOAuditSummaryProvider,
     MockEmailProvider,
     MockSMSProvider,
+    SEOAuditSummaryProvider,
     SMTPEmailProvider,
     SMSProvider,
     TwilioSMSProvider,
@@ -28,6 +30,7 @@ from app.repositories.business_repository import BusinessRepository
 from app.repositories.lead_repository import LeadRepository
 from app.repositories.principal_repository import PrincipalRepository
 from app.repositories.seo_audit_repository import SEOAuditRepository
+from app.repositories.seo_audit_summary_repository import SEOAuditSummaryRepository
 from app.repositories.seo_site_repository import SEOSiteRepository
 from app.services.business_settings import BusinessSettingsService
 from app.services.api_credentials import APICredentialService
@@ -46,6 +49,7 @@ from app.services.seo_crawler import SEOCrawler
 from app.services.seo_extractor import SEOExtractor
 from app.services.seo_finding_rules import SEOFindingRules
 from app.services.seo_sites import SEOSiteService
+from app.services.seo_summary import SEOSummaryService
 from app.services.summary import LeadSummaryService
 from app.services.timeline import LeadTimelineService
 
@@ -96,6 +100,10 @@ def get_seo_site_repository(db: Session = Depends(get_db)) -> SEOSiteRepository:
 
 def get_seo_audit_repository(db: Session = Depends(get_db)) -> SEOAuditRepository:
     return SEOAuditRepository(db)
+
+
+def get_seo_audit_summary_repository(db: Session = Depends(get_db)) -> SEOAuditSummaryRepository:
+    return SEOAuditSummaryRepository(db)
 
 
 def get_parser_service() -> LeadParserService:
@@ -284,6 +292,26 @@ def get_seo_audit_service(
         crawler=crawler,
         extractor=extractor,
         finding_rules=finding_rules,
+    )
+
+
+def get_seo_summary_provider() -> SEOAuditSummaryProvider:
+    return MockSEOAuditSummaryProvider()
+
+
+def get_seo_summary_service(
+    db: Session = Depends(get_db),
+    business_repository: BusinessRepository = Depends(get_business_repository),
+    seo_audit_repository: SEOAuditRepository = Depends(get_seo_audit_repository),
+    seo_audit_summary_repository: SEOAuditSummaryRepository = Depends(get_seo_audit_summary_repository),
+    provider: SEOAuditSummaryProvider = Depends(get_seo_summary_provider),
+) -> SEOSummaryService:
+    return SEOSummaryService(
+        session=db,
+        business_repository=business_repository,
+        seo_audit_repository=seo_audit_repository,
+        seo_audit_summary_repository=seo_audit_summary_repository,
+        provider=provider,
     )
 
 

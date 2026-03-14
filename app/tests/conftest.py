@@ -19,6 +19,7 @@ from app.models.principal import Principal  # noqa: F401
 from app.models.seo_audit_finding import SEOAuditFinding  # noqa: F401
 from app.models.seo_audit_page import SEOAuditPage  # noqa: F401
 from app.models.seo_audit_run import SEOAuditRun  # noqa: F401
+from app.models.seo_audit_summary import SEOAuditSummary  # noqa: F401
 from app.models.seo_site import SEOSite  # noqa: F401
 
 

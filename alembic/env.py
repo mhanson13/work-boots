@@ -27,6 +27,7 @@ from app.models import (
     seo_audit_finding,
     seo_audit_page,
     seo_audit_run,
+    seo_audit_summary,
     seo_site,
 )
 

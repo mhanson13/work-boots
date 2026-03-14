@@ -12,6 +12,11 @@ from app.integrations.sms_provider import (
     SMSProvider,
     TwilioSMSProvider,
 )
+from app.integrations.seo_summary_provider import (
+    MockSEOAuditSummaryProvider,
+    SEOAuditSummaryOutput,
+    SEOAuditSummaryProvider,
+)
 
 __all__ = [
     "DevEmailProvider",
@@ -23,5 +28,8 @@ __all__ = [
     "SMTPEmailProvider",
     "SMSDispatchResult",
     "SMSProvider",
+    "MockSEOAuditSummaryProvider",
+    "SEOAuditSummaryOutput",
+    "SEOAuditSummaryProvider",
     "TwilioSMSProvider",
 ]

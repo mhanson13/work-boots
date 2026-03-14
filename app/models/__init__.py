@@ -7,6 +7,7 @@ from app.models.principal import Principal, PrincipalRole
 from app.models.seo_audit_finding import SEOAuditFinding
 from app.models.seo_audit_page import SEOAuditPage
 from app.models.seo_audit_run import SEOAuditRun, SEOAuditRunStatus
+from app.models.seo_audit_summary import SEOAuditSummary
 from app.models.seo_site import SEOSite
 
 __all__ = [
@@ -25,5 +26,6 @@ __all__ = [
     "SEOAuditPage",
     "SEOAuditRun",
     "SEOAuditRunStatus",
+    "SEOAuditSummary",
     "SEOSite",
 ]

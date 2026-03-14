@@ -26,6 +26,7 @@ from app.schemas.seo_audit import (
     SEOAuditRunListResponse,
     SEOAuditRunRead,
 )
+from app.schemas.seo_summary import SEOAuditSummaryRead
 from app.schemas.lead import (
     EmailIntakeRequest,
     EmailIntakeResponse,
@@ -83,5 +84,6 @@ __all__ = [
     "SEOAuditRunCreateRequest",
     "SEOAuditRunListResponse",
     "SEOAuditRunRead",
+    "SEOAuditSummaryRead",
     "StatusPatchResponse",
 ]
