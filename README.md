@@ -67,6 +67,7 @@ Project docs live under [`docs/`](docs):
 - `lead-intake-flow.md`
 - `phase3-response-and-reminders.md`
 - `phase4-notifications-and-hardening.md`
+- `security-architecture.md`
 
 ## Notification Provider Modes
 Set provider selection in `.env`:
