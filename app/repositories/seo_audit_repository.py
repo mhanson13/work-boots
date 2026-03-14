@@ -24,6 +24,11 @@ class SEOAuditRepository:
         self.session.flush()
         return run
 
+    def save_run(self, run: SEOAuditRun) -> SEOAuditRun:
+        self.session.add(run)
+        self.session.flush()
+        return run
+
     def get_run_for_business(self, business_id: str, run_id: str) -> SEOAuditRun | None:
         stmt: Select[tuple[SEOAuditRun]] = (
             select(SEOAuditRun).where(SEOAuditRun.business_id == business_id).where(SEOAuditRun.id == run_id)

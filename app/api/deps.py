@@ -41,6 +41,10 @@ from app.services.parser import LeadParserService
 from app.services.principals import PrincipalService
 from app.services.reminder_engine import ReminderEngineService
 from app.services.response_metrics import ResponseMetricsService
+from app.services.seo_audit import SEOAuditService
+from app.services.seo_crawler import SEOCrawler
+from app.services.seo_extractor import SEOExtractor
+from app.services.seo_finding_rules import SEOFindingRules
 from app.services.seo_sites import SEOSiteService
 from app.services.summary import LeadSummaryService
 from app.services.timeline import LeadTimelineService
@@ -248,6 +252,38 @@ def get_seo_site_service(
         session=db,
         business_repository=business_repository,
         seo_site_repository=seo_site_repository,
+    )
+
+
+def get_seo_crawler() -> SEOCrawler:
+    return SEOCrawler()
+
+
+def get_seo_extractor() -> SEOExtractor:
+    return SEOExtractor()
+
+
+def get_seo_finding_rules() -> SEOFindingRules:
+    return SEOFindingRules()
+
+
+def get_seo_audit_service(
+    db: Session = Depends(get_db),
+    business_repository: BusinessRepository = Depends(get_business_repository),
+    seo_site_repository: SEOSiteRepository = Depends(get_seo_site_repository),
+    seo_audit_repository: SEOAuditRepository = Depends(get_seo_audit_repository),
+    crawler: SEOCrawler = Depends(get_seo_crawler),
+    extractor: SEOExtractor = Depends(get_seo_extractor),
+    finding_rules: SEOFindingRules = Depends(get_seo_finding_rules),
+) -> SEOAuditService:
+    return SEOAuditService(
+        session=db,
+        business_repository=business_repository,
+        seo_site_repository=seo_site_repository,
+        seo_audit_repository=seo_audit_repository,
+        crawler=crawler,
+        extractor=extractor,
+        finding_rules=finding_rules,
     )
 
 

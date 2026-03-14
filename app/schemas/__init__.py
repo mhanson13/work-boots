@@ -19,6 +19,13 @@ from app.schemas.seo_site import (
     SEOSiteRead,
     SEOSiteUpdateRequest,
 )
+from app.schemas.seo_audit import (
+    SEOAuditFindingListResponse,
+    SEOAuditFindingRead,
+    SEOAuditRunCreateRequest,
+    SEOAuditRunListResponse,
+    SEOAuditRunRead,
+)
 from app.schemas.lead import (
     EmailIntakeRequest,
     EmailIntakeResponse,
@@ -71,5 +78,10 @@ __all__ = [
     "SEOSiteListResponse",
     "SEOSiteRead",
     "SEOSiteUpdateRequest",
+    "SEOAuditFindingListResponse",
+    "SEOAuditFindingRead",
+    "SEOAuditRunCreateRequest",
+    "SEOAuditRunListResponse",
+    "SEOAuditRunRead",
     "StatusPatchResponse",
 ]
