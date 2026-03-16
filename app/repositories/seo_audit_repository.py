@@ -35,6 +35,16 @@ class SEOAuditRepository:
         )
         return self.session.scalar(stmt)
 
+    def get_latest_completed_run_for_business_site(self, business_id: str, site_id: str) -> SEOAuditRun | None:
+        stmt: Select[tuple[SEOAuditRun]] = (
+            select(SEOAuditRun)
+            .where(SEOAuditRun.business_id == business_id)
+            .where(SEOAuditRun.site_id == site_id)
+            .where(SEOAuditRun.status == "completed")
+            .order_by(SEOAuditRun.completed_at.desc().nullslast(), SEOAuditRun.created_at.desc())
+        )
+        return self.session.scalar(stmt)
+
     def list_runs_for_business_site(self, business_id: str, site_id: str) -> list[SEOAuditRun]:
         stmt: Select[tuple[SEOAuditRun]] = (
             select(SEOAuditRun)

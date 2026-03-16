@@ -4,6 +4,8 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app.models.seo_audit_run import SEOAuditRun
+from app.models.seo_competitor_comparison_finding import SEOCompetitorComparisonFinding
+from app.models.seo_competitor_comparison_run import SEOCompetitorComparisonRun
 from app.models.seo_competitor_domain import SEOCompetitorDomain
 from app.models.seo_competitor_set import SEOCompetitorSet
 from app.models.seo_competitor_snapshot_page import SEOCompetitorSnapshotPage
@@ -180,3 +182,105 @@ class SEOCompetitorRepository:
         self.session.add(snapshot_page)
         self.session.flush()
         return snapshot_page
+
+    def list_snapshot_pages_for_business_run(self, business_id: str, snapshot_run_id: str) -> list[SEOCompetitorSnapshotPage]:
+        stmt: Select[tuple[SEOCompetitorSnapshotPage]] = (
+            select(SEOCompetitorSnapshotPage)
+            .where(SEOCompetitorSnapshotPage.business_id == business_id)
+            .where(SEOCompetitorSnapshotPage.snapshot_run_id == snapshot_run_id)
+            .order_by(SEOCompetitorSnapshotPage.url.asc())
+        )
+        return list(self.session.scalars(stmt))
+
+    def create_comparison_run(self, comparison_run: SEOCompetitorComparisonRun) -> SEOCompetitorComparisonRun:
+        competitor_set = self.session.scalar(
+            select(SEOCompetitorSet).where(SEOCompetitorSet.id == comparison_run.competitor_set_id)
+        )
+        if competitor_set is None:
+            raise ValueError("Competitor set not found")
+        if competitor_set.business_id != comparison_run.business_id or competitor_set.site_id != comparison_run.site_id:
+            raise ValueError("Comparison run set scope mismatch")
+
+        snapshot_run = self.session.scalar(
+            select(SEOCompetitorSnapshotRun).where(SEOCompetitorSnapshotRun.id == comparison_run.snapshot_run_id)
+        )
+        if snapshot_run is None:
+            raise ValueError("Snapshot run not found")
+        if (
+            snapshot_run.business_id != comparison_run.business_id
+            or snapshot_run.site_id != comparison_run.site_id
+            or snapshot_run.competitor_set_id != comparison_run.competitor_set_id
+        ):
+            raise ValueError("Comparison run snapshot scope mismatch")
+
+        if comparison_run.baseline_audit_run_id is not None:
+            audit_run = self.session.scalar(
+                select(SEOAuditRun).where(SEOAuditRun.id == comparison_run.baseline_audit_run_id)
+            )
+            if audit_run is None:
+                raise ValueError("Baseline audit run not found")
+            if audit_run.business_id != comparison_run.business_id or audit_run.site_id != comparison_run.site_id:
+                raise ValueError("Baseline audit run scope mismatch")
+
+        self.session.add(comparison_run)
+        self.session.flush()
+        return comparison_run
+
+    def save_comparison_run(self, comparison_run: SEOCompetitorComparisonRun) -> SEOCompetitorComparisonRun:
+        self.session.add(comparison_run)
+        self.session.flush()
+        return comparison_run
+
+    def get_comparison_run_for_business(self, business_id: str, comparison_run_id: str) -> SEOCompetitorComparisonRun | None:
+        stmt: Select[tuple[SEOCompetitorComparisonRun]] = (
+            select(SEOCompetitorComparisonRun)
+            .where(SEOCompetitorComparisonRun.business_id == business_id)
+            .where(SEOCompetitorComparisonRun.id == comparison_run_id)
+        )
+        return self.session.scalar(stmt)
+
+    def list_comparison_runs_for_business_set(
+        self,
+        business_id: str,
+        competitor_set_id: str,
+    ) -> list[SEOCompetitorComparisonRun]:
+        stmt: Select[tuple[SEOCompetitorComparisonRun]] = (
+            select(SEOCompetitorComparisonRun)
+            .where(SEOCompetitorComparisonRun.business_id == business_id)
+            .where(SEOCompetitorComparisonRun.competitor_set_id == competitor_set_id)
+            .order_by(SEOCompetitorComparisonRun.created_at.desc(), SEOCompetitorComparisonRun.id.desc())
+        )
+        return list(self.session.scalars(stmt))
+
+    def add_comparison_finding(self, finding: SEOCompetitorComparisonFinding) -> SEOCompetitorComparisonFinding:
+        comparison_run = self.session.scalar(
+            select(SEOCompetitorComparisonRun).where(SEOCompetitorComparisonRun.id == finding.comparison_run_id)
+        )
+        if comparison_run is None:
+            raise ValueError("Comparison run not found")
+        if (
+            comparison_run.business_id != finding.business_id
+            or comparison_run.site_id != finding.site_id
+            or comparison_run.competitor_set_id != finding.competitor_set_id
+        ):
+            raise ValueError("Comparison finding scope mismatch")
+
+        self.session.add(finding)
+        self.session.flush()
+        return finding
+
+    def list_comparison_findings_for_business_run(
+        self,
+        business_id: str,
+        comparison_run_id: str,
+    ) -> list[SEOCompetitorComparisonFinding]:
+        stmt: Select[tuple[SEOCompetitorComparisonFinding]] = (
+            select(SEOCompetitorComparisonFinding)
+            .where(SEOCompetitorComparisonFinding.business_id == business_id)
+            .where(SEOCompetitorComparisonFinding.comparison_run_id == comparison_run_id)
+            .order_by(
+                SEOCompetitorComparisonFinding.created_at.asc(),
+                SEOCompetitorComparisonFinding.id.asc(),
+            )
+        )
+        return list(self.session.scalars(stmt))

@@ -28,6 +28,8 @@ from app.models import (
     seo_audit_page,
     seo_audit_run,
     seo_audit_summary,
+    seo_competitor_comparison_finding,
+    seo_competitor_comparison_run,
     seo_competitor_domain,
     seo_competitor_set,
     seo_competitor_snapshot_page,

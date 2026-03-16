@@ -114,3 +114,69 @@ class SEOCompetitorSnapshotRunRead(BaseModel):
 class SEOCompetitorSnapshotRunListResponse(BaseModel):
     items: list[SEOCompetitorSnapshotRunRead]
     total: int
+
+
+class SEOCompetitorComparisonRunCreateRequest(BaseModel):
+    snapshot_run_id: str
+    baseline_audit_run_id: str | None = None
+
+
+class SEOCompetitorComparisonRunRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    business_id: str
+    site_id: str
+    competitor_set_id: str
+    snapshot_run_id: str
+    baseline_audit_run_id: str | None
+    status: str
+    total_findings: int
+    critical_findings: int
+    warning_findings: int
+    info_findings: int
+    started_at: datetime | None
+    completed_at: datetime | None
+    duration_ms: int | None
+    error_summary: str | None
+    created_by_principal_id: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SEOCompetitorComparisonRunListResponse(BaseModel):
+    items: list[SEOCompetitorComparisonRunRead]
+    total: int
+
+
+class SEOCompetitorComparisonFindingRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    business_id: str
+    site_id: str
+    competitor_set_id: str
+    comparison_run_id: str
+    finding_type: str
+    category: str
+    severity: str
+    title: str
+    details: str | None
+    rule_key: str
+    client_value: str | None
+    competitor_value: str | None
+    gap_direction: str | None
+    evidence_json: dict[str, object] | None
+    created_at: datetime
+
+
+class SEOCompetitorComparisonFindingListResponse(BaseModel):
+    items: list[SEOCompetitorComparisonFindingRead]
+    total: int
+    by_category: dict[str, int] = Field(default_factory=dict)
+    by_severity: dict[str, int] = Field(default_factory=dict)
+
+
+class SEOCompetitorComparisonReportRead(BaseModel):
+    run: SEOCompetitorComparisonRunRead
+    findings: SEOCompetitorComparisonFindingListResponse

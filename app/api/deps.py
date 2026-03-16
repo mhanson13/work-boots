@@ -46,6 +46,7 @@ from app.services.principals import PrincipalService
 from app.services.reminder_engine import ReminderEngineService
 from app.services.response_metrics import ResponseMetricsService
 from app.services.seo_audit import SEOAuditService
+from app.services.seo_competitor_comparison import SEOCompetitorComparisonService
 from app.services.seo_competitors import SEOCompetitorService
 from app.services.seo_crawler import SEOCrawler
 from app.services.seo_extractor import SEOExtractor
@@ -331,6 +332,20 @@ def get_seo_competitor_service(
         session=db,
         business_repository=business_repository,
         seo_site_repository=seo_site_repository,
+        seo_competitor_repository=seo_competitor_repository,
+    )
+
+
+def get_seo_competitor_comparison_service(
+    db: Session = Depends(get_db),
+    business_repository: BusinessRepository = Depends(get_business_repository),
+    seo_audit_repository: SEOAuditRepository = Depends(get_seo_audit_repository),
+    seo_competitor_repository: SEOCompetitorRepository = Depends(get_seo_competitor_repository),
+) -> SEOCompetitorComparisonService:
+    return SEOCompetitorComparisonService(
+        session=db,
+        business_repository=business_repository,
+        seo_audit_repository=seo_audit_repository,
         seo_competitor_repository=seo_competitor_repository,
     )
 

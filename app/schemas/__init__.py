@@ -28,6 +28,12 @@ from app.schemas.seo_audit import (
 )
 from app.schemas.seo_summary import SEOAuditSummaryRead
 from app.schemas.seo_competitor import (
+    SEOCompetitorComparisonFindingListResponse,
+    SEOCompetitorComparisonFindingRead,
+    SEOCompetitorComparisonReportRead,
+    SEOCompetitorComparisonRunCreateRequest,
+    SEOCompetitorComparisonRunListResponse,
+    SEOCompetitorComparisonRunRead,
     SEOCompetitorDomainCreateRequest,
     SEOCompetitorDomainListResponse,
     SEOCompetitorDomainRead,
@@ -97,6 +103,12 @@ __all__ = [
     "SEOAuditRunListResponse",
     "SEOAuditRunRead",
     "SEOAuditSummaryRead",
+    "SEOCompetitorComparisonFindingListResponse",
+    "SEOCompetitorComparisonFindingRead",
+    "SEOCompetitorComparisonReportRead",
+    "SEOCompetitorComparisonRunCreateRequest",
+    "SEOCompetitorComparisonRunListResponse",
+    "SEOCompetitorComparisonRunRead",
     "SEOCompetitorDomainCreateRequest",
     "SEOCompetitorDomainListResponse",
     "SEOCompetitorDomainRead",
