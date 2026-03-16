@@ -1,197 +1,102 @@
 # SEO.ai Phase 2 Data Model
 
-Status: Draft  
+Status: Implemented on `main`  
 Owner: Work Boots  
-Scope: Competitor intelligence storage for Phase 2 only
+Scope: Runtime competitor-intelligence storage used by current Phase 2 APIs
 
 ---
 
 ## 1. Model Principles
 
-- Business-scoped by default: every Phase 2 table includes `business_id`.
-- Tenant integrity: repositories and services enforce business scoping.
-- Deterministic-first storage: raw snapshot metrics and deterministic gap findings are persisted separately from AI summaries.
-- No Phase 3+ entities in this phase.
+- every Phase 2 table is business-scoped (`business_id`).
+- lineage is explicit across site, set, run, finding, and summary records.
+- deterministic comparison outputs are persisted separately from AI summaries.
+- summary records are versioned per comparison run.
 
 ---
 
-## 2. Proposed Tables
+## 2. Implemented Tables
 
 ## 2.1 `seo_competitor_sets`
 
-Purpose: group manual competitor domains for a specific client site.
+Purpose: group manual competitor domains for a site.
 
-Minimum fields:
-- `id` (uuid/string)
-- `business_id` (fk -> businesses.id)
-- `site_id` (fk -> seo_sites.id)
-- `name`
-- `city` nullable
-- `state` nullable
-- `is_active`
-- `created_by_principal_id` nullable
-- `created_at`
-- `updated_at`
+Core fields:
+- `id`, `business_id`, `site_id`
+- `name`, `city`, `state`, `is_active`
+- `created_by_principal_id`
+- `created_at`, `updated_at`
 
-Indexes:
-- `(business_id, site_id, is_active)`
-- `(business_id, created_at)`
-
----
+Constraints/indexes:
+- unique: `(business_id, site_id, name)`
+- indexes: `(business_id, site_id, is_active)`, `(business_id, created_at)`
 
 ## 2.2 `seo_competitor_domains`
 
-Purpose: store competitor domains in a set.
+Purpose: manual competitor domain targets within a set.
 
-Minimum fields:
-- `id`
-- `business_id` (fk)
-- `site_id` (fk)
-- `competitor_set_id` (fk -> seo_competitor_sets.id)
-- `domain` (normalized host/domain)
-- `base_url`
-- `display_name` nullable
-- `source` (phase 2 default: `manual`)
-- `is_active`
-- `notes` nullable
-- `created_at`
-- `updated_at`
+Core fields:
+- `id`, `business_id`, `site_id`, `competitor_set_id`
+- `domain`, `base_url`, `display_name`, `source`, `is_active`, `notes`
+- `created_at`, `updated_at`
 
-Constraints:
-- unique per set for active domain identity: `(business_id, competitor_set_id, domain)`
-
-Indexes:
-- `(business_id, competitor_set_id, is_active)`
-- `(business_id, site_id)`
-
----
+Constraints/indexes:
+- unique: `(business_id, competitor_set_id, domain)`
+- indexes: `(business_id, competitor_set_id, is_active)`, `(business_id, site_id)`
 
 ## 2.3 `seo_competitor_snapshot_runs`
 
-Purpose: track lifecycle and diagnostics for snapshot collection.
+Purpose: snapshot run lifecycle and diagnostics.
 
-Minimum fields:
-- `id`
-- `business_id`
-- `site_id`
-- `competitor_set_id`
-- `status` (`queued|running|completed|failed`)
-- `max_domains`
-- `max_pages_per_domain`
-- `same_domain_only`
-- `domains_targeted`
-- `domains_completed`
-- `pages_attempted`
-- `pages_captured`
-- `pages_skipped`
-- `errors_encountered`
-- `started_at` nullable
-- `completed_at` nullable
-- `duration_ms` nullable
-- `error_summary` nullable
-- `created_by_principal_id` nullable
-- `created_at`
-- `updated_at`
+Core fields:
+- lineage: `id`, `business_id`, `site_id`, `competitor_set_id`, `client_audit_run_id`
+- run config: `max_domains`, `max_pages_per_domain`, `max_depth`, `same_domain_only`
+- lifecycle: `status`, `started_at`, `completed_at`, `duration_ms`, `error_summary`
+- diagnostics: `domains_targeted`, `domains_completed`, `pages_attempted`, `pages_captured`, `pages_skipped`, `errors_encountered`
+- metadata: `created_by_principal_id`, `created_at`, `updated_at`
 
 Indexes:
-- `(business_id, competitor_set_id, created_at desc)`
+- `(business_id, competitor_set_id, created_at)`
 - `(business_id, status)`
-
----
 
 ## 2.4 `seo_competitor_snapshot_pages`
 
-Purpose: persist captured page snapshot features per competitor domain/run.
+Purpose: persisted deterministic snapshot attributes per captured competitor page.
 
-Minimum fields:
-- `id`
-- `business_id`
-- `site_id`
-- `competitor_set_id`
-- `snapshot_run_id` (fk -> seo_competitor_snapshot_runs.id)
-- `competitor_domain_id` (fk -> seo_competitor_domains.id)
-- `url`
-- `status_code`
-- `title` nullable
-- `meta_description` nullable
-- `canonical_url` nullable
-- `h1_json` nullable
-- `h2_json` nullable
-- `word_count` nullable
-- `internal_link_count` nullable
-- `fetched_at`
-- `error_summary` nullable
-- `created_at`
-- `updated_at`
+Core fields:
+- lineage: `id`, `business_id`, `site_id`, `competitor_set_id`, `snapshot_run_id`, `competitor_domain_id`
+- page data: `url`, `status_code`, `title`, `meta_description`, `canonical_url`, `h1_json`, `h2_json`, `word_count`, `internal_link_count`
+- fetch metadata: `fetched_at`, `error_summary`, `created_at`, `updated_at`
 
-Constraints:
-- unique within a run/domain for normalized URL: `(business_id, snapshot_run_id, competitor_domain_id, url)`
-
-Indexes:
-- `(business_id, snapshot_run_id)`
-- `(business_id, competitor_domain_id)`
-
----
+Constraints/indexes:
+- unique: `(business_id, snapshot_run_id, competitor_domain_id, url)`
+- indexes: `(business_id, snapshot_run_id)`, `(business_id, competitor_domain_id)`
 
 ## 2.5 `seo_competitor_comparison_runs`
 
-Purpose: track deterministic comparison execution and summary stats.
+Purpose: deterministic comparison run lifecycle and persisted rollups.
 
-Minimum fields:
-- `id`
-- `business_id`
-- `site_id`
-- `competitor_set_id`
-- `snapshot_run_id`
-- `baseline_audit_run_id` nullable
-- `status` (`queued|running|completed|failed`)
-- `total_findings`
-- `critical_findings`
-- `warning_findings`
-- `info_findings`
-- `client_pages_analyzed`
-- `competitor_pages_analyzed`
-- `metric_rollups_json` nullable
-- `finding_type_counts_json` nullable
-- `category_counts_json` nullable
-- `severity_counts_json` nullable
-- `started_at` nullable
-- `completed_at` nullable
-- `duration_ms` nullable
-- `error_summary` nullable
-- `created_by_principal_id` nullable
-- `created_at`
-- `updated_at`
+Core fields:
+- lineage: `id`, `business_id`, `site_id`, `competitor_set_id`, `snapshot_run_id`, `baseline_audit_run_id`
+- lifecycle: `status`, `started_at`, `completed_at`, `duration_ms`, `error_summary`
+- aggregate counts: `total_findings`, `critical_findings`, `warning_findings`, `info_findings`, `client_pages_analyzed`, `competitor_pages_analyzed`
+- persisted rollups: `metric_rollups_json`, `finding_type_counts_json`, `category_counts_json`, `severity_counts_json`
+- metadata: `created_by_principal_id`, `created_at`, `updated_at`
 
 Indexes:
-- `(business_id, competitor_set_id, created_at desc)`
+- `(business_id, competitor_set_id, created_at)`
 - `(business_id, snapshot_run_id)`
 - `(business_id, status)`
 
----
-
 ## 2.6 `seo_competitor_comparison_findings`
 
-Purpose: deterministic competitor gap findings.
+Purpose: deterministic comparison findings.
 
-Minimum fields:
-- `id`
-- `business_id`
-- `site_id`
-- `competitor_set_id`
-- `comparison_run_id`
-- `finding_type`
-- `category` (`SEO|CONTENT|STRUCTURE|TECHNICAL`)
-- `severity` (`INFO|WARNING|CRITICAL`)
-- `title`
-- `details`
-- `rule_key`
-- `client_value` nullable (string/JSON)
-- `competitor_value` nullable (string/JSON)
-- `gap_direction` nullable (`client_trails|client_leads|parity`)
-- `evidence_json` nullable
-- `created_at`
-- `updated_at`
+Core fields:
+- lineage: `id`, `business_id`, `site_id`, `competitor_set_id`, `comparison_run_id`
+- finding attributes: `finding_type`, `category`, `severity`, `title`, `details`, `rule_key`
+- value comparison: `client_value`, `competitor_value`, `gap_direction`, `evidence_json`
+- timestamps: `created_at`, `updated_at`
 
 Indexes:
 - `(business_id, comparison_run_id, created_at)`
@@ -199,66 +104,49 @@ Indexes:
 - `(business_id, severity)`
 - `(business_id, finding_type)`
 
----
-
 ## 2.7 `seo_competitor_comparison_summaries`
 
-Purpose: AI summaries for completed comparison runs (versioned).
+Purpose: versioned AI comparison summaries for completed comparison runs.
 
-Minimum fields:
-- `id`
-- `business_id`
-- `site_id`
-- `competitor_set_id`
-- `comparison_run_id`
-- `version`
-- `status` (`completed|failed`)
-- `overall_gap_summary` nullable
-- `top_gaps_json` nullable
-- `plain_english_explanation` nullable
-- `provider_name`
-- `model_name`
-- `prompt_version`
-- `error_summary` nullable
-- `created_by_principal_id` nullable
-- `created_at`
-- `updated_at`
+Core fields:
+- lineage: `id`, `business_id`, `site_id`, `competitor_set_id`, `comparison_run_id`
+- versioning/lifecycle: `version`, `status`, `error_summary`
+- summary content: `overall_gap_summary`, `top_gaps_json`, `plain_english_explanation`
+- provider traceability: `provider_name`, `model_name`, `prompt_version`
+- metadata: `created_by_principal_id`, `created_at`, `updated_at`
 
-Constraints:
-- unique `(business_id, comparison_run_id, version)`
-
-Indexes:
-- `(business_id, comparison_run_id, created_at)`
-- `(business_id, status)`
+Constraints/indexes:
+- unique: `(business_id, comparison_run_id, version)`
+- indexes: `(business_id, comparison_run_id, created_at)`, `(business_id, status)`
 
 ---
 
-## 3. Relationship Map
+## 3. Lineage Relationships
 
-- `seo_sites 1 -> many seo_competitor_sets`
-- `seo_competitor_sets 1 -> many seo_competitor_domains`
-- `seo_competitor_sets 1 -> many seo_competitor_snapshot_runs`
-- `seo_competitor_snapshot_runs 1 -> many seo_competitor_snapshot_pages`
-- `seo_competitor_snapshot_runs 1 -> many seo_competitor_comparison_runs`
-- `seo_competitor_comparison_runs 1 -> many seo_competitor_comparison_findings`
-- `seo_competitor_comparison_runs 1 -> many seo_competitor_comparison_summaries`
+- `seo_sites` -> many `seo_competitor_sets`
+- `seo_competitor_sets` -> many `seo_competitor_domains`
+- `seo_competitor_sets` -> many `seo_competitor_snapshot_runs`
+- `seo_competitor_snapshot_runs` -> many `seo_competitor_snapshot_pages`
+- `seo_competitor_snapshot_runs` -> many `seo_competitor_comparison_runs`
+- `seo_competitor_comparison_runs` -> many `seo_competitor_comparison_findings`
+- `seo_competitor_comparison_runs` -> many `seo_competitor_comparison_summaries`
 
-All child rows include `business_id` and must match parent business ownership.
-
----
-
-## 4. Tenant Integrity Requirements
-
-- Repository insert guards must verify parent/child business and site matches.
-- Cross-business reads must return empty/not found.
-- Route layer must continue using `TenantContext` and `resolve_tenant_business_id`.
-- Model design should allow future DB-level composite tenant constraints where practical.
+Service/repository lineage guards enforce:
+- business and site consistency across parent/child relationships
+- no cross-business references for snapshot/comparison/summary operations
 
 ---
 
-## 5. Explicit Out of Scope (Data Model)
+## 4. Persisted Rollups and Versioning
 
-- No SERP ranking tables
-- No backlink graph tables
-- No content generation asset tables for this phase
-- No queue/job orchestration tables
+- comparison run rollups are persisted on `seo_competitor_comparison_runs` (`*_counts_json`, `metric_rollups_json`).
+- comparison summaries are stored as separate versioned records; repeated manual generation increments `version`.
+- failed summary attempts persist a failed version and do not mutate deterministic comparison run/findings data.
+
+---
+
+## 5. Out of Scope
+
+- SERP/rank/backlink schemas
+- recommendation/content-generation schemas
+- queue/orchestration tables

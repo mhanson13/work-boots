@@ -69,9 +69,9 @@ Project docs live under [`docs/`](docs):
 - `seo-ai-phase1-implementation-checklist.md`
 - `seo-ai-phase1-audit-hardening.md`
 - `seo-ai-phase1-5-usability-and-diagnostics.md`
-- `seo-ai-phase2-competitor-intelligence.md`
-- `seo-ai-phase2-data-model.md`
-- `seo-ai-phase2-api.md`
+- `seo-ai-phase2-competitor-intelligence.md` (implemented Phase 2 architecture + workflow scope)
+- `seo-ai-phase2-data-model.md` (implemented Phase 2 table/lineage model)
+- `seo-ai-phase2-api.md` (implemented Phase 2 endpoint and response contracts)
 - `seo-ai-phase2a-foundations-summary.md`
 - `seo-ai-phase2b-deterministic-comparison-summary.md`
 - `seo-ai-phase2c-deterministic-comparison-enrichment-summary.md`
@@ -99,7 +99,13 @@ Current SEO.ai Phase 1 endpoints (business-scoped):
   - `POST /api/businesses/{business_id}/seo/audit-runs/{run_id}/summarize`
 
 ## SEO.ai Phase 2 (Current)
-Current competitor-intelligence endpoints (business-scoped):
+Current competitor-intelligence endpoints (business-scoped).
+Architecture notes:
+- deterministic comparison findings and rollups are persisted first
+- AI is used only for manual-trigger comparison summaries from persisted comparison outputs
+- no AI-generated findings or recommendations
+
+Endpoint inventory:
 - Competitor sets:
   - `GET /api/businesses/{business_id}/seo/sites/{site_id}/competitor-sets`
   - `POST /api/businesses/{business_id}/seo/sites/{site_id}/competitor-sets`

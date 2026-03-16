@@ -1,249 +1,154 @@
 # SEO.ai Phase 2 API (Competitor Intelligence)
 
-Status: Draft  
+Status: Implemented on `main`  
 Owner: Work Boots  
-Scope: API design for Phase 2 only
+Scope: Current runtime API surface for Phase 2
 
 ---
 
-## 1. API Design Constraints
+## 1. Runtime Constraints
 
-- Preserve existing monolith + business-scoped endpoint style.
-- Route prefix pattern remains:
-  - `/api/businesses/{business_id}/seo/...`
-- Tenant scope is server-derived from `TenantContext`; requested `business_id` is validated.
-- Deterministic-first:
-  - Snapshot/comparison endpoints are deterministic.
-  - AI is only for summary endpoints.
+- FastAPI monolith.
+- Business-scoped routes under `/api/businesses/{business_id}/seo/...`.
+- Tenant scope resolved from `TenantContext` and validated with `resolve_tenant_business_id(...)`.
+- Deterministic evidence first:
+  - snapshot + comparison runs persist deterministic outputs.
+  - AI is used only for manual-trigger comparison summaries.
 
 ---
 
-## 2. Endpoint Families
+## 2. Implemented Endpoints
 
-## 2.1 Competitor Sets
+## 2.1 Competitor sets
 
-### `GET /api/businesses/{business_id}/seo/sites/{site_id}/competitor-sets`
-List competitor sets for a site.
+- `GET /api/businesses/{business_id}/seo/sites/{site_id}/competitor-sets`
+- `POST /api/businesses/{business_id}/seo/sites/{site_id}/competitor-sets`
+- `GET /api/businesses/{business_id}/seo/competitor-sets/{set_id}`
+- `PATCH /api/businesses/{business_id}/seo/competitor-sets/{set_id}`
 
-Response:
-- `items[]`: set records
-- `total`
-
-### `POST /api/businesses/{business_id}/seo/sites/{site_id}/competitor-sets`
-Create a competitor set.
-
-Request:
-- `name` (required)
+Create/update fields:
+- `name` (required for create)
 - `city` optional
 - `state` optional
-- `is_active` optional
+- `is_active`
 
-### `GET /api/businesses/{business_id}/seo/competitor-sets/{set_id}`
-Get one competitor set.
+## 2.2 Competitor domains
 
-### `PATCH /api/businesses/{business_id}/seo/competitor-sets/{set_id}`
-Partial update for set metadata or active flag.
+- `GET /api/businesses/{business_id}/seo/competitor-sets/{set_id}/domains`
+- `POST /api/businesses/{business_id}/seo/competitor-sets/{set_id}/domains`
+- `DELETE /api/businesses/{business_id}/seo/competitor-sets/{set_id}/domains/{domain_id}`
 
-Out of scope:
-- destructive hard-delete endpoint
-
----
-
-## 2.2 Competitor Domains (Manual)
-
-### `GET /api/businesses/{business_id}/seo/competitor-sets/{set_id}/domains`
-List domains in a set.
-
-### `POST /api/businesses/{business_id}/seo/competitor-sets/{set_id}/domains`
-Add a manual competitor domain.
-
-Request:
-- `domain` or `base_url` (required)
+Create fields:
+- `domain` or `base_url` (one required)
 - `display_name` optional
 - `notes` optional
-- `is_active` optional
+- `is_active`
 
-Validation:
-- `http|https` only
-- normalized domain uniqueness within set
+## 2.3 Snapshot runs
 
-### `DELETE /api/businesses/{business_id}/seo/competitor-sets/{set_id}/domains/{domain_id}`
-Remove a domain from a set.
+- `POST /api/businesses/{business_id}/seo/competitor-sets/{set_id}/snapshot-runs`
+- `GET /api/businesses/{business_id}/seo/competitor-sets/{set_id}/snapshot-runs`
+- `GET /api/businesses/{business_id}/seo/snapshot-runs/{run_id}`
 
-Out of scope:
-- automatic competitor discovery
+Create fields:
+- `client_audit_run_id` optional
+- `max_domains`
+- `max_pages_per_domain`
+- `max_depth`
+- `same_domain_only`
 
----
+## 2.4 Deterministic comparison runs
 
-## 2.3 Snapshot Runs
+- `POST /api/businesses/{business_id}/seo/competitor-sets/{set_id}/comparison-runs`
+- `GET /api/businesses/{business_id}/seo/competitor-sets/{set_id}/comparison-runs`
+- `GET /api/businesses/{business_id}/seo/comparison-runs/{run_id}`
+- `GET /api/businesses/{business_id}/seo/comparison-runs/{run_id}/findings`
+- `GET /api/businesses/{business_id}/seo/comparison-runs/{run_id}/report`
 
-### `POST /api/businesses/{business_id}/seo/competitor-sets/{set_id}/snapshot-runs`
-Start a snapshot run.
-
-Request:
-- `max_domains` default bounded
-- `max_pages_per_domain` default bounded
-- `max_depth` default bounded
-
-Behavior:
-- snapshots homepage first
-- captures bounded internal pages per competitor domain
-- stores deterministic page features only
-
-### `GET /api/businesses/{business_id}/seo/competitor-sets/{set_id}/snapshot-runs`
-List snapshot runs for a set.
-
-### `GET /api/businesses/{business_id}/seo/snapshot-runs/{run_id}`
-Get run status/diagnostics.
-
-Out of scope:
-- background worker orchestration (phase may run synchronously first)
-- snapshot page listing endpoint (not implemented in current runtime surface)
-
----
-
-## 2.4 Deterministic Comparison Runs
-
-### `POST /api/businesses/{business_id}/seo/competitor-sets/{set_id}/comparison-runs`
-Start deterministic comparison for a completed snapshot run.
-
-Request:
+Create fields:
 - `snapshot_run_id` (required)
+- `baseline_audit_run_id` optional
 
-### `GET /api/businesses/{business_id}/seo/competitor-sets/{set_id}/comparison-runs`
-List comparison runs.
-
-### `GET /api/businesses/{business_id}/seo/comparison-runs/{run_id}`
-Get comparison run summary/status.
-
-### `GET /api/businesses/{business_id}/seo/comparison-runs/{run_id}/findings`
-List deterministic comparison findings.
-
-Response includes:
-- `items[]`
-- `total`
-- `by_category`
-- `by_severity`
-
-Out of scope:
-- AI-generated finding creation
-
-### `GET /api/businesses/{business_id}/seo/comparison-runs/{run_id}/report`
-Get a deterministic comparison report shape:
+Report shape:
 - `run`
 - `rollups`
 - `findings`
 
----
+## 2.5 Manual-trigger comparison summaries
 
-## 2.5 AI Competitor Gap Summaries (Manual Trigger)
+- `POST /api/businesses/{business_id}/seo/comparison-runs/{run_id}/summarize`
+- `GET /api/businesses/{business_id}/seo/comparison-runs/{run_id}/summaries`
+- `GET /api/businesses/{business_id}/seo/comparison-runs/{run_id}/summaries/latest`
+- `GET /api/businesses/{business_id}/seo/comparison-summaries/{summary_id}`
 
-### `POST /api/businesses/{business_id}/seo/comparison-runs/{run_id}/summarize`
-Generate AI summary for completed comparison run.
-
-Rules:
-- run must be `completed`
-- summary must be grounded in stored deterministic comparison outputs only
-  - persisted comparison findings
-  - persisted comparison run rollups
-- failures persist as failed summary records without invalidating comparison run
-
-### `GET /api/businesses/{business_id}/seo/comparison-runs/{run_id}/summaries`
-List summary history by version.
-
-### `GET /api/businesses/{business_id}/seo/comparison-runs/{run_id}/summaries/latest`
-Get latest summary snapshot.
-
-### `GET /api/businesses/{business_id}/seo/comparison-summaries/{summary_id}`
-Get one summary version by summary id.
-
-Out of scope:
-- recommendation/content generation endpoints
+Summary generation rules:
+- run must be completed.
+- summary input is built from persisted comparison run + findings + rollups.
+- summary failures persist as failed versions and do not mutate deterministic comparison outputs.
 
 ---
 
-## 3. Response Shapes (Minimum)
+## 3. Response Contracts (Current)
 
-## 3.1 Comparison finding
-- `id`
-- `business_id`
-- `site_id`
-- `competitor_set_id`
-- `comparison_run_id`
-- `finding_type`
-- `category`
-- `severity`
-- `title`
-- `details`
-- `client_value` nullable
-- `competitor_value` nullable
-- `gap_direction` nullable
-- `evidence_json` nullable
+## 3.1 `SEOCompetitorComparisonRunRead`
+
+Includes:
+- lineage: `id`, `business_id`, `site_id`, `competitor_set_id`, `snapshot_run_id`, `baseline_audit_run_id`
+- lifecycle: `status`, `started_at`, `completed_at`, `duration_ms`, `error_summary`
+- rollup fields: `total_findings`, `critical_findings`, `warning_findings`, `info_findings`, `client_pages_analyzed`, `competitor_pages_analyzed`
+- persisted count maps: `finding_type_counts_json`, `category_counts_json`, `severity_counts_json`
+- metadata: `created_by_principal_id`, `created_at`, `updated_at`
+
+## 3.2 `SEOCompetitorComparisonFindingListResponse`
+
+Includes:
+- `items`
+- `total`
+- `by_category`
+- `by_severity`
+
+Each finding includes:
+- lineage: `id`, `business_id`, `site_id`, `competitor_set_id`, `comparison_run_id`
+- finding data: `finding_type`, `category`, `severity`, `title`, `details`, `rule_key`
+- value deltas: `client_value`, `competitor_value`, `gap_direction`
+- `evidence_json`
 - `created_at`
 
-## 3.2 Comparison run summary
-- `id`
-- `business_id`
-- `site_id`
-- `competitor_set_id`
-- `snapshot_run_id`
-- `baseline_audit_run_id` nullable
-- `status`
-- `total_findings`
-- `critical_findings`
-- `warning_findings`
-- `info_findings`
-- `client_pages_analyzed`
-- `competitor_pages_analyzed`
-- `finding_type_counts_json` nullable
-- `category_counts_json` nullable
-- `severity_counts_json` nullable
-- `duration_ms` nullable
-- `error_summary` nullable
+## 3.3 `SEOCompetitorComparisonSummaryRead`
 
-## 3.3 Gap summary
-- `id`
-- `business_id`
-- `site_id`
-- `competitor_set_id`
-- `comparison_run_id`
-- `version`
-- `status`
-- `overall_gap_summary`
-- `top_gaps_json`
-- `plain_english_explanation`
-- `provider_name`
-- `model_name`
-- `prompt_version`
-- `error_summary` nullable
-- `created_by_principal_id` nullable
-- `created_at`
-- `updated_at`
+Includes:
+- lineage: `id`, `business_id`, `site_id`, `competitor_set_id`, `comparison_run_id`
+- versioning: `version`
+- lifecycle: `status` (`completed|failed`), `error_summary`
+- content fields: `overall_gap_summary`, `top_gaps_json`, `plain_english_explanation`
+- provider traceability: `provider_name`, `model_name`, `prompt_version`
+- metadata: `created_by_principal_id`, `created_at`, `updated_at`
 
 ---
 
 ## 4. Status Codes
 
-- `200` for reads
-- `201` for create/run/summarize actions
-- `404` for not found or cross-business scope mismatch
-- `422` for validation or state violations (e.g., summarize before run completion)
+- `200` read success
+- `201` create/run/summarize success
+- `204` delete success for competitor domain removal
+- `404` missing resource or cross-business access
+- `422` validation/state violations
 
 ---
 
-## 5. Security and Scoping Rules
+## 5. Security and Isolation
 
-- Business scope must be enforced on all endpoints.
-- Do not trust client-supplied cross-tenant identifiers.
-- Snapshot fetch logic must continue to enforce SSRF protections.
-- Do not expose secrets in snapshot/comparison/summary responses.
+- business scope enforcement on every endpoint.
+- repository/service lineage checks for set/site/run consistency.
+- snapshot acquisition preserves crawler SSRF protections.
+- summary endpoints never expose provider secrets or token material.
 
 ---
 
-## 6. Explicit Out of Scope (API)
+## 6. Out of Scope (Not Implemented in Phase 2 Runtime)
 
-- SERP scraping endpoints
-- rank history endpoints
-- backlink endpoints
-- content generation endpoints
-- publishing endpoints
+- automatic competitor discovery / SERP scraping
+- rank tracking and backlink intelligence
+- recommendation engine
+- content generation and publishing
+- background worker orchestration
