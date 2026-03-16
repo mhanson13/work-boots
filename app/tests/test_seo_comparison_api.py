@@ -419,6 +419,23 @@ def test_comparison_run_requires_completed_snapshot_run(db_session, seeded_busin
     assert not_completed.status_code == 422
 
 
+def test_comparison_request_contract_requires_non_blank_snapshot_run_id(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    _, competitor_set_id, _, _ = _create_site_set_domain_snapshot(client, seeded_business.id)
+
+    blank_snapshot_id = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/competitor-sets/{competitor_set_id}/comparison-runs",
+        json={"snapshot_run_id": "   "},
+    )
+    assert blank_snapshot_id.status_code == 422
+
+    unknown_field = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/competitor-sets/{competitor_set_id}/comparison-runs",
+        json={"snapshot_run_id": str(uuid4()), "unexpected": "value"},
+    )
+    assert unknown_field.status_code == 422
+
+
 def test_comparison_report_endpoint_returns_run_and_findings(db_session, seeded_business) -> None:
     other_business = _seed_other_business(db_session)
     client = _make_client(db_session, business_id=seeded_business.id)
@@ -453,6 +470,7 @@ def test_comparison_report_endpoint_returns_run_and_findings(db_session, seeded_
     report_response = client.get(f"/api/businesses/{seeded_business.id}/seo/comparison-runs/{run_id}/report")
     assert report_response.status_code == 200
     report = report_response.json()
+    assert set(report.keys()) == {"run", "rollups", "findings"}
     assert report["run"]["id"] == run_id
     assert report["findings"]["total"] >= 1
     assert report["rollups"]["client_pages_analyzed"] >= 0

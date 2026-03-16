@@ -42,6 +42,7 @@ SUMMARY_RESPONSE_KEYS = {
     "model_name",
     "prompt_version",
     "error_summary",
+    "error_message",
     "created_by_principal_id",
     "created_at",
     "updated_at",
@@ -345,6 +346,7 @@ def test_competitor_summary_manual_trigger_success_and_retrieval(db_session, see
     assert summary["model_name"]
     assert summary["prompt_version"]
     assert summary["error_summary"] is None
+    assert summary["error_message"] is None
 
     list_response = client.get(f"/api/businesses/{seeded_business.id}/seo/comparison-runs/{run_id}/summaries")
     assert list_response.status_code == 200
@@ -421,6 +423,7 @@ def test_competitor_summary_failure_is_isolated_and_persisted(db_session, seeded
     assert latest_payload["version"] == 2
     assert latest_payload["status"] == "failed"
     assert latest_payload["error_summary"] is not None
+    assert latest_payload["error_message"] is not None
 
 
 def test_competitor_summary_business_isolation_and_invalid_lineage(db_session, seeded_business) -> None:

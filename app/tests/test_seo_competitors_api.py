@@ -212,7 +212,6 @@ def test_snapshot_run_rejects_cross_business_client_audit_reference(db_session, 
     )
     assert create_snapshot_run.status_code == 422
 
-
 def test_phase2_v1_site_scoped_competitor_routes(db_session, seeded_business) -> None:
     client = _make_client(db_session, business_id=seeded_business.id)
 
@@ -258,3 +257,45 @@ def test_phase2_v1_site_scoped_competitor_routes(db_session, seeded_business) ->
         f"/api/v1/businesses/{seeded_business.id}/seo/sites/{uuid4()}/competitor-sets/{set_id}"
     )
     assert wrong_site_set.status_code == 404
+
+
+def test_competitor_request_contract_rejects_unknown_fields(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+
+    create_site = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites",
+        json={"display_name": "Main", "base_url": "https://example.com/"},
+    )
+    assert create_site.status_code == 201
+    site_id = create_site.json()["id"]
+
+    invalid_set = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-sets",
+        json={"name": "Competitors", "unexpected": "value"},
+    )
+    assert invalid_set.status_code == 422
+
+    create_set = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-sets",
+        json={"name": "Competitors"},
+    )
+    assert create_set.status_code == 201
+    set_id = create_set.json()["id"]
+
+    invalid_domain = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/competitor-sets/{set_id}/domains",
+        json={"domain": "competitor.example", "unexpected": True},
+    )
+    assert invalid_domain.status_code == 422
+
+    valid_domain = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/competitor-sets/{set_id}/domains",
+        json={"domain": "competitor.example"},
+    )
+    assert valid_domain.status_code == 201
+
+    invalid_snapshot = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/competitor-sets/{set_id}/snapshot-runs",
+        json={"max_domains": 5, "unknown": "value"},
+    )
+    assert invalid_snapshot.status_code == 422
