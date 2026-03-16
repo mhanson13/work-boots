@@ -38,6 +38,21 @@ def test_main_app_mounts_seo_routes() -> None:
     assert route_methods["/api/businesses/{business_id}/seo/comparison-runs/{run_id}/summaries/latest"] >= {"GET"}
     assert route_methods["/api/businesses/{business_id}/seo/comparison-summaries/{summary_id}"] >= {"GET"}
 
+    # Phase 3A deterministic recommendations surface.
+    assert route_methods["/api/businesses/{business_id}/seo/sites/{site_id}/recommendation-runs"] >= {"GET", "POST"}
+    assert route_methods["/api/businesses/{business_id}/seo/sites/{site_id}/recommendation-runs/{recommendation_run_id}"] >= {
+        "GET"
+    }
+    assert route_methods[
+        "/api/businesses/{business_id}/seo/sites/{site_id}/recommendation-runs/{recommendation_run_id}/recommendations"
+    ] >= {"GET"}
+    assert route_methods[
+        "/api/businesses/{business_id}/seo/sites/{site_id}/recommendation-runs/{recommendation_run_id}/report"
+    ] >= {"GET"}
+    assert route_methods["/api/businesses/{business_id}/seo/sites/{site_id}/recommendations/{recommendation_id}"] >= {
+        "GET"
+    }
+
     # Phase 2 v1 site-scoped compatibility surface.
     assert route_methods["/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-sets"] >= {"GET", "POST"}
     assert route_methods["/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-sets/{competitor_set_id}"] >= {
@@ -72,5 +87,18 @@ def test_main_app_mounts_seo_routes() -> None:
         "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}/summaries/latest"
     ] >= {"GET"}
     assert route_methods["/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-summaries/{summary_id}"] >= {
+        "GET"
+    }
+    assert route_methods["/api/v1/businesses/{business_id}/seo/sites/{site_id}/recommendation-runs"] >= {"GET", "POST"}
+    assert route_methods[
+        "/api/v1/businesses/{business_id}/seo/sites/{site_id}/recommendation-runs/{recommendation_run_id}"
+    ] >= {"GET"}
+    assert route_methods[
+        "/api/v1/businesses/{business_id}/seo/sites/{site_id}/recommendation-runs/{recommendation_run_id}/recommendations"
+    ] >= {"GET"}
+    assert route_methods[
+        "/api/v1/businesses/{business_id}/seo/sites/{site_id}/recommendation-runs/{recommendation_run_id}/report"
+    ] >= {"GET"}
+    assert route_methods["/api/v1/businesses/{business_id}/seo/sites/{site_id}/recommendations/{recommendation_id}"] >= {
         "GET"
     }

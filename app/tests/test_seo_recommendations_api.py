@@ -1,0 +1,469 @@
+from __future__ import annotations
+
+from uuid import uuid4
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.api.deps import TenantContext, get_db, get_tenant_context
+from app.api.routes.seo import router as seo_router
+from app.api.routes.seo import router_v1 as seo_v1_router
+from app.models.business import Business
+from app.models.seo_audit_finding import SEOAuditFinding
+from app.models.seo_audit_run import SEOAuditRun
+from app.models.seo_competitor_comparison_finding import SEOCompetitorComparisonFinding
+from app.models.seo_competitor_comparison_run import SEOCompetitorComparisonRun
+from app.models.seo_competitor_set import SEOCompetitorSet
+from app.models.seo_competitor_snapshot_run import SEOCompetitorSnapshotRun
+
+
+def _override_tenant_context(business_id: str):
+    def _resolver() -> TenantContext:
+        return TenantContext(
+            business_id=business_id,
+            principal_id=f"test-principal:{business_id}",
+            auth_source="test",
+        )
+
+    return _resolver
+
+
+def _make_client(db_session, *, business_id: str) -> TestClient:
+    app = FastAPI()
+    app.include_router(seo_router)
+    app.include_router(seo_v1_router)
+
+    def override_get_db():
+        try:
+            yield db_session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_tenant_context] = _override_tenant_context(business_id)
+    return TestClient(app)
+
+
+def _seed_other_business(db_session) -> Business:
+    other_business = Business(
+        id=str(uuid4()),
+        name="Other Tenant",
+        notification_phone="+13035550199",
+        notification_email="owner@other.example",
+        sms_enabled=True,
+        email_enabled=True,
+        customer_auto_ack_enabled=True,
+        contractor_alerts_enabled=True,
+        timezone="America/Denver",
+    )
+    db_session.add(other_business)
+    db_session.commit()
+    return other_business
+
+
+def _create_site(client: TestClient, business_id: str, *, domain: str = "client.example") -> str:
+    create_site = client.post(
+        f"/api/businesses/{business_id}/seo/sites",
+        json={"display_name": f"Client Site {domain}", "base_url": f"https://{domain}/"},
+    )
+    assert create_site.status_code == 201
+    return create_site.json()["id"]
+
+
+def _seed_completed_audit_run(
+    db_session,
+    *,
+    business_id: str,
+    site_id: str,
+    missing_title_count: int = 2,
+) -> str:
+    run = SEOAuditRun(
+        id=str(uuid4()),
+        business_id=business_id,
+        site_id=site_id,
+        status="completed",
+        max_pages=10,
+        max_depth=2,
+        pages_discovered=3,
+        pages_crawled=3,
+    )
+    db_session.add(run)
+    db_session.flush()
+
+    for _ in range(missing_title_count):
+        db_session.add(
+            SEOAuditFinding(
+                id=str(uuid4()),
+                business_id=business_id,
+                site_id=site_id,
+                audit_run_id=run.id,
+                page_id=None,
+                finding_type="missing_title",
+                category="SEO",
+                severity="CRITICAL",
+                title="Missing title tag",
+                details="No title tag found.",
+                rule_key="missing_title",
+                suggested_fix="Add unique title tags",
+            )
+        )
+    db_session.add(
+        SEOAuditFinding(
+            id=str(uuid4()),
+            business_id=business_id,
+            site_id=site_id,
+            audit_run_id=run.id,
+            page_id=None,
+            finding_type="thin_content",
+            category="CONTENT",
+            severity="WARNING",
+            title="Thin content",
+            details="Low word count.",
+            rule_key="thin_content",
+            suggested_fix="Expand content depth",
+        )
+    )
+    db_session.commit()
+    return run.id
+
+
+def _seed_completed_comparison_run(
+    db_session,
+    *,
+    business_id: str,
+    site_id: str,
+) -> str:
+    competitor_set = SEOCompetitorSet(
+        id=str(uuid4()),
+        business_id=business_id,
+        site_id=site_id,
+        name="Set A",
+        is_active=True,
+    )
+    db_session.add(competitor_set)
+    db_session.flush()
+
+    snapshot_run = SEOCompetitorSnapshotRun(
+        id=str(uuid4()),
+        business_id=business_id,
+        site_id=site_id,
+        competitor_set_id=competitor_set.id,
+        status="completed",
+        max_domains=5,
+        max_pages_per_domain=5,
+        max_depth=1,
+        same_domain_only=True,
+        domains_targeted=1,
+        domains_completed=1,
+        pages_attempted=3,
+        pages_captured=3,
+    )
+    db_session.add(snapshot_run)
+    db_session.flush()
+
+    comparison_run = SEOCompetitorComparisonRun(
+        id=str(uuid4()),
+        business_id=business_id,
+        site_id=site_id,
+        competitor_set_id=competitor_set.id,
+        snapshot_run_id=snapshot_run.id,
+        status="completed",
+        total_findings=1,
+        critical_findings=1,
+        warning_findings=0,
+        info_findings=0,
+        client_pages_analyzed=3,
+        competitor_pages_analyzed=4,
+        finding_type_counts_json={"missing_title_count_gap": 1},
+        category_counts_json={"SEO": 1},
+        severity_counts_json={"CRITICAL": 1},
+        metric_rollups_json={
+            "missing_title_count": {
+                "title": "Missing title count gap",
+                "category": "SEO",
+                "unit": "count",
+                "higher_is_better": False,
+                "client_value": 3,
+                "competitor_value": 1,
+                "delta": 2,
+                "severity": "CRITICAL",
+                "gap_direction": "client_trails",
+            }
+        },
+    )
+    db_session.add(comparison_run)
+    db_session.flush()
+
+    db_session.add(
+        SEOCompetitorComparisonFinding(
+            id=str(uuid4()),
+            business_id=business_id,
+            site_id=site_id,
+            competitor_set_id=competitor_set.id,
+            comparison_run_id=comparison_run.id,
+            finding_type="missing_title_count_gap",
+            category="SEO",
+            severity="CRITICAL",
+            title="Missing title count gap",
+            details="Client trails competitor on missing title count.",
+            rule_key="comparison_missing_title_count",
+            client_value="3",
+            competitor_value="1",
+            gap_direction="client_trails",
+            evidence_json={"delta": 2},
+        )
+    )
+    db_session.commit()
+    return comparison_run.id
+
+
+def test_create_recommendation_run_from_persisted_inputs(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id)
+    audit_run_id = _seed_completed_audit_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        missing_title_count=2,
+    )
+    comparison_run_id = _seed_completed_comparison_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+    )
+
+    create_run = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+        json={"audit_run_id": audit_run_id, "comparison_run_id": comparison_run_id},
+    )
+    assert create_run.status_code == 201
+    run_payload = create_run.json()
+    assert run_payload["status"] == "completed"
+    assert run_payload["total_recommendations"] >= 2
+    assert run_payload["critical_recommendations"] >= 1
+    run_id = run_payload["id"]
+
+    list_runs = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs"
+    )
+    assert list_runs.status_code == 200
+    assert list_runs.json()["total"] >= 1
+
+    list_recommendations = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/recommendations"
+    )
+    assert list_recommendations.status_code == 200
+    payload = list_recommendations.json()
+    assert payload["total"] >= 2
+    rule_keys = {item["rule_key"] for item in payload["items"]}
+    assert "fix_missing_title_tags" in rule_keys
+    assert "expand_thin_content_pages" in rule_keys
+    assert "close_competitor_gap_missing_title_count" in rule_keys
+
+    # Deterministic merge check: two missing_title findings should yield one recommendation rule.
+    assert sum(1 for item in payload["items"] if item["rule_key"] == "fix_missing_title_tags") == 1
+
+    report = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/report"
+    )
+    assert report.status_code == 200
+    report_payload = report.json()
+    assert set(report_payload.keys()) == {"recommendation_run", "rollups", "recommendations"}
+    assert report_payload["recommendation_run"]["id"] == run_id
+    assert "by_category" in report_payload["rollups"]
+    assert "by_severity" in report_payload["rollups"]
+    assert "by_effort_bucket" in report_payload["rollups"]
+
+
+def test_recommendation_run_requires_lineage_and_completed_inputs(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id)
+
+    missing_lineage = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+        json={},
+    )
+    assert missing_lineage.status_code == 422
+
+    incomplete_audit_run = SEOAuditRun(
+        id=str(uuid4()),
+        business_id=seeded_business.id,
+        site_id=site_id,
+        status="running",
+        max_pages=10,
+        max_depth=2,
+    )
+    db_session.add(incomplete_audit_run)
+    db_session.commit()
+
+    non_completed_input = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+        json={"audit_run_id": incomplete_audit_run.id},
+    )
+    assert non_completed_input.status_code == 422
+
+
+def test_recommendation_routes_enforce_site_and_business_scoping(db_session, seeded_business) -> None:
+    other_business = _seed_other_business(db_session)
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id, domain="client-a.example")
+    other_site_id = _create_site(client, seeded_business.id, domain="client-b.example")
+
+    audit_run_id = _seed_completed_audit_run(db_session, business_id=seeded_business.id, site_id=site_id)
+    comparison_run_id = _seed_completed_comparison_run(db_session, business_id=seeded_business.id, site_id=site_id)
+
+    create_run = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+        json={"audit_run_id": audit_run_id, "comparison_run_id": comparison_run_id},
+    )
+    assert create_run.status_code == 201
+    run_id = create_run.json()["id"]
+
+    cross_tenant_run = client.get(
+        f"/api/businesses/{other_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}"
+    )
+    assert cross_tenant_run.status_code == 404
+
+    wrong_site_run = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{other_site_id}/recommendation-runs/{run_id}"
+    )
+    assert wrong_site_run.status_code == 404
+
+    list_cross_tenant = client.get(
+        f"/api/businesses/{other_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/recommendations"
+    )
+    assert list_cross_tenant.status_code == 404
+
+
+def test_recommendation_lineage_mismatch_is_rejected(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_a_id = _create_site(client, seeded_business.id, domain="client-a.example")
+    site_b_id = _create_site(client, seeded_business.id, domain="client-b.example")
+
+    audit_run_for_other_site = _seed_completed_audit_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_b_id,
+    )
+    mismatch = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_a_id}/recommendation-runs",
+        json={"audit_run_id": audit_run_for_other_site},
+    )
+    assert mismatch.status_code == 422
+
+    comparison_run_for_other_site = _seed_completed_comparison_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_b_id,
+    )
+    mismatch_comparison = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_a_id}/recommendation-runs",
+        json={"comparison_run_id": comparison_run_for_other_site},
+    )
+    assert mismatch_comparison.status_code == 422
+
+
+def test_phase2_v1_site_scoped_recommendation_routes(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id)
+    audit_run_id = _seed_completed_audit_run(db_session, business_id=seeded_business.id, site_id=site_id)
+
+    create_run = client.post(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+        json={"audit_run_id": audit_run_id},
+    )
+    assert create_run.status_code == 201
+    run_id = create_run.json()["id"]
+
+    get_run = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}"
+    )
+    assert get_run.status_code == 200
+
+    list_recommendations = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/recommendations"
+    )
+    assert list_recommendations.status_code == 200
+    recommendation_id = list_recommendations.json()["items"][0]["id"]
+
+    get_recommendation = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/{recommendation_id}"
+    )
+    assert get_recommendation.status_code == 200
+
+    report = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/report"
+    )
+    assert report.status_code == 200
+
+    wrong_site = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{uuid4()}/recommendation-runs/{run_id}"
+    )
+    assert wrong_site.status_code == 404
+
+
+def test_recommendation_run_repeat_execution_is_deterministic(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id)
+    audit_run_id = _seed_completed_audit_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        missing_title_count=3,
+    )
+    comparison_run_id = _seed_completed_comparison_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+    )
+
+    first_run = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+        json={"audit_run_id": audit_run_id, "comparison_run_id": comparison_run_id},
+    )
+    second_run = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+        json={"audit_run_id": audit_run_id, "comparison_run_id": comparison_run_id},
+    )
+    assert first_run.status_code == 201
+    assert second_run.status_code == 201
+    first_run_id = first_run.json()["id"]
+    second_run_id = second_run.json()["id"]
+
+    first_recs = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{first_run_id}/recommendations"
+    )
+    second_recs = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{second_run_id}/recommendations"
+    )
+    assert first_recs.status_code == 200
+    assert second_recs.status_code == 200
+
+    def _signature(payload: dict) -> list[tuple[str, str, str, int, str]]:
+        return sorted(
+            (
+                item["rule_key"],
+                item["category"],
+                item["severity"],
+                item["priority_score"],
+                item["effort_bucket"],
+            )
+            for item in payload["items"]
+        )
+
+    assert _signature(first_recs.json()) == _signature(second_recs.json())
+
+
+def test_recommendation_not_found_behaviors(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id)
+
+    get_run = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{uuid4()}"
+    )
+    assert get_run.status_code == 404
+
+    get_recommendation = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/{uuid4()}"
+    )
+    assert get_recommendation.status_code == 404
