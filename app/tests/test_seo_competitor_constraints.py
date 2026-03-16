@@ -152,6 +152,36 @@ def test_competitor_domain_scope_mismatch_rejected_in_repository(db_session, see
         )
 
 
+def test_competitor_domain_site_scope_mismatch_within_business_rejected(db_session, seeded_business) -> None:
+    site_a = _seed_site(db_session, business_id=seeded_business.id, domain="client-a.example")
+    site_b = _seed_site(db_session, business_id=seeded_business.id, domain="client-b.example")
+
+    competitor_set = SEOCompetitorSet(
+        id=str(uuid4()),
+        business_id=seeded_business.id,
+        site_id=site_a.id,
+        name="Set A",
+        is_active=True,
+    )
+    db_session.add(competitor_set)
+    db_session.flush()
+
+    repo = SEOCompetitorRepository(db_session)
+    with pytest.raises(ValueError, match="scope mismatch"):
+        repo.create_domain(
+            SEOCompetitorDomain(
+                id=str(uuid4()),
+                business_id=seeded_business.id,
+                site_id=site_b.id,
+                competitor_set_id=competitor_set.id,
+                domain="site-mismatch.example",
+                base_url="https://site-mismatch.example/",
+                source="manual",
+                is_active=True,
+            )
+        )
+
+
 def test_snapshot_page_scope_mismatch_rejected_in_repository(db_session, seeded_business) -> None:
     site = _seed_site(db_session, business_id=seeded_business.id, domain="client.example")
     set_a = SEOCompetitorSet(
@@ -223,6 +253,36 @@ def test_snapshot_page_scope_mismatch_rejected_in_repository(db_session, seeded_
         )
 
 
+def test_snapshot_run_set_site_scope_mismatch_rejected_in_repository(db_session, seeded_business) -> None:
+    site_a = _seed_site(db_session, business_id=seeded_business.id, domain="client-a.example")
+    site_b = _seed_site(db_session, business_id=seeded_business.id, domain="client-b.example")
+    competitor_set = SEOCompetitorSet(
+        id=str(uuid4()),
+        business_id=seeded_business.id,
+        site_id=site_a.id,
+        name="Set A",
+        is_active=True,
+    )
+    db_session.add(competitor_set)
+    db_session.flush()
+
+    repo = SEOCompetitorRepository(db_session)
+    with pytest.raises(ValueError, match="scope mismatch"):
+        repo.create_snapshot_run(
+            SEOCompetitorSnapshotRun(
+                id=str(uuid4()),
+                business_id=seeded_business.id,
+                site_id=site_b.id,
+                competitor_set_id=competitor_set.id,
+                status="queued",
+                max_domains=5,
+                max_pages_per_domain=3,
+                max_depth=1,
+                same_domain_only=True,
+            )
+        )
+
+
 def test_comparison_finding_scope_mismatch_rejected_in_repository(db_session, seeded_business) -> None:
     site = _seed_site(db_session, business_id=seeded_business.id, domain="client.example")
     competitor_set = SEOCompetitorSet(
@@ -276,5 +336,52 @@ def test_comparison_finding_scope_mismatch_rejected_in_repository(db_session, se
                 title="Page coverage gap",
                 details="details",
                 rule_key="comparison_page_count",
+            )
+        )
+
+
+def test_comparison_run_snapshot_scope_mismatch_rejected_in_repository(db_session, seeded_business) -> None:
+    site = _seed_site(db_session, business_id=seeded_business.id, domain="client.example")
+    competitor_set_a = SEOCompetitorSet(
+        id=str(uuid4()),
+        business_id=seeded_business.id,
+        site_id=site.id,
+        name="Set A",
+        is_active=True,
+    )
+    competitor_set_b = SEOCompetitorSet(
+        id=str(uuid4()),
+        business_id=seeded_business.id,
+        site_id=site.id,
+        name="Set B",
+        is_active=True,
+    )
+    db_session.add_all([competitor_set_a, competitor_set_b])
+    db_session.flush()
+
+    snapshot_run_a = SEOCompetitorSnapshotRun(
+        id=str(uuid4()),
+        business_id=seeded_business.id,
+        site_id=site.id,
+        competitor_set_id=competitor_set_a.id,
+        status="completed",
+        max_domains=5,
+        max_pages_per_domain=5,
+        max_depth=1,
+        same_domain_only=True,
+    )
+    db_session.add(snapshot_run_a)
+    db_session.flush()
+
+    repo = SEOCompetitorRepository(db_session)
+    with pytest.raises(ValueError, match="snapshot scope mismatch"):
+        repo.create_comparison_run(
+            SEOCompetitorComparisonRun(
+                id=str(uuid4()),
+                business_id=seeded_business.id,
+                site_id=site.id,
+                competitor_set_id=competitor_set_b.id,
+                snapshot_run_id=snapshot_run_a.id,
+                status="queued",
             )
         )

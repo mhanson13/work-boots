@@ -4,28 +4,73 @@ from app.main import app
 
 
 def test_main_app_mounts_seo_routes() -> None:
-    paths = {route.path for route in app.routes}
-    assert "/api/businesses/{business_id}/seo/sites" in paths
-    assert "/api/businesses/{business_id}/seo/sites/{site_id}/audit-runs" in paths
-    assert "/api/businesses/{business_id}/seo/audit-runs/{run_id}/summarize" in paths
-    assert "/api/businesses/{business_id}/seo/sites/{site_id}/competitor-sets" in paths
-    assert "/api/businesses/{business_id}/seo/competitor-sets/{set_id}/domains" in paths
-    assert "/api/businesses/{business_id}/seo/competitor-sets/{set_id}/snapshot-runs" in paths
-    assert "/api/businesses/{business_id}/seo/competitor-sets/{set_id}/comparison-runs" in paths
-    assert "/api/businesses/{business_id}/seo/comparison-runs/{run_id}/findings" in paths
-    assert "/api/businesses/{business_id}/seo/comparison-runs/{run_id}/summarize" in paths
-    assert "/api/businesses/{business_id}/seo/comparison-runs/{run_id}/summaries" in paths
-    assert "/api/businesses/{business_id}/seo/comparison-runs/{run_id}/summaries/latest" in paths
-    assert "/api/businesses/{business_id}/seo/comparison-summaries/{summary_id}" in paths
-    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-sets" in paths
-    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-sets/{competitor_set_id}" in paths
-    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-sets/{competitor_set_id}/domains" in paths
-    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-sets/{competitor_set_id}/snapshot-runs" in paths
-    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-snapshot-runs/{snapshot_run_id}" in paths
-    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs" in paths
-    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}" in paths
-    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}/findings" in paths
-    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}/report" in paths
-    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}/summaries" in paths
-    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}/summaries/latest" in paths
-    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-summaries/{summary_id}" in paths
+    route_methods: dict[str, set[str]] = {}
+    for route in app.routes:
+        methods = getattr(route, "methods", None)
+        if methods is None:
+            continue
+        route_methods.setdefault(route.path, set()).update(method for method in methods if method != "HEAD")
+
+    # Phase 1 SEO surface.
+    assert route_methods["/api/businesses/{business_id}/seo/sites"] >= {"GET", "POST"}
+    assert route_methods["/api/businesses/{business_id}/seo/sites/{site_id}/audit-runs"] >= {"GET", "POST"}
+    assert route_methods["/api/businesses/{business_id}/seo/audit-runs/{run_id}/summarize"] >= {"POST"}
+
+    # Phase 2 competitor sets/domains.
+    assert route_methods["/api/businesses/{business_id}/seo/sites/{site_id}/competitor-sets"] >= {"GET", "POST"}
+    assert route_methods["/api/businesses/{business_id}/seo/competitor-sets/{set_id}"] >= {"GET", "PATCH"}
+    assert route_methods["/api/businesses/{business_id}/seo/competitor-sets/{set_id}/domains"] >= {"GET", "POST"}
+    assert route_methods["/api/businesses/{business_id}/seo/competitor-sets/{set_id}/domains/{domain_id}"] >= {"DELETE"}
+
+    # Phase 2 snapshot runs.
+    assert route_methods["/api/businesses/{business_id}/seo/competitor-sets/{set_id}/snapshot-runs"] >= {"GET", "POST"}
+    assert route_methods["/api/businesses/{business_id}/seo/snapshot-runs/{run_id}"] >= {"GET"}
+
+    # Phase 2 deterministic comparison runs.
+    assert route_methods["/api/businesses/{business_id}/seo/competitor-sets/{set_id}/comparison-runs"] >= {"GET", "POST"}
+    assert route_methods["/api/businesses/{business_id}/seo/comparison-runs/{run_id}"] >= {"GET"}
+    assert route_methods["/api/businesses/{business_id}/seo/comparison-runs/{run_id}/findings"] >= {"GET"}
+    assert route_methods["/api/businesses/{business_id}/seo/comparison-runs/{run_id}/report"] >= {"GET"}
+
+    # Phase 2 manual-trigger summary surface.
+    assert route_methods["/api/businesses/{business_id}/seo/comparison-runs/{run_id}/summarize"] >= {"POST"}
+    assert route_methods["/api/businesses/{business_id}/seo/comparison-runs/{run_id}/summaries"] >= {"GET"}
+    assert route_methods["/api/businesses/{business_id}/seo/comparison-runs/{run_id}/summaries/latest"] >= {"GET"}
+    assert route_methods["/api/businesses/{business_id}/seo/comparison-summaries/{summary_id}"] >= {"GET"}
+
+    # Phase 2 v1 site-scoped compatibility surface.
+    assert route_methods["/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-sets"] >= {"GET", "POST"}
+    assert route_methods["/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-sets/{competitor_set_id}"] >= {
+        "GET"
+    }
+    assert route_methods[
+        "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-sets/{competitor_set_id}/domains"
+    ] >= {"GET", "POST"}
+    assert route_methods[
+        "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-sets/{competitor_set_id}/snapshot-runs"
+    ] >= {"GET", "POST"}
+    assert route_methods[
+        "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-snapshot-runs/{snapshot_run_id}"
+    ] >= {"GET"}
+    assert route_methods["/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs"] >= {
+        "GET",
+        "POST",
+    }
+    assert route_methods[
+        "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}"
+    ] >= {"GET"}
+    assert route_methods[
+        "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}/findings"
+    ] >= {"GET"}
+    assert route_methods[
+        "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}/report"
+    ] >= {"GET"}
+    assert route_methods[
+        "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}/summaries"
+    ] >= {"GET", "POST"}
+    assert route_methods[
+        "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}/summaries/latest"
+    ] >= {"GET"}
+    assert route_methods["/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-summaries/{summary_id}"] >= {
+        "GET"
+    }

@@ -344,6 +344,25 @@ def test_comparison_run_rejects_invalid_lineage_references(db_session, seeded_bu
     )
     assert cross_tenant.status_code == 404
 
+    create_set_two = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-sets",
+        json={"name": "Set B"},
+    )
+    assert create_set_two.status_code == 201
+    competitor_set_two_id = create_set_two.json()["id"]
+
+    add_domain_set_two = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/competitor-sets/{competitor_set_two_id}/domains",
+        json={"domain": "other-competitor.example"},
+    )
+    assert add_domain_set_two.status_code == 201
+
+    wrong_set_snapshot = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/competitor-sets/{competitor_set_two_id}/comparison-runs",
+        json={"snapshot_run_id": snapshot_run.id},
+    )
+    assert wrong_set_snapshot.status_code == 422
+
 
 def test_comparison_handles_missing_baseline_and_empty_snapshot(db_session, seeded_business) -> None:
     client = _make_client(db_session, business_id=seeded_business.id)
@@ -483,6 +502,12 @@ def test_comparison_report_endpoint_returns_run_and_findings(db_session, seeded_
     cross_tenant_report = client.get(f"/api/businesses/{other_business.id}/seo/comparison-runs/{run_id}/report")
     assert cross_tenant_report.status_code == 404
 
+    cross_tenant_run = client.get(f"/api/businesses/{other_business.id}/seo/comparison-runs/{run_id}")
+    assert cross_tenant_run.status_code == 404
+
+    cross_tenant_findings = client.get(f"/api/businesses/{other_business.id}/seo/comparison-runs/{run_id}/findings")
+    assert cross_tenant_findings.status_code == 404
+
 
 def test_phase2_v1_site_scoped_comparison_routes(db_session, seeded_business) -> None:
     client = _make_client(db_session, business_id=seeded_business.id)
@@ -550,3 +575,100 @@ def test_phase2_v1_site_scoped_comparison_routes(db_session, seeded_business) ->
         f"/api/v1/businesses/{seeded_business.id}/seo/sites/{uuid4()}/competitor-comparison-runs/{run_id}"
     )
     assert wrong_site.status_code == 404
+
+
+def test_comparison_run_repeat_execution_is_deterministic_for_same_inputs(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id, competitor_set_id, competitor_domain_id, snapshot_run_id = _create_site_set_domain_snapshot(
+        client,
+        seeded_business.id,
+    )
+    snapshot_run = _mark_snapshot_completed(db_session, snapshot_run_id=snapshot_run_id)
+    _seed_snapshot_page(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        competitor_set_id=competitor_set_id,
+        snapshot_run_id=snapshot_run.id,
+        competitor_domain_id=competitor_domain_id,
+        url="https://competitor.example/",
+        title=None,
+        meta_description=None,
+        h1_count=0,
+        word_count=100,
+        canonical_url=None,
+    )
+    baseline_run = _seed_baseline_audit_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        page_count=1,
+        finding_counts={"missing_title": 1, "missing_meta_description": 1},
+    )
+    baseline_pages = db_session.query(SEOAuditPage).filter(SEOAuditPage.audit_run_id == baseline_run.id).all()
+    assert len(baseline_pages) == 1
+    baseline_pages[0].title = None
+    baseline_pages[0].meta_description = None
+    baseline_pages[0].h1_json = []
+    baseline_pages[0].word_count = 90
+    baseline_pages[0].canonical_url = None
+    baseline_pages[0].internal_link_count = 0
+    db_session.commit()
+
+    first_run = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/competitor-sets/{competitor_set_id}/comparison-runs",
+        json={"snapshot_run_id": snapshot_run.id, "baseline_audit_run_id": baseline_run.id},
+    )
+    assert first_run.status_code == 201
+    first_run_payload = first_run.json()
+    first_run_id = first_run_payload["id"]
+
+    second_run = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/competitor-sets/{competitor_set_id}/comparison-runs",
+        json={"snapshot_run_id": snapshot_run.id, "baseline_audit_run_id": baseline_run.id},
+    )
+    assert second_run.status_code == 201
+    second_run_payload = second_run.json()
+    second_run_id = second_run_payload["id"]
+
+    assert first_run_payload["finding_type_counts_json"] == second_run_payload["finding_type_counts_json"]
+    assert first_run_payload["category_counts_json"] == second_run_payload["category_counts_json"]
+    assert first_run_payload["severity_counts_json"] == second_run_payload["severity_counts_json"]
+    assert first_run_payload["total_findings"] == second_run_payload["total_findings"]
+    assert first_run_payload["critical_findings"] == second_run_payload["critical_findings"]
+    assert first_run_payload["warning_findings"] == second_run_payload["warning_findings"]
+    assert first_run_payload["info_findings"] == second_run_payload["info_findings"]
+
+    first_findings = client.get(f"/api/businesses/{seeded_business.id}/seo/comparison-runs/{first_run_id}/findings")
+    second_findings = client.get(f"/api/businesses/{seeded_business.id}/seo/comparison-runs/{second_run_id}/findings")
+    assert first_findings.status_code == 200
+    assert second_findings.status_code == 200
+
+    def _signature(payload: dict) -> list[tuple[str, str, str, str | None, str | None, str | None]]:
+        return sorted(
+            (
+                item["finding_type"],
+                item["category"],
+                item["severity"],
+                item["gap_direction"],
+                item["client_value"],
+                item["competitor_value"],
+            )
+            for item in payload["items"]
+        )
+
+    assert _signature(first_findings.json()) == _signature(second_findings.json())
+
+
+def test_comparison_endpoints_return_404_for_unknown_run(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    unknown_id = str(uuid4())
+
+    run_response = client.get(f"/api/businesses/{seeded_business.id}/seo/comparison-runs/{unknown_id}")
+    assert run_response.status_code == 404
+
+    findings_response = client.get(f"/api/businesses/{seeded_business.id}/seo/comparison-runs/{unknown_id}/findings")
+    assert findings_response.status_code == 404
+
+    report_response = client.get(f"/api/businesses/{seeded_business.id}/seo/comparison-runs/{unknown_id}/report")
+    assert report_response.status_code == 404

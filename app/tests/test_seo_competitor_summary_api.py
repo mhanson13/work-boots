@@ -538,3 +538,55 @@ def test_phase2_v1_site_scoped_summary_routes(db_session, seeded_business) -> No
         f"/api/v1/businesses/{seeded_business.id}/seo/sites/{uuid4()}/competitor-summaries/{summary_id}"
     )
     assert wrong_site.status_code == 404
+
+
+def test_competitor_summary_does_not_require_snapshot_pages_after_comparison_persisted(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    run_id, _ = _create_completed_comparison_run(client, db_session, seeded_business.id)
+
+    comparison_run = db_session.get(SEOCompetitorComparisonRun, run_id)
+    assert comparison_run is not None
+
+    (
+        db_session.query(SEOCompetitorSnapshotPage)
+        .filter(SEOCompetitorSnapshotPage.snapshot_run_id == comparison_run.snapshot_run_id)
+        .delete(synchronize_session=False)
+    )
+    if comparison_run.baseline_audit_run_id is not None:
+        (
+            db_session.query(SEOAuditFinding)
+            .filter(SEOAuditFinding.audit_run_id == comparison_run.baseline_audit_run_id)
+            .delete(synchronize_session=False)
+        )
+        (
+            db_session.query(SEOAuditPage)
+            .filter(SEOAuditPage.audit_run_id == comparison_run.baseline_audit_run_id)
+            .delete(synchronize_session=False)
+        )
+    db_session.commit()
+
+    summarize = client.post(f"/api/businesses/{seeded_business.id}/seo/comparison-runs/{run_id}/summarize")
+    assert summarize.status_code == 201
+    payload = summarize.json()
+    assert payload["status"] == "completed"
+    assert payload["comparison_run_id"] == run_id
+
+
+def test_competitor_summary_endpoints_not_found_behaviors(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    run_id, _ = _create_completed_comparison_run(client, db_session, seeded_business.id)
+
+    latest_before_any_summary = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/comparison-runs/{run_id}/summaries/latest"
+    )
+    assert latest_before_any_summary.status_code == 404
+
+    list_for_unknown_run = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/comparison-runs/{uuid4()}/summaries"
+    )
+    assert list_for_unknown_run.status_code == 404
+
+    by_unknown_summary_id = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/comparison-summaries/{uuid4()}"
+    )
+    assert by_unknown_summary_id.status_code == 404

@@ -212,6 +212,7 @@ def test_snapshot_run_rejects_cross_business_client_audit_reference(db_session, 
     )
     assert create_snapshot_run.status_code == 422
 
+
 def test_phase2_v1_site_scoped_competitor_routes(db_session, seeded_business) -> None:
     client = _make_client(db_session, business_id=seeded_business.id)
 
@@ -299,3 +300,50 @@ def test_competitor_request_contract_rejects_unknown_fields(db_session, seeded_b
         json={"max_domains": 5, "unknown": "value"},
     )
     assert invalid_snapshot.status_code == 422
+
+
+def test_competitor_snapshot_and_domain_reads_enforce_business_scoping(db_session, seeded_business) -> None:
+    other_business = _seed_other_business(db_session)
+    client = _make_client(db_session, business_id=seeded_business.id)
+
+    create_site = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites",
+        json={"display_name": "Main", "base_url": "https://example.com/"},
+    )
+    assert create_site.status_code == 201
+    site_id = create_site.json()["id"]
+
+    create_set = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-sets",
+        json={"name": "Competitors"},
+    )
+    assert create_set.status_code == 201
+    set_id = create_set.json()["id"]
+
+    add_domain = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/competitor-sets/{set_id}/domains",
+        json={"domain": "competitor.com"},
+    )
+    assert add_domain.status_code == 201
+
+    create_snapshot_run = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/competitor-sets/{set_id}/snapshot-runs",
+        json={},
+    )
+    assert create_snapshot_run.status_code == 201
+    snapshot_run_id = create_snapshot_run.json()["id"]
+
+    cross_tenant_domain_list = client.get(
+        f"/api/businesses/{other_business.id}/seo/competitor-sets/{set_id}/domains"
+    )
+    assert cross_tenant_domain_list.status_code == 404
+
+    cross_tenant_snapshot_list = client.get(
+        f"/api/businesses/{other_business.id}/seo/competitor-sets/{set_id}/snapshot-runs"
+    )
+    assert cross_tenant_snapshot_list.status_code == 404
+
+    cross_tenant_snapshot_get = client.get(
+        f"/api/businesses/{other_business.id}/seo/snapshot-runs/{snapshot_run_id}"
+    )
+    assert cross_tenant_snapshot_get.status_code == 404
