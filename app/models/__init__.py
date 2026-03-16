@@ -15,6 +15,8 @@ from app.models.seo_competitor_domain import SEOCompetitorDomain
 from app.models.seo_competitor_set import SEOCompetitorSet
 from app.models.seo_competitor_snapshot_page import SEOCompetitorSnapshotPage
 from app.models.seo_competitor_snapshot_run import SEOCompetitorSnapshotRun
+from app.models.seo_recommendation import SEORecommendation
+from app.models.seo_recommendation_run import SEORecommendationRun
 from app.models.seo_site import SEOSite
 
 __all__ = [
@@ -41,5 +43,7 @@ __all__ = [
     "SEOCompetitorSet",
     "SEOCompetitorSnapshotPage",
     "SEOCompetitorSnapshotRun",
+    "SEORecommendation",
+    "SEORecommendationRun",
     "SEOSite",
 ]

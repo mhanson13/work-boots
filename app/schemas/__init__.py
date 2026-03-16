@@ -50,6 +50,14 @@ from app.schemas.seo_competitor import (
     SEOCompetitorSnapshotRunListResponse,
     SEOCompetitorSnapshotRunRead,
 )
+from app.schemas.seo_recommendation import (
+    SEORecommendationListResponse,
+    SEORecommendationRead,
+    SEORecommendationRunCreateRequest,
+    SEORecommendationRunListResponse,
+    SEORecommendationRunRead,
+    SEORecommendationRunReportRead,
+)
 from app.schemas.lead import (
     EmailIntakeRequest,
     EmailIntakeResponse,
@@ -129,5 +137,11 @@ __all__ = [
     "SEOCompetitorSnapshotRunCreateRequest",
     "SEOCompetitorSnapshotRunListResponse",
     "SEOCompetitorSnapshotRunRead",
+    "SEORecommendationListResponse",
+    "SEORecommendationRead",
+    "SEORecommendationRunCreateRequest",
+    "SEORecommendationRunListResponse",
+    "SEORecommendationRunRead",
+    "SEORecommendationRunReportRead",
     "StatusPatchResponse",
 ]

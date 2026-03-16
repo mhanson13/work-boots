@@ -35,6 +35,7 @@ from app.repositories.seo_audit_repository import SEOAuditRepository
 from app.repositories.seo_audit_summary_repository import SEOAuditSummaryRepository
 from app.repositories.seo_competitor_repository import SEOCompetitorRepository
 from app.repositories.seo_competitor_summary_repository import SEOCompetitorSummaryRepository
+from app.repositories.seo_recommendation_repository import SEORecommendationRepository
 from app.repositories.seo_site_repository import SEOSiteRepository
 from app.services.business_settings import BusinessSettingsService
 from app.services.api_credentials import APICredentialService
@@ -55,6 +56,7 @@ from app.services.seo_competitor_summary import SEOCompetitorSummaryService
 from app.services.seo_crawler import SEOCrawler
 from app.services.seo_extractor import SEOExtractor
 from app.services.seo_finding_rules import SEOFindingRules
+from app.services.seo_recommendations import SEORecommendationService
 from app.services.seo_sites import SEOSiteService
 from app.services.seo_summary import SEOSummaryService
 from app.services.summary import LeadSummaryService
@@ -119,6 +121,10 @@ def get_seo_competitor_repository(db: Session = Depends(get_db)) -> SEOCompetito
 
 def get_seo_competitor_summary_repository(db: Session = Depends(get_db)) -> SEOCompetitorSummaryRepository:
     return SEOCompetitorSummaryRepository(db)
+
+
+def get_seo_recommendation_repository(db: Session = Depends(get_db)) -> SEORecommendationRepository:
+    return SEORecommendationRepository(db)
 
 
 def get_parser_service() -> LeadParserService:
@@ -375,6 +381,24 @@ def get_seo_competitor_comparison_service(
         business_repository=business_repository,
         seo_audit_repository=seo_audit_repository,
         seo_competitor_repository=seo_competitor_repository,
+    )
+
+
+def get_seo_recommendation_service(
+    db: Session = Depends(get_db),
+    business_repository: BusinessRepository = Depends(get_business_repository),
+    seo_site_repository: SEOSiteRepository = Depends(get_seo_site_repository),
+    seo_audit_repository: SEOAuditRepository = Depends(get_seo_audit_repository),
+    seo_competitor_repository: SEOCompetitorRepository = Depends(get_seo_competitor_repository),
+    seo_recommendation_repository: SEORecommendationRepository = Depends(get_seo_recommendation_repository),
+) -> SEORecommendationService:
+    return SEORecommendationService(
+        session=db,
+        business_repository=business_repository,
+        seo_site_repository=seo_site_repository,
+        seo_audit_repository=seo_audit_repository,
+        seo_competitor_repository=seo_competitor_repository,
+        seo_recommendation_repository=seo_recommendation_repository,
     )
 
 

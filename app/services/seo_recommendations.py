@@ -1,0 +1,591 @@
+from __future__ import annotations
+
+from collections import Counter
+from dataclasses import dataclass
+import re
+import time
+from uuid import uuid4
+
+from sqlalchemy.orm import Session
+
+from app.core.time import utc_now
+from app.models.seo_audit_finding import SEOAuditFinding
+from app.models.seo_competitor_comparison_finding import SEOCompetitorComparisonFinding
+from app.models.seo_recommendation import SEORecommendation
+from app.models.seo_recommendation_run import SEORecommendationRun
+from app.repositories.business_repository import BusinessRepository
+from app.repositories.seo_audit_repository import SEOAuditRepository
+from app.repositories.seo_competitor_repository import SEOCompetitorRepository
+from app.repositories.seo_recommendation_repository import SEORecommendationRepository
+from app.repositories.seo_site_repository import SEOSiteRepository
+from app.schemas.seo_recommendation import SEORecommendationRunCreateRequest
+
+
+SEVERITY_RANK: dict[str, int] = {"INFO": 1, "WARNING": 2, "CRITICAL": 3}
+SEVERITY_BASE_PRIORITY: dict[str, int] = {"INFO": 30, "WARNING": 60, "CRITICAL": 85}
+EFFORT_BUCKETS: set[str] = {"LOW", "MEDIUM", "HIGH"}
+
+AUDIT_TEMPLATES: dict[str, tuple[str, str, str]] = {
+    "missing_title": ("fix_missing_title_tags", "Fix missing title tags", "LOW"),
+    "duplicate_title": ("resolve_duplicate_title_tags", "Resolve duplicate title tags", "LOW"),
+    "title_too_short": ("expand_short_title_tags", "Expand short title tags", "LOW"),
+    "title_too_long": ("tighten_long_title_tags", "Tighten long title tags", "LOW"),
+    "missing_meta_description": ("add_missing_meta_descriptions", "Add missing meta descriptions", "LOW"),
+    "duplicate_meta_description": ("resolve_duplicate_meta_descriptions", "Resolve duplicate meta descriptions", "LOW"),
+    "meta_description_too_short": ("expand_short_meta_descriptions", "Expand short meta descriptions", "LOW"),
+    "meta_description_too_long": ("tighten_long_meta_descriptions", "Tighten long meta descriptions", "LOW"),
+    "missing_h1": ("add_missing_h1_headings", "Add missing H1 headings", "MEDIUM"),
+    "multiple_h1": ("normalize_multiple_h1_headings", "Normalize multiple H1 headings", "MEDIUM"),
+    "missing_h2": ("add_supporting_h2_headings", "Add supporting H2 headings", "MEDIUM"),
+    "thin_content": ("expand_thin_content_pages", "Expand thin-content pages", "HIGH"),
+    "extremely_thin_content": ("expand_extremely_thin_pages", "Expand extremely thin pages", "HIGH"),
+    "missing_canonical": ("add_missing_canonical_tags", "Add missing canonical tags", "LOW"),
+    "missing_internal_links": ("improve_internal_linking", "Improve internal linking", "MEDIUM"),
+    "broken_internal_links": ("repair_broken_internal_links", "Repair broken internal links", "MEDIUM"),
+}
+
+
+class SEORecommendationNotFoundError(ValueError):
+    pass
+
+
+class SEORecommendationValidationError(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class SEORecommendationRunResult:
+    run: SEORecommendationRun
+    recommendations: list[SEORecommendation]
+
+
+@dataclass(frozen=True)
+class SEORecommendationReport:
+    run: SEORecommendationRun
+    recommendations: list[SEORecommendation]
+    by_category: dict[str, int]
+    by_severity: dict[str, int]
+    by_effort_bucket: dict[str, int]
+
+
+@dataclass
+class _RecommendationDraft:
+    rule_key: str
+    category: str
+    severity: str
+    title: str
+    rationale: str
+    priority_score: int
+    effort_bucket: str
+    evidence: dict[str, object]
+
+
+class SEORecommendationService:
+    def __init__(
+        self,
+        *,
+        session: Session,
+        business_repository: BusinessRepository,
+        seo_site_repository: SEOSiteRepository,
+        seo_audit_repository: SEOAuditRepository,
+        seo_competitor_repository: SEOCompetitorRepository,
+        seo_recommendation_repository: SEORecommendationRepository,
+    ) -> None:
+        self.session = session
+        self.business_repository = business_repository
+        self.seo_site_repository = seo_site_repository
+        self.seo_audit_repository = seo_audit_repository
+        self.seo_competitor_repository = seo_competitor_repository
+        self.seo_recommendation_repository = seo_recommendation_repository
+
+    def run_recommendations(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+        payload: SEORecommendationRunCreateRequest,
+        created_by_principal_id: str | None,
+    ) -> SEORecommendationRunResult:
+        self._require_business(business_id)
+        self._require_site(business_id=business_id, site_id=site_id)
+
+        audit_run = self._resolve_audit_run(
+            business_id=business_id,
+            site_id=site_id,
+            audit_run_id=payload.audit_run_id,
+        )
+        comparison_run = self._resolve_comparison_run(
+            business_id=business_id,
+            site_id=site_id,
+            comparison_run_id=payload.comparison_run_id,
+        )
+
+        run = SEORecommendationRun(
+            id=str(uuid4()),
+            business_id=business_id,
+            site_id=site_id,
+            audit_run_id=audit_run.id if audit_run is not None else None,
+            comparison_run_id=comparison_run.id if comparison_run is not None else None,
+            status="queued",
+            total_recommendations=0,
+            critical_recommendations=0,
+            warning_recommendations=0,
+            info_recommendations=0,
+            category_counts_json={},
+            effort_bucket_counts_json={},
+            created_by_principal_id=created_by_principal_id,
+        )
+        try:
+            self.seo_recommendation_repository.create_run(run)
+            self.session.commit()
+        except ValueError as exc:
+            self.session.rollback()
+            raise SEORecommendationValidationError(str(exc)) from exc
+
+        started = time.monotonic()
+        run.status = "running"
+        run.started_at = utc_now()
+        self.seo_recommendation_repository.save_run(run)
+        self.session.commit()
+
+        try:
+            audit_findings = (
+                self.seo_audit_repository.list_findings_for_business_run(business_id, audit_run.id)
+                if audit_run is not None
+                else []
+            )
+            comparison_findings = (
+                self.seo_competitor_repository.list_comparison_findings_for_business_run(business_id, comparison_run.id)
+                if comparison_run is not None
+                else []
+            )
+
+            drafts = self._build_recommendation_drafts(
+                audit_findings=audit_findings,
+                comparison_findings=comparison_findings,
+            )
+            recommendations = self._persist_recommendations(
+                run=run,
+                drafts=drafts,
+            )
+
+            by_category, by_severity, by_effort = self._summarize_recommendations(recommendations)
+            run.total_recommendations = len(recommendations)
+            run.critical_recommendations = by_severity.get("CRITICAL", 0)
+            run.warning_recommendations = by_severity.get("WARNING", 0)
+            run.info_recommendations = by_severity.get("INFO", 0)
+            run.category_counts_json = by_category
+            run.effort_bucket_counts_json = by_effort
+            run.status = "completed"
+            run.completed_at = utc_now()
+            run.duration_ms = int((time.monotonic() - started) * 1000)
+            run.error_summary = None
+            self.seo_recommendation_repository.save_run(run)
+            self.session.commit()
+            self.session.refresh(run)
+            return SEORecommendationRunResult(run=run, recommendations=recommendations)
+        except Exception as exc:  # noqa: BLE001
+            self.session.rollback()
+            run.status = "failed"
+            run.completed_at = utc_now()
+            run.duration_ms = int((time.monotonic() - started) * 1000)
+            run.error_summary = str(exc)[:1000]
+            self.seo_recommendation_repository.save_run(run)
+            self.session.commit()
+            raise SEORecommendationValidationError("Deterministic recommendation run failed") from exc
+
+    def list_runs(self, *, business_id: str, site_id: str) -> list[SEORecommendationRun]:
+        self._require_business(business_id)
+        self._require_site(business_id=business_id, site_id=site_id)
+        return self.seo_recommendation_repository.list_runs_for_business_site(business_id, site_id)
+
+    def get_run(self, *, business_id: str, recommendation_run_id: str) -> SEORecommendationRun:
+        self._require_business(business_id)
+        run = self.seo_recommendation_repository.get_run_for_business(business_id, recommendation_run_id)
+        if run is None:
+            raise SEORecommendationNotFoundError("SEO recommendation run not found")
+        return run
+
+    def list_recommendations(
+        self,
+        *,
+        business_id: str,
+        recommendation_run_id: str,
+    ) -> list[SEORecommendation]:
+        self.get_run(business_id=business_id, recommendation_run_id=recommendation_run_id)
+        return self.seo_recommendation_repository.list_recommendations_for_business_run(
+            business_id,
+            recommendation_run_id,
+        )
+
+    def get_recommendation(self, *, business_id: str, recommendation_id: str) -> SEORecommendation:
+        self._require_business(business_id)
+        recommendation = self.seo_recommendation_repository.get_recommendation_for_business(
+            business_id,
+            recommendation_id,
+        )
+        if recommendation is None:
+            raise SEORecommendationNotFoundError("SEO recommendation not found")
+        return recommendation
+
+    def get_report(
+        self,
+        *,
+        business_id: str,
+        recommendation_run_id: str,
+    ) -> SEORecommendationReport:
+        run = self.get_run(business_id=business_id, recommendation_run_id=recommendation_run_id)
+        recommendations = self.list_recommendations(
+            business_id=business_id,
+            recommendation_run_id=recommendation_run_id,
+        )
+
+        by_category = self._normalize_int_map(run.category_counts_json)
+        by_effort = self._normalize_int_map(run.effort_bucket_counts_json)
+        by_severity = {
+            "CRITICAL": run.critical_recommendations,
+            "WARNING": run.warning_recommendations,
+            "INFO": run.info_recommendations,
+        }
+
+        if not by_category or not by_effort:
+            by_category, by_severity, by_effort = self._summarize_recommendations(recommendations)
+
+        return SEORecommendationReport(
+            run=run,
+            recommendations=recommendations,
+            by_category=by_category,
+            by_severity=by_severity,
+            by_effort_bucket=by_effort,
+        )
+
+    def _build_recommendation_drafts(
+        self,
+        *,
+        audit_findings: list[SEOAuditFinding],
+        comparison_findings: list[SEOCompetitorComparisonFinding],
+    ) -> list[_RecommendationDraft]:
+        drafts: dict[str, _RecommendationDraft] = {}
+
+        audit_groups = self._group_audit_findings(audit_findings)
+        for finding_type, grouped in audit_groups.items():
+            template = AUDIT_TEMPLATES.get(finding_type)
+            if template is None:
+                continue
+            rule_key, title, effort_bucket = template
+            severity = grouped["severity"]
+            count = grouped["count"]
+            category = grouped["category"]
+            priority = self._priority_score(
+                severity=severity,
+                count=count,
+                source="audit",
+            )
+            rationale = f"{count} page-level SEO audit finding(s) for '{finding_type}' detected in the baseline audit."
+            self._upsert_draft(
+                drafts=drafts,
+                draft=_RecommendationDraft(
+                    rule_key=rule_key,
+                    category=category,
+                    severity=severity,
+                    title=title,
+                    rationale=rationale,
+                    priority_score=priority,
+                    effort_bucket=effort_bucket,
+                    evidence={
+                        "sources": ["audit"],
+                        "finding_types": [finding_type],
+                        "counts": {finding_type: count},
+                    },
+                ),
+            )
+
+        comparison_groups = self._group_comparison_findings(comparison_findings)
+        for finding_type, grouped in comparison_groups.items():
+            if finding_type in {"missing_client_baseline", "empty_competitor_snapshot"}:
+                rule_key = f"comparison_{finding_type}"
+                title = "Address deterministic comparison prerequisites"
+                effort_bucket = "LOW"
+            else:
+                metric_key = re.sub(r"_gap$", "", finding_type)
+                rule_key = f"close_competitor_gap_{metric_key}"
+                title = f"Close competitor gap: {grouped['title']}"
+                effort_bucket = self._comparison_effort_bucket(metric_key)
+
+            severity = grouped["severity"]
+            count = grouped["count"]
+            category = grouped["category"]
+            trails_count = grouped["client_trails_count"]
+            if trails_count == 0 and finding_type not in {"missing_client_baseline", "empty_competitor_snapshot"}:
+                continue
+
+            priority = self._priority_score(
+                severity=severity,
+                count=max(count, trails_count),
+                source="comparison",
+            )
+            rationale = grouped["rationale"]
+            self._upsert_draft(
+                drafts=drafts,
+                draft=_RecommendationDraft(
+                    rule_key=rule_key,
+                    category=category,
+                    severity=severity,
+                    title=title,
+                    rationale=rationale,
+                    priority_score=priority,
+                    effort_bucket=effort_bucket,
+                    evidence={
+                        "sources": ["comparison"],
+                        "finding_types": [finding_type],
+                        "counts": {finding_type: count},
+                        "client_trails_count": trails_count,
+                    },
+                ),
+            )
+
+        return sorted(
+            drafts.values(),
+            key=lambda item: (-item.priority_score, item.rule_key),
+        )
+
+    def _persist_recommendations(
+        self,
+        *,
+        run: SEORecommendationRun,
+        drafts: list[_RecommendationDraft],
+    ) -> list[SEORecommendation]:
+        recommendations: list[SEORecommendation] = []
+        for draft in drafts:
+            recommendation = SEORecommendation(
+                id=str(uuid4()),
+                business_id=run.business_id,
+                site_id=run.site_id,
+                recommendation_run_id=run.id,
+                audit_run_id=run.audit_run_id,
+                comparison_run_id=run.comparison_run_id,
+                rule_key=draft.rule_key,
+                category=draft.category,
+                severity=draft.severity,
+                title=draft.title,
+                rationale=draft.rationale,
+                priority_score=draft.priority_score,
+                effort_bucket=draft.effort_bucket,
+                evidence_json=draft.evidence,
+            )
+            self.seo_recommendation_repository.add_recommendation(recommendation)
+            recommendations.append(recommendation)
+        return recommendations
+
+    def _group_audit_findings(self, findings: list[SEOAuditFinding]) -> dict[str, dict[str, object]]:
+        grouped: dict[str, dict[str, object]] = {}
+        for finding in findings:
+            key = finding.finding_type.strip().lower()
+            entry = grouped.setdefault(
+                key,
+                {
+                    "count": 0,
+                    "severity": "INFO",
+                    "category": finding.category.strip().upper() or "TECHNICAL",
+                },
+            )
+            entry["count"] = int(entry["count"]) + 1
+            entry["severity"] = self._max_severity(str(entry["severity"]), finding.severity)
+            entry["category"] = str(entry["category"]).strip().upper() or "TECHNICAL"
+        return grouped
+
+    def _group_comparison_findings(
+        self,
+        findings: list[SEOCompetitorComparisonFinding],
+    ) -> dict[str, dict[str, object]]:
+        grouped: dict[str, dict[str, object]] = {}
+        for finding in findings:
+            key = finding.finding_type.strip().lower()
+            entry = grouped.setdefault(
+                key,
+                {
+                    "count": 0,
+                    "client_trails_count": 0,
+                    "severity": "INFO",
+                    "category": finding.category.strip().upper() or "TECHNICAL",
+                    "title": finding.title,
+                    "rationale": "",
+                },
+            )
+            entry["count"] = int(entry["count"]) + 1
+            if (finding.gap_direction or "").strip().lower() == "client_trails":
+                entry["client_trails_count"] = int(entry["client_trails_count"]) + 1
+            entry["severity"] = self._max_severity(str(entry["severity"]), finding.severity)
+            entry["category"] = str(entry["category"]).strip().upper() or "TECHNICAL"
+            entry["title"] = finding.title
+            entry["rationale"] = (
+                f"{int(entry['count'])} persisted comparison finding(s) for '{finding.finding_type}' "
+                f"with {int(entry['client_trails_count'])} trailing the competitor baseline."
+            )
+        return grouped
+
+    def _upsert_draft(self, *, drafts: dict[str, _RecommendationDraft], draft: _RecommendationDraft) -> None:
+        existing = drafts.get(draft.rule_key)
+        if existing is None:
+            drafts[draft.rule_key] = draft
+            return
+
+        merged_sources = sorted(
+            set(self._to_str_list(existing.evidence.get("sources")) + self._to_str_list(draft.evidence.get("sources")))
+        )
+        merged_types = sorted(
+            set(
+                self._to_str_list(existing.evidence.get("finding_types"))
+                + self._to_str_list(draft.evidence.get("finding_types"))
+            )
+        )
+        merged_counts = self._merge_count_maps(
+            existing.evidence.get("counts"),
+            draft.evidence.get("counts"),
+        )
+
+        drafts[draft.rule_key] = _RecommendationDraft(
+            rule_key=draft.rule_key,
+            category=existing.category,
+            severity=self._max_severity(existing.severity, draft.severity),
+            title=existing.title,
+            rationale=f"{existing.rationale} {draft.rationale}".strip(),
+            priority_score=max(existing.priority_score, draft.priority_score),
+            effort_bucket=self._max_effort(existing.effort_bucket, draft.effort_bucket),
+            evidence={
+                "sources": merged_sources,
+                "finding_types": merged_types,
+                "counts": merged_counts,
+            },
+        )
+
+    def _priority_score(self, *, severity: str, count: int, source: str) -> int:
+        normalized = self._normalize_severity(severity)
+        base = SEVERITY_BASE_PRIORITY.get(normalized, 30)
+        count_boost = min(15, max(0, count) * 2)
+        source_boost = 10 if source == "comparison" else 0
+        return min(100, base + count_boost + source_boost)
+
+    def _comparison_effort_bucket(self, metric_key: str) -> str:
+        high_effort_metrics = {"page_count", "thin_content_count"}
+        low_effort_metrics = {
+            "missing_title_count",
+            "missing_meta_description_count",
+            "title_coverage_percent",
+            "meta_description_coverage_percent",
+        }
+        if metric_key in high_effort_metrics:
+            return "HIGH"
+        if metric_key in low_effort_metrics:
+            return "LOW"
+        return "MEDIUM"
+
+    def _resolve_audit_run(self, *, business_id: str, site_id: str, audit_run_id: str | None):
+        if audit_run_id is None:
+            return None
+        run = self.seo_audit_repository.get_run_for_business(business_id, audit_run_id)
+        if run is None:
+            raise SEORecommendationNotFoundError("Audit run not found")
+        if run.site_id != site_id:
+            raise SEORecommendationValidationError("Audit run does not match site")
+        if run.status != "completed":
+            raise SEORecommendationValidationError("Audit run must be completed")
+        return run
+
+    def _resolve_comparison_run(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+        comparison_run_id: str | None,
+    ):
+        if comparison_run_id is None:
+            return None
+        run = self.seo_competitor_repository.get_comparison_run_for_business(business_id, comparison_run_id)
+        if run is None:
+            raise SEORecommendationNotFoundError("Comparison run not found")
+        if run.site_id != site_id:
+            raise SEORecommendationValidationError("Comparison run does not match site")
+        if run.status != "completed":
+            raise SEORecommendationValidationError("Comparison run must be completed")
+        return run
+
+    def _summarize_recommendations(
+        self,
+        recommendations: list[SEORecommendation],
+    ) -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
+        by_category = Counter()
+        by_severity = Counter()
+        by_effort = Counter()
+        for item in recommendations:
+            by_category[item.category.strip().upper()] += 1
+            by_severity[self._normalize_severity(item.severity)] += 1
+            by_effort[self._normalize_effort(item.effort_bucket)] += 1
+        return dict(sorted(by_category.items())), dict(sorted(by_severity.items())), dict(sorted(by_effort.items()))
+
+    def _normalize_int_map(self, raw: dict[str, object] | None) -> dict[str, int]:
+        if not raw:
+            return {}
+        normalized: dict[str, int] = {}
+        for key, value in raw.items():
+            if not isinstance(key, str):
+                continue
+            try:
+                normalized[key] = int(value)
+            except (TypeError, ValueError):
+                continue
+        return normalized
+
+    def _require_business(self, business_id: str) -> None:
+        business = self.business_repository.get(business_id)
+        if business is None:
+            raise SEORecommendationNotFoundError("Business not found")
+
+    def _require_site(self, *, business_id: str, site_id: str) -> None:
+        site = self.seo_site_repository.get_for_business(business_id, site_id)
+        if site is None:
+            raise SEORecommendationNotFoundError("SEO site not found")
+
+    def _max_severity(self, left: str, right: str) -> str:
+        normalized_left = self._normalize_severity(left)
+        normalized_right = self._normalize_severity(right)
+        if SEVERITY_RANK[normalized_right] > SEVERITY_RANK[normalized_left]:
+            return normalized_right
+        return normalized_left
+
+    def _normalize_severity(self, value: str) -> str:
+        normalized = (value or "").strip().upper()
+        if normalized not in SEVERITY_RANK:
+            return "INFO"
+        return normalized
+
+    def _normalize_effort(self, value: str) -> str:
+        normalized = (value or "").strip().upper()
+        if normalized not in EFFORT_BUCKETS:
+            return "MEDIUM"
+        return normalized
+
+    def _max_effort(self, left: str, right: str) -> str:
+        rank = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
+        left_norm = self._normalize_effort(left)
+        right_norm = self._normalize_effort(right)
+        return right_norm if rank[right_norm] > rank[left_norm] else left_norm
+
+    def _to_str_list(self, raw: object) -> list[str]:
+        if not isinstance(raw, list):
+            return []
+        return [str(item) for item in raw]
+
+    def _merge_count_maps(self, left: object, right: object) -> dict[str, int]:
+        merged: Counter[str] = Counter()
+        for raw in (left, right):
+            if not isinstance(raw, dict):
+                continue
+            for key, value in raw.items():
+                if not isinstance(key, str):
+                    continue
+                try:
+                    merged[key] += int(value)
+                except (TypeError, ValueError):
+                    continue
+        return dict(sorted(merged.items()))
