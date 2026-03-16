@@ -387,6 +387,7 @@ def get_seo_competitor_comparison_service(
 def get_seo_recommendation_service(
     db: Session = Depends(get_db),
     business_repository: BusinessRepository = Depends(get_business_repository),
+    principal_repository: PrincipalRepository = Depends(get_principal_repository),
     seo_site_repository: SEOSiteRepository = Depends(get_seo_site_repository),
     seo_audit_repository: SEOAuditRepository = Depends(get_seo_audit_repository),
     seo_competitor_repository: SEOCompetitorRepository = Depends(get_seo_competitor_repository),
@@ -395,6 +396,7 @@ def get_seo_recommendation_service(
     return SEORecommendationService(
         session=db,
         business_repository=business_repository,
+        principal_repository=principal_repository,
         seo_site_repository=seo_site_repository,
         seo_audit_repository=seo_audit_repository,
         seo_competitor_repository=seo_competitor_repository,

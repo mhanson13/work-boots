@@ -189,3 +189,95 @@ def test_recommendation_repository_rejects_run_scope_mismatch_on_add(db_session,
                 evidence_json={"counts": {"missing_title": 2}},
             )
         )
+
+
+def test_recommendation_status_check_constraint(db_session, seeded_business) -> None:
+    repo = SEORecommendationRepository(db_session)
+    site = _seed_site(db_session, business_id=seeded_business.id, domain="status.example")
+    audit_run = _seed_completed_audit_run(db_session, business_id=seeded_business.id, site_id=site.id)
+    run = repo.create_run(
+        SEORecommendationRun(
+            id=str(uuid4()),
+            business_id=seeded_business.id,
+            site_id=site.id,
+            audit_run_id=audit_run.id,
+            comparison_run_id=None,
+            status="queued",
+            total_recommendations=0,
+            critical_recommendations=0,
+            warning_recommendations=0,
+            info_recommendations=0,
+        )
+    )
+    db_session.flush()
+
+    db_session.add(
+        SEORecommendation(
+            id=str(uuid4()),
+            business_id=seeded_business.id,
+            site_id=site.id,
+            recommendation_run_id=run.id,
+            audit_run_id=audit_run.id,
+            comparison_run_id=None,
+            rule_key="invalid_status_rule",
+            category="SEO",
+            severity="INFO",
+            title="Invalid status test",
+            rationale="constraint test",
+            priority_score=10,
+            priority_band="low",
+            effort_bucket="LOW",
+            status="not_a_status",
+            evidence_json=None,
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+    db_session.rollback()
+
+
+def test_recommendation_priority_band_check_constraint(db_session, seeded_business) -> None:
+    repo = SEORecommendationRepository(db_session)
+    site = _seed_site(db_session, business_id=seeded_business.id, domain="priority.example")
+    audit_run = _seed_completed_audit_run(db_session, business_id=seeded_business.id, site_id=site.id)
+    run = repo.create_run(
+        SEORecommendationRun(
+            id=str(uuid4()),
+            business_id=seeded_business.id,
+            site_id=site.id,
+            audit_run_id=audit_run.id,
+            comparison_run_id=None,
+            status="queued",
+            total_recommendations=0,
+            critical_recommendations=0,
+            warning_recommendations=0,
+            info_recommendations=0,
+        )
+    )
+    db_session.flush()
+
+    db_session.add(
+        SEORecommendation(
+            id=str(uuid4()),
+            business_id=seeded_business.id,
+            site_id=site.id,
+            recommendation_run_id=run.id,
+            audit_run_id=audit_run.id,
+            comparison_run_id=None,
+            rule_key="invalid_priority_band_rule",
+            category="SEO",
+            severity="INFO",
+            title="Invalid priority band test",
+            rationale="constraint test",
+            priority_score=10,
+            priority_band="urgent",
+            effort_bucket="LOW",
+            status="open",
+            evidence_json=None,
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+    db_session.rollback()

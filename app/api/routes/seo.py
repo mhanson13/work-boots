@@ -54,12 +54,16 @@ from app.schemas.seo_competitor import (
     SEOCompetitorSnapshotRunRead,
 )
 from app.schemas.seo_recommendation import (
+    SEORecommendationBacklogRead,
+    SEORecommendationListQuery,
     SEORecommendationListResponse,
+    SEORecommendationPrioritizedReportRead,
     SEORecommendationRead,
     SEORecommendationRunCreateRequest,
     SEORecommendationRunListResponse,
     SEORecommendationRunRead,
     SEORecommendationRunReportRead,
+    SEORecommendationWorkflowUpdateRequest,
 )
 from app.services.seo_audit import SEOAuditNotFoundError, SEOAuditService, SEOAuditValidationError
 from app.services.seo_competitor_comparison import (
@@ -95,18 +99,26 @@ def _assert_site_match(*, expected_site_id: str, actual_site_id: str, detail: st
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
 
 
-def _summarize_recommendation_items(items: list[SEORecommendationRead]) -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
+def _summarize_recommendation_items(
+    items: list[SEORecommendationRead],
+) -> tuple[dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int]]:
+    by_status: dict[str, int] = {}
     by_category: dict[str, int] = {}
     by_severity: dict[str, int] = {}
     by_effort_bucket: dict[str, int] = {}
+    by_priority_band: dict[str, int] = {}
     for item in items:
+        by_status[item.status] = by_status.get(item.status, 0) + 1
         by_category[item.category] = by_category.get(item.category, 0) + 1
         by_severity[item.severity] = by_severity.get(item.severity, 0) + 1
         by_effort_bucket[item.effort_bucket] = by_effort_bucket.get(item.effort_bucket, 0) + 1
+        by_priority_band[item.priority_band] = by_priority_band.get(item.priority_band, 0) + 1
     return (
+        dict(sorted(by_status.items())),
         dict(sorted(by_category.items())),
         dict(sorted(by_severity.items())),
         dict(sorted(by_effort_bucket.items())),
+        dict(sorted(by_priority_band.items())),
     )
 
 
@@ -519,13 +531,170 @@ def list_seo_recommendations_for_run(
         detail="SEO recommendation run not found",
     )
     serialized_items = [SEORecommendationRead.model_validate(item) for item in items]
-    by_category, by_severity, by_effort_bucket = _summarize_recommendation_items(serialized_items)
+    by_status, by_category, by_severity, by_effort_bucket, by_priority_band = _summarize_recommendation_items(
+        serialized_items
+    )
     return SEORecommendationListResponse(
         items=serialized_items,
         total=len(serialized_items),
+        by_status=by_status,
         by_category=by_category,
         by_severity=by_severity,
         by_effort_bucket=by_effort_bucket,
+        by_priority_band=by_priority_band,
+    )
+
+
+@router.get("/sites/{site_id}/recommendations", response_model=SEORecommendationListResponse)
+@router_v1.get("/sites/{site_id}/recommendations", response_model=SEORecommendationListResponse)
+def list_seo_recommendations(
+    business_id: str,
+    site_id: str,
+    query: SEORecommendationListQuery = Depends(),
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    recommendation_service: SEORecommendationService = Depends(get_seo_recommendation_service),
+) -> SEORecommendationListResponse:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        items = recommendation_service.list_site_recommendations(
+            business_id=scoped_business_id,
+            site_id=site_id,
+            query=query,
+        )
+    except (SEOSiteNotFoundError, SEORecommendationNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except SEORecommendationValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+    serialized_items = [SEORecommendationRead.model_validate(item) for item in items]
+    by_status, by_category, by_severity, by_effort_bucket, by_priority_band = _summarize_recommendation_items(
+        serialized_items
+    )
+    return SEORecommendationListResponse(
+        items=serialized_items,
+        total=len(serialized_items),
+        by_status=by_status,
+        by_category=by_category,
+        by_severity=by_severity,
+        by_effort_bucket=by_effort_bucket,
+        by_priority_band=by_priority_band,
+    )
+
+
+@router.patch("/sites/{site_id}/recommendations/{recommendation_id}", response_model=SEORecommendationRead)
+@router_v1.patch("/sites/{site_id}/recommendations/{recommendation_id}", response_model=SEORecommendationRead)
+def patch_seo_recommendation(
+    business_id: str,
+    site_id: str,
+    recommendation_id: str,
+    payload: SEORecommendationWorkflowUpdateRequest,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    recommendation_service: SEORecommendationService = Depends(get_seo_recommendation_service),
+) -> SEORecommendationRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        recommendation = recommendation_service.update_recommendation_workflow(
+            business_id=scoped_business_id,
+            site_id=site_id,
+            recommendation_id=recommendation_id,
+            payload=payload,
+            updated_by_principal_id=tenant_context.principal_id,
+        )
+    except (SEOSiteNotFoundError, SEORecommendationNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except SEORecommendationValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    return SEORecommendationRead.model_validate(recommendation)
+
+
+@router.get("/sites/{site_id}/recommendations/backlog", response_model=SEORecommendationBacklogRead)
+@router_v1.get("/sites/{site_id}/recommendations/backlog", response_model=SEORecommendationBacklogRead)
+def get_seo_recommendation_backlog(
+    business_id: str,
+    site_id: str,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    recommendation_service: SEORecommendationService = Depends(get_seo_recommendation_service),
+) -> SEORecommendationBacklogRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        backlog = recommendation_service.get_backlog(
+            business_id=scoped_business_id,
+            site_id=site_id,
+        )
+    except (SEOSiteNotFoundError, SEORecommendationNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return SEORecommendationBacklogRead(
+        business_id=backlog.business_id,
+        site_id=backlog.site_id,
+        total_actionable=len(backlog.items),
+        items=[SEORecommendationRead.model_validate(item) for item in backlog.items],
+    )
+
+
+@router.get("/sites/{site_id}/recommendations/prioritized-report", response_model=SEORecommendationPrioritizedReportRead)
+@router_v1.get(
+    "/sites/{site_id}/recommendations/prioritized-report",
+    response_model=SEORecommendationPrioritizedReportRead,
+)
+def get_seo_recommendation_prioritized_report(
+    business_id: str,
+    site_id: str,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    recommendation_service: SEORecommendationService = Depends(get_seo_recommendation_service),
+) -> SEORecommendationPrioritizedReportRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        report = recommendation_service.get_prioritized_report(
+            business_id=scoped_business_id,
+            site_id=site_id,
+        )
+    except (SEOSiteNotFoundError, SEORecommendationNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    backlog_items = [SEORecommendationRead.model_validate(item) for item in report.backlog_items]
+    backlog_by_status, backlog_by_category, backlog_by_severity, backlog_by_effort, backlog_by_priority = (
+        _summarize_recommendation_items(backlog_items)
+    )
+    return SEORecommendationPrioritizedReportRead(
+        business_id=report.business_id,
+        site_id=report.site_id,
+        generated_at=report.generated_at,
+        total_recommendations=report.total_recommendations,
+        backlog_total=len(backlog_items),
+        by_status=report.by_status,
+        by_category=report.by_category,
+        by_severity=report.by_severity,
+        by_effort_bucket=report.by_effort_bucket,
+        by_priority_band=report.by_priority_band,
+        backlog=SEORecommendationListResponse(
+            items=backlog_items,
+            total=len(backlog_items),
+            by_status=backlog_by_status,
+            by_category=backlog_by_category,
+            by_severity=backlog_by_severity,
+            by_effort_bucket=backlog_by_effort,
+            by_priority_band=backlog_by_priority,
+        ),
     )
 
 
@@ -593,6 +762,9 @@ def get_seo_recommendation_run_report(
         detail="SEO recommendation run not found",
     )
     serialized_items = [SEORecommendationRead.model_validate(item) for item in report.recommendations]
+    by_status, by_category, by_severity, by_effort_bucket, by_priority_band = _summarize_recommendation_items(
+        serialized_items
+    )
     return SEORecommendationRunReportRead(
         recommendation_run=SEORecommendationRunRead.model_validate(report.run),
         rollups={
@@ -603,9 +775,11 @@ def get_seo_recommendation_run_report(
         recommendations=SEORecommendationListResponse(
             items=serialized_items,
             total=len(serialized_items),
-            by_category=report.by_category,
-            by_severity=report.by_severity,
-            by_effort_bucket=report.by_effort_bucket,
+            by_status=by_status,
+            by_category=by_category,
+            by_severity=by_severity,
+            by_effort_bucket=by_effort_bucket,
+            by_priority_band=by_priority_band,
         ),
     )
 

@@ -80,6 +80,9 @@ Project docs live under [`docs/`](docs):
 - `seo-ai-phase3a-deterministic-recommendations.md` (implemented deterministic recommendation generation)
 - `seo-ai-phase3a-data-model.md` (implemented recommendation run/recommendation schema)
 - `seo-ai-phase3a-api.md` (implemented recommendation endpoint contract)
+- `seo-ai-phase3b-workflow-and-prioritization.md` (implemented deterministic recommendation workflow management)
+- `seo-ai-phase3b-data-model.md` (implemented recommendation workflow/prioritization schema updates)
+- `seo-ai-phase3b-api.md` (implemented workflow list/update/backlog/report API contract)
 - `phase3-response-and-reminders.md`
 - `phase4-notifications-and-hardening.md`
 - `security-architecture.md`
@@ -90,9 +93,10 @@ Implemented today:
 - Phase 1.5: hardening/usability improvements for audit diagnostics and contracts
 - Phase 2: competitor foundations, snapshotting, deterministic comparison runs/reports, and manual-trigger competitor summaries
 - Phase 3A: deterministic recommendation runs generated from persisted audit/comparison evidence
+- Phase 3B: deterministic recommendation workflow state, prioritization views, and operator update APIs
 
 Not implemented yet:
-- Phase 3B/3C workflow + AI recommendation narratives
+- Phase 3C AI recommendation narratives
 - Phase 4 automation/operationalization work
 
 ## SEO.ai Phase 1 (Implemented)
@@ -163,6 +167,21 @@ Endpoint inventory (business-scoped):
   - `GET /api/businesses/{business_id}/seo/sites/{site_id}/recommendation-runs/{recommendation_run_id}/report`
 
 Compatibility site-scoped Phase 3A paths are also mounted at:
+- `/api/v1/businesses/{business_id}/seo/sites/{site_id}/...`
+
+## SEO.ai Phase 3B (Implemented)
+Phase 3B adds deterministic workflow and prioritization management over persisted recommendations.
+
+Endpoint inventory (business-scoped):
+- Site recommendation workflow:
+  - `GET /api/businesses/{business_id}/seo/sites/{site_id}/recommendations`
+  - `GET /api/businesses/{business_id}/seo/sites/{site_id}/recommendations/{recommendation_id}`
+  - `PATCH /api/businesses/{business_id}/seo/sites/{site_id}/recommendations/{recommendation_id}`
+- Deterministic prioritization views:
+  - `GET /api/businesses/{business_id}/seo/sites/{site_id}/recommendations/backlog`
+  - `GET /api/businesses/{business_id}/seo/sites/{site_id}/recommendations/prioritized-report`
+
+Compatibility site-scoped Phase 3B paths are also mounted at:
 - `/api/v1/businesses/{business_id}/seo/sites/{site_id}/...`
 
 ## Notification Provider Modes

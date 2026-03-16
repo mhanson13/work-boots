@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime
 import re
 import time
 from uuid import uuid4
@@ -14,16 +15,42 @@ from app.models.seo_competitor_comparison_finding import SEOCompetitorComparison
 from app.models.seo_recommendation import SEORecommendation
 from app.models.seo_recommendation_run import SEORecommendationRun
 from app.repositories.business_repository import BusinessRepository
+from app.repositories.principal_repository import PrincipalRepository
 from app.repositories.seo_audit_repository import SEOAuditRepository
 from app.repositories.seo_competitor_repository import SEOCompetitorRepository
 from app.repositories.seo_recommendation_repository import SEORecommendationRepository
 from app.repositories.seo_site_repository import SEOSiteRepository
-from app.schemas.seo_recommendation import SEORecommendationRunCreateRequest
+from app.schemas.seo_recommendation import (
+    SEORecommendationListQuery,
+    SEORecommendationRunCreateRequest,
+    SEORecommendationWorkflowUpdateRequest,
+)
 
 
 SEVERITY_RANK: dict[str, int] = {"INFO": 1, "WARNING": 2, "CRITICAL": 3}
 SEVERITY_BASE_PRIORITY: dict[str, int] = {"INFO": 30, "WARNING": 60, "CRITICAL": 85}
 EFFORT_BUCKETS: set[str] = {"LOW", "MEDIUM", "HIGH"}
+PRIORITY_BANDS: tuple[str, ...] = ("low", "medium", "high", "critical")
+WORKFLOW_STATUSES: tuple[str, ...] = ("open", "in_progress", "accepted", "dismissed", "snoozed", "resolved")
+WORKFLOW_DECISIONS: tuple[str, ...] = ("accept", "dismiss", "snooze", "resolve", "reopen", "start")
+ACTIONABLE_STATUSES: tuple[str, ...] = ("open", "in_progress", "accepted")
+STATUS_TO_DECISION: dict[str, str] = {
+    "open": "reopen",
+    "in_progress": "start",
+    "accepted": "accept",
+    "dismissed": "dismiss",
+    "snoozed": "snooze",
+    "resolved": "resolve",
+}
+DECISION_TO_STATUS: dict[str, str] = {value: key for key, value in STATUS_TO_DECISION.items()}
+ALLOWED_TRANSITIONS: dict[str, set[str]] = {
+    "open": {"in_progress", "accepted", "dismissed", "snoozed", "resolved"},
+    "in_progress": {"open", "accepted", "dismissed", "snoozed", "resolved"},
+    "accepted": {"open", "in_progress", "snoozed", "resolved", "dismissed"},
+    "dismissed": {"open"},
+    "snoozed": {"open", "in_progress", "accepted", "resolved", "dismissed"},
+    "resolved": {"open"},
+}
 
 AUDIT_TEMPLATES: dict[str, tuple[str, str, str]] = {
     "missing_title": ("fix_missing_title_tags", "Fix missing title tags", "LOW"),
@@ -68,6 +95,27 @@ class SEORecommendationReport:
     by_effort_bucket: dict[str, int]
 
 
+@dataclass(frozen=True)
+class SEORecommendationBacklog:
+    business_id: str
+    site_id: str
+    items: list[SEORecommendation]
+
+
+@dataclass(frozen=True)
+class SEORecommendationPrioritizedReport:
+    business_id: str
+    site_id: str
+    generated_at: datetime
+    total_recommendations: int
+    backlog_items: list[SEORecommendation]
+    by_status: dict[str, int]
+    by_category: dict[str, int]
+    by_severity: dict[str, int]
+    by_effort_bucket: dict[str, int]
+    by_priority_band: dict[str, int]
+
+
 @dataclass
 class _RecommendationDraft:
     rule_key: str
@@ -86,6 +134,7 @@ class SEORecommendationService:
         *,
         session: Session,
         business_repository: BusinessRepository,
+        principal_repository: PrincipalRepository,
         seo_site_repository: SEOSiteRepository,
         seo_audit_repository: SEOAuditRepository,
         seo_competitor_repository: SEOCompetitorRepository,
@@ -93,6 +142,7 @@ class SEORecommendationService:
     ) -> None:
         self.session = session
         self.business_repository = business_repository
+        self.principal_repository = principal_repository
         self.seo_site_repository = seo_site_repository
         self.seo_audit_repository = seo_audit_repository
         self.seo_competitor_repository = seo_competitor_repository
@@ -227,6 +277,137 @@ class SEORecommendationService:
         if recommendation is None:
             raise SEORecommendationNotFoundError("SEO recommendation not found")
         return recommendation
+
+    def list_site_recommendations(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+        query: SEORecommendationListQuery,
+    ) -> list[SEORecommendation]:
+        self._require_business(business_id)
+        self._require_site(business_id=business_id, site_id=site_id)
+        return self.seo_recommendation_repository.list_recommendations_for_business_site(
+            business_id=business_id,
+            site_id=site_id,
+            status=query.status,
+            category=query.category,
+            severity=query.severity,
+            effort_bucket=query.effort_bucket,
+            priority_band=query.priority_band,
+            assigned_principal_id=query.assigned_principal_id,
+            source_type=query.source_type,
+            recommendation_run_id=query.recommendation_run_id,
+            sort_by=query.sort_by,
+            sort_order=query.sort_order,
+        )
+
+    def update_recommendation_workflow(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+        recommendation_id: str,
+        payload: SEORecommendationWorkflowUpdateRequest,
+        updated_by_principal_id: str | None,
+    ) -> SEORecommendation:
+        self._require_business(business_id)
+        self._require_site(business_id=business_id, site_id=site_id)
+        recommendation = self.get_recommendation(business_id=business_id, recommendation_id=recommendation_id)
+        if recommendation.site_id != site_id:
+            raise SEORecommendationNotFoundError("SEO recommendation not found")
+
+        updates = payload.model_dump(exclude_unset=True)
+        if not updates:
+            return recommendation
+
+        now = utc_now()
+        status, decision = self._resolve_status_and_decision(
+            current_status=recommendation.status,
+            current_decision=recommendation.decision,
+            status_update=updates.get("status"),
+            decision_update=updates.get("decision"),
+        )
+
+        if "assigned_principal_id" in updates:
+            self._validate_assigned_principal(
+                business_id=business_id,
+                principal_id=updates.get("assigned_principal_id"),
+            )
+            recommendation.assigned_principal_id = updates.get("assigned_principal_id")
+
+        if "decision_reason" in updates:
+            recommendation.decision_reason = updates.get("decision_reason")
+
+        if "due_at" in updates:
+            recommendation.due_at = updates.get("due_at")
+
+        snoozed_until_update = updates.get("snoozed_until") if "snoozed_until" in updates else None
+        self._apply_status_rules(
+            recommendation=recommendation,
+            previous_status=recommendation.status,
+            next_status=status,
+            decision=decision,
+            now=now,
+            snoozed_until_update=snoozed_until_update,
+            snoozed_until_provided="snoozed_until" in updates,
+        )
+
+        recommendation.updated_by_principal_id = updated_by_principal_id
+        recommendation.updated_at = now
+        self.seo_recommendation_repository.save_recommendation(recommendation)
+        self.session.commit()
+        self.session.refresh(recommendation)
+        return recommendation
+
+    def get_backlog(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+    ) -> SEORecommendationBacklog:
+        self._require_business(business_id)
+        self._require_site(business_id=business_id, site_id=site_id)
+        items = self.seo_recommendation_repository.list_actionable_recommendations_for_business_site(
+            business_id=business_id,
+            site_id=site_id,
+            now=utc_now(),
+        )
+        return SEORecommendationBacklog(
+            business_id=business_id,
+            site_id=site_id,
+            items=items,
+        )
+
+    def get_prioritized_report(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+    ) -> SEORecommendationPrioritizedReport:
+        self._require_business(business_id)
+        self._require_site(business_id=business_id, site_id=site_id)
+        all_items = self.seo_recommendation_repository.list_recommendations_for_business_site(
+            business_id=business_id,
+            site_id=site_id,
+            sort_by="priority_score",
+            sort_order="desc",
+        )
+        backlog = self.get_backlog(business_id=business_id, site_id=site_id)
+        by_status, by_category, by_severity, by_effort_bucket, by_priority_band = self._summarize_workflow(all_items)
+
+        return SEORecommendationPrioritizedReport(
+            business_id=business_id,
+            site_id=site_id,
+            generated_at=utc_now(),
+            total_recommendations=len(all_items),
+            backlog_items=backlog.items,
+            by_status=by_status,
+            by_category=by_category,
+            by_severity=by_severity,
+            by_effort_bucket=by_effort_bucket,
+            by_priority_band=by_priority_band,
+        )
 
     def get_report(
         self,
@@ -370,7 +551,9 @@ class SEORecommendationService:
                 title=draft.title,
                 rationale=draft.rationale,
                 priority_score=draft.priority_score,
+                priority_band=self._priority_band_for_score(draft.priority_score),
                 effort_bucket=draft.effort_bucket,
+                status="open",
                 evidence_json=draft.evidence,
             )
             self.seo_recommendation_repository.add_recommendation(recommendation)
@@ -523,6 +706,106 @@ class SEORecommendationService:
             by_effort[self._normalize_effort(item.effort_bucket)] += 1
         return dict(sorted(by_category.items())), dict(sorted(by_severity.items())), dict(sorted(by_effort.items()))
 
+    def _summarize_workflow(
+        self,
+        recommendations: list[SEORecommendation],
+    ) -> tuple[dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int]]:
+        by_status = Counter()
+        by_category = Counter()
+        by_severity = Counter()
+        by_effort = Counter()
+        by_priority_band = Counter()
+        for item in recommendations:
+            by_status[self._normalize_status(item.status)] += 1
+            by_category[item.category.strip().upper()] += 1
+            by_severity[self._normalize_severity(item.severity)] += 1
+            by_effort[self._normalize_effort(item.effort_bucket)] += 1
+            by_priority_band[self._normalize_priority_band(item.priority_band)] += 1
+        return (
+            dict(sorted(by_status.items())),
+            dict(sorted(by_category.items())),
+            dict(sorted(by_severity.items())),
+            dict(sorted(by_effort.items())),
+            dict(sorted(by_priority_band.items())),
+        )
+
+    def _resolve_status_and_decision(
+        self,
+        *,
+        current_status: str,
+        current_decision: str | None,
+        status_update: str | None,
+        decision_update: str | None,
+    ) -> tuple[str, str | None]:
+        status = self._normalize_status(status_update) if status_update is not None else None
+        decision = self._normalize_decision(decision_update) if decision_update is not None else None
+
+        if decision is not None and status is None:
+            status = DECISION_TO_STATUS[decision]
+
+        if decision is not None and status is not None:
+            expected_status = DECISION_TO_STATUS[decision]
+            if expected_status != status:
+                raise SEORecommendationValidationError("status and decision do not match")
+
+        if status is None:
+            if decision is None:
+                return current_status, current_decision
+            return current_status, decision
+
+        current = self._normalize_status(current_status)
+        if status != current and status not in ALLOWED_TRANSITIONS.get(current, set()):
+            raise SEORecommendationValidationError(f"Invalid status transition: {current} -> {status}")
+
+        if decision is None:
+            if status != current:
+                decision = STATUS_TO_DECISION.get(status)
+            else:
+                decision = current_decision
+        return status, decision
+
+    def _apply_status_rules(
+        self,
+        *,
+        recommendation: SEORecommendation,
+        previous_status: str,
+        next_status: str,
+        decision: str | None,
+        now: datetime,
+        snoozed_until_update: datetime | None,
+        snoozed_until_provided: bool,
+    ) -> None:
+        recommendation.status = next_status
+        recommendation.decision = decision
+
+        if next_status == "snoozed":
+            effective_snoozed_until = snoozed_until_update if snoozed_until_provided else recommendation.snoozed_until
+            if effective_snoozed_until is None:
+                raise SEORecommendationValidationError("snoozed_until is required when status is snoozed")
+            if effective_snoozed_until <= now:
+                raise SEORecommendationValidationError("snoozed_until must be in the future")
+            recommendation.snoozed_until = effective_snoozed_until
+            recommendation.resolved_at = None
+        else:
+            if snoozed_until_provided and snoozed_until_update is not None:
+                raise SEORecommendationValidationError("snoozed_until is only valid for snoozed status")
+            recommendation.snoozed_until = None
+
+        if next_status == "resolved":
+            if self._normalize_status(previous_status) != "resolved" or recommendation.resolved_at is None:
+                recommendation.resolved_at = now
+        elif next_status != "snoozed":
+            recommendation.resolved_at = None
+
+    def _validate_assigned_principal(self, *, business_id: str, principal_id: str | None) -> None:
+        if principal_id is None:
+            return
+        principal = self.principal_repository.get_for_business(business_id, principal_id)
+        if principal is None:
+            raise SEORecommendationValidationError("Assigned principal not found for business")
+        if not principal.is_active:
+            raise SEORecommendationValidationError("Assigned principal is inactive")
+
     def _normalize_int_map(self, raw: dict[str, object] | None) -> dict[str, int]:
         if not raw:
             return {}
@@ -563,6 +846,35 @@ class SEORecommendationService:
         normalized = (value or "").strip().upper()
         if normalized not in EFFORT_BUCKETS:
             return "MEDIUM"
+        return normalized
+
+    def _normalize_status(self, value: str | None) -> str:
+        normalized = (value or "").strip().lower()
+        if normalized not in WORKFLOW_STATUSES:
+            return "open"
+        return normalized
+
+    def _normalize_decision(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if normalized not in WORKFLOW_DECISIONS:
+            raise SEORecommendationValidationError("Invalid workflow decision")
+        return normalized
+
+    def _priority_band_for_score(self, priority_score: int) -> str:
+        if priority_score >= 90:
+            return "critical"
+        if priority_score >= 75:
+            return "high"
+        if priority_score >= 50:
+            return "medium"
+        return "low"
+
+    def _normalize_priority_band(self, value: str | None) -> str:
+        normalized = (value or "").strip().lower()
+        if normalized not in PRIORITY_BANDS:
+            return "medium"
         return normalized
 
     def _max_effort(self, left: str, right: str) -> str:

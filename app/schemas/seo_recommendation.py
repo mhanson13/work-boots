@@ -9,10 +9,22 @@ SEORecommendationRunStatus = Literal["queued", "running", "completed", "failed"]
 SEORecommendationCategory = Literal["SEO", "CONTENT", "STRUCTURE", "TECHNICAL"]
 SEORecommendationSeverity = Literal["INFO", "WARNING", "CRITICAL"]
 SEORecommendationEffort = Literal["LOW", "MEDIUM", "HIGH"]
+SEORecommendationPriorityBand = Literal["low", "medium", "high", "critical"]
+SEORecommendationStatus = Literal["open", "in_progress", "accepted", "dismissed", "snoozed", "resolved"]
+SEORecommendationDecision = Literal["accept", "dismiss", "snooze", "resolve", "reopen", "start"]
+SEORecommendationSourceType = Literal["audit", "comparison", "mixed"]
+SEORecommendationSortBy = Literal["priority_score", "priority_band", "severity", "created_at", "updated_at", "due_at"]
+SortOrder = Literal["asc", "desc"]
 
 _CATEGORIES = {"SEO", "CONTENT", "STRUCTURE", "TECHNICAL"}
 _SEVERITIES = {"INFO", "WARNING", "CRITICAL"}
 _EFFORT_BUCKETS = {"LOW", "MEDIUM", "HIGH"}
+_PRIORITY_BANDS = {"low", "medium", "high", "critical"}
+_STATUSES = {"open", "in_progress", "accepted", "dismissed", "snoozed", "resolved"}
+_DECISIONS = {"accept", "dismiss", "snooze", "resolve", "reopen", "start"}
+_SOURCE_TYPES = {"audit", "comparison", "mixed"}
+_SORT_FIELDS = {"priority_score", "priority_band", "severity", "created_at", "updated_at", "due_at"}
+_SORT_ORDERS = {"asc", "desc"}
 
 
 def _strip_or_none(value: str | None) -> str | None:
@@ -56,6 +68,51 @@ def _normalize_effort(value: Any) -> SEORecommendationEffort:
     normalized = str(value or "").strip().upper()
     if normalized not in _EFFORT_BUCKETS:
         return "MEDIUM"
+    return normalized  # type: ignore[return-value]
+
+
+def _normalize_priority_band(value: Any) -> SEORecommendationPriorityBand:
+    normalized = str(value or "").strip().lower()
+    if normalized not in _PRIORITY_BANDS:
+        return "medium"
+    return normalized  # type: ignore[return-value]
+
+
+def _normalize_status(value: Any) -> SEORecommendationStatus:
+    normalized = str(value or "").strip().lower()
+    if normalized not in _STATUSES:
+        return "open"
+    return normalized  # type: ignore[return-value]
+
+
+def _normalize_decision(value: Any) -> SEORecommendationDecision | None:
+    normalized = _strip_or_none(str(value)) if value is not None else None
+    if normalized is None:
+        return None
+    normalized = normalized.lower()
+    if normalized not in _DECISIONS:
+        raise ValueError("Invalid recommendation decision")
+    return normalized  # type: ignore[return-value]
+
+
+def _normalize_source_type(value: Any) -> SEORecommendationSourceType:
+    normalized = str(value or "").strip().lower()
+    if normalized not in _SOURCE_TYPES:
+        raise ValueError("Invalid source_type")
+    return normalized  # type: ignore[return-value]
+
+
+def _normalize_sort_by(value: Any) -> SEORecommendationSortBy:
+    normalized = str(value or "").strip().lower()
+    if normalized not in _SORT_FIELDS:
+        raise ValueError("Invalid sort_by")
+    return normalized  # type: ignore[return-value]
+
+
+def _normalize_sort_order(value: Any) -> SortOrder:
+    normalized = str(value or "").strip().lower()
+    if normalized not in _SORT_ORDERS:
+        raise ValueError("Invalid sort_order")
     return normalized  # type: ignore[return-value]
 
 
@@ -128,7 +185,16 @@ class SEORecommendationRead(BaseModel):
     title: str
     rationale: str
     priority_score: int
+    priority_band: SEORecommendationPriorityBand
     effort_bucket: SEORecommendationEffort
+    status: SEORecommendationStatus
+    decision: SEORecommendationDecision | None = None
+    decision_reason: str | None = None
+    assigned_principal_id: str | None = None
+    due_at: datetime | None = None
+    snoozed_until: datetime | None = None
+    resolved_at: datetime | None = None
+    updated_by_principal_id: str | None = None
     evidence_json: dict[str, object] | None
     created_at: datetime
     updated_at: datetime
@@ -148,16 +214,143 @@ class SEORecommendationRead(BaseModel):
     def normalize_effort_field(cls, value: Any) -> SEORecommendationEffort:
         return _normalize_effort(value)
 
+    @field_validator("priority_band", mode="before")
+    @classmethod
+    def normalize_priority_band_field(cls, value: Any) -> SEORecommendationPriorityBand:
+        return _normalize_priority_band(value)
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status_field(cls, value: Any) -> SEORecommendationStatus:
+        return _normalize_status(value)
+
+    @field_validator("decision", mode="before")
+    @classmethod
+    def normalize_decision_field(cls, value: Any) -> SEORecommendationDecision | None:
+        return _normalize_decision(value)
+
 
 class SEORecommendationListResponse(BaseModel):
     items: list[SEORecommendationRead]
     total: int
+    by_status: dict[str, int] = Field(default_factory=dict)
     by_category: dict[str, int] = Field(default_factory=dict)
     by_severity: dict[str, int] = Field(default_factory=dict)
     by_effort_bucket: dict[str, int] = Field(default_factory=dict)
+    by_priority_band: dict[str, int] = Field(default_factory=dict)
 
 
 class SEORecommendationRunReportRead(BaseModel):
     recommendation_run: SEORecommendationRunRead
     rollups: dict[str, dict[str, int]]
     recommendations: SEORecommendationListResponse
+
+
+class SEORecommendationWorkflowUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: SEORecommendationStatus | None = None
+    decision: SEORecommendationDecision | None = None
+    decision_reason: str | None = Field(default=None, max_length=2000)
+    assigned_principal_id: str | None = Field(default=None, max_length=64)
+    due_at: datetime | None = None
+    snoozed_until: datetime | None = None
+
+    @field_validator("assigned_principal_id", mode="before")
+    @classmethod
+    def normalize_assigned_principal(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        return _strip_or_none(str(value))
+
+    @field_validator("decision_reason", mode="before")
+    @classmethod
+    def normalize_decision_reason(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        return _strip_or_none(str(value))
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status_input(cls, value: Any) -> SEORecommendationStatus | None:
+        if value is None:
+            return None
+        return _normalize_status(value)
+
+    @field_validator("decision", mode="before")
+    @classmethod
+    def normalize_decision_input(cls, value: Any) -> SEORecommendationDecision | None:
+        return _normalize_decision(value)
+
+    @model_validator(mode="after")
+    def require_update_field(self) -> "SEORecommendationWorkflowUpdateRequest":
+        if not self.model_fields_set:
+            raise ValueError("At least one workflow field is required")
+        return self
+
+
+class SEORecommendationBacklogRead(BaseModel):
+    business_id: str
+    site_id: str
+    total_actionable: int
+    items: list[SEORecommendationRead]
+
+
+class SEORecommendationPrioritizedReportRead(BaseModel):
+    business_id: str
+    site_id: str
+    generated_at: datetime
+    total_recommendations: int
+    backlog_total: int
+    by_status: dict[str, int]
+    by_category: dict[str, int]
+    by_severity: dict[str, int]
+    by_effort_bucket: dict[str, int]
+    by_priority_band: dict[str, int]
+    backlog: SEORecommendationListResponse
+
+
+class SEORecommendationListQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: SEORecommendationStatus | None = None
+    category: SEORecommendationCategory | None = None
+    severity: SEORecommendationSeverity | None = None
+    effort_bucket: SEORecommendationEffort | None = None
+    priority_band: SEORecommendationPriorityBand | None = None
+    assigned_principal_id: str | None = None
+    source_type: SEORecommendationSourceType | None = None
+    recommendation_run_id: str | None = None
+    sort_by: SEORecommendationSortBy = "priority_score"
+    sort_order: SortOrder = "desc"
+
+    @field_validator("assigned_principal_id", mode="before")
+    @classmethod
+    def normalize_query_assignee(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        return _strip_or_none(str(value))
+
+    @field_validator("recommendation_run_id", mode="before")
+    @classmethod
+    def normalize_query_run_id(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        return _strip_or_none(str(value))
+
+    @field_validator("source_type", mode="before")
+    @classmethod
+    def normalize_source_type(cls, value: Any) -> SEORecommendationSourceType | None:
+        if value is None:
+            return None
+        return _normalize_source_type(value)
+
+    @field_validator("sort_by", mode="before")
+    @classmethod
+    def normalize_sort_by(cls, value: Any) -> SEORecommendationSortBy:
+        return _normalize_sort_by(value)
+
+    @field_validator("sort_order", mode="before")
+    @classmethod
+    def normalize_sort_order(cls, value: Any) -> SortOrder:
+        return _normalize_sort_order(value)

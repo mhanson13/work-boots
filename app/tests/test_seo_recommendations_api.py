@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from uuid import uuid4
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.deps import TenantContext, get_db, get_tenant_context
+from app.core.time import utc_now
 from app.api.routes.seo import router as seo_router
 from app.api.routes.seo import router_v1 as seo_v1_router
 from app.models.business import Business
+from app.models.principal import Principal, PrincipalRole
 from app.models.seo_audit_finding import SEOAuditFinding
 from app.models.seo_audit_run import SEOAuditRun
 from app.models.seo_competitor_comparison_finding import SEOCompetitorComparisonFinding
@@ -59,6 +62,25 @@ def _seed_other_business(db_session) -> Business:
     db_session.add(other_business)
     db_session.commit()
     return other_business
+
+
+def _seed_principal(
+    db_session,
+    *,
+    business_id: str,
+    principal_id: str,
+    is_active: bool = True,
+) -> Principal:
+    principal = Principal(
+        business_id=business_id,
+        id=principal_id,
+        display_name=f"Principal {principal_id}",
+        role=PrincipalRole.OPERATOR,
+        is_active=is_active,
+    )
+    db_session.add(principal)
+    db_session.commit()
+    return principal
 
 
 def _create_site(client: TestClient, business_id: str, *, domain: str = "client.example") -> str:
@@ -467,3 +489,206 @@ def test_recommendation_not_found_behaviors(db_session, seeded_business) -> None
         f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/{uuid4()}"
     )
     assert get_recommendation.status_code == 404
+
+
+def test_recommendation_workflow_patch_backlog_and_prioritized_report(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id)
+    _seed_principal(db_session, business_id=seeded_business.id, principal_id="owner-1")
+    audit_run_id = _seed_completed_audit_run(db_session, business_id=seeded_business.id, site_id=site_id)
+
+    create_run = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+        json={"audit_run_id": audit_run_id},
+    )
+    assert create_run.status_code == 201
+    run_id = create_run.json()["id"]
+
+    list_items = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/recommendations"
+    )
+    assert list_items.status_code == 200
+    recommendation_id = list_items.json()["items"][0]["id"]
+
+    patch_in_progress = client.patch(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/{recommendation_id}",
+        json={
+            "status": "in_progress",
+            "assigned_principal_id": "owner-1",
+            "due_at": (utc_now() + timedelta(days=2)).isoformat(),
+        },
+    )
+    assert patch_in_progress.status_code == 200
+    in_progress_payload = patch_in_progress.json()
+    assert in_progress_payload["status"] == "in_progress"
+    assert in_progress_payload["decision"] == "start"
+    assert in_progress_payload["assigned_principal_id"] == "owner-1"
+
+    patch_snoozed = client.patch(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/{recommendation_id}",
+        json={
+            "decision": "snooze",
+            "decision_reason": "Waiting on client website access",
+            "snoozed_until": (utc_now() + timedelta(days=1)).isoformat(),
+        },
+    )
+    assert patch_snoozed.status_code == 200
+    assert patch_snoozed.json()["status"] == "snoozed"
+    assert patch_snoozed.json()["decision"] == "snooze"
+    assert patch_snoozed.json()["snoozed_until"] is not None
+
+    backlog = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/backlog"
+    )
+    assert backlog.status_code == 200
+    backlog_ids = {item["id"] for item in backlog.json()["items"]}
+    assert recommendation_id not in backlog_ids
+
+    patch_reopen = client.patch(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/{recommendation_id}",
+        json={"decision": "reopen"},
+    )
+    assert patch_reopen.status_code == 200
+    assert patch_reopen.json()["status"] == "open"
+    assert patch_reopen.json()["snoozed_until"] is None
+
+    report = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/prioritized-report"
+    )
+    assert report.status_code == 200
+    payload = report.json()
+    assert set(payload.keys()) == {
+        "business_id",
+        "site_id",
+        "generated_at",
+        "total_recommendations",
+        "backlog_total",
+        "by_status",
+        "by_category",
+        "by_severity",
+        "by_effort_bucket",
+        "by_priority_band",
+        "backlog",
+    }
+    assert "open" in payload["by_status"]
+    assert payload["backlog"]["total"] == payload["backlog_total"]
+
+
+def test_recommendation_workflow_rejects_invalid_transitions_and_assignments(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id)
+    _seed_principal(db_session, business_id=seeded_business.id, principal_id="inactive-owner", is_active=False)
+    audit_run_id = _seed_completed_audit_run(db_session, business_id=seeded_business.id, site_id=site_id)
+
+    create_run = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+        json={"audit_run_id": audit_run_id},
+    )
+    run_id = create_run.json()["id"]
+    recommendation_id = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/recommendations"
+    ).json()["items"][0]["id"]
+
+    dismissed = client.patch(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/{recommendation_id}",
+        json={"status": "dismissed"},
+    )
+    assert dismissed.status_code == 200
+
+    invalid_transition = client.patch(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/{recommendation_id}",
+        json={"status": "in_progress"},
+    )
+    assert invalid_transition.status_code == 422
+
+    missing_snooze_until = client.patch(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/{recommendation_id}",
+        json={"status": "snoozed"},
+    )
+    assert missing_snooze_until.status_code == 422
+
+    inactive_assignee = client.patch(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/{recommendation_id}",
+        json={"status": "open", "assigned_principal_id": "inactive-owner"},
+    )
+    assert inactive_assignee.status_code == 422
+
+
+def test_phase3b_recommendation_filters_and_scope_guards(db_session, seeded_business) -> None:
+    other_business = _seed_other_business(db_session)
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_a_id = _create_site(client, seeded_business.id, domain="site-a.example")
+    site_b_id = _create_site(client, seeded_business.id, domain="site-b.example")
+
+    run_id = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_a_id}/recommendation-runs",
+        json={"audit_run_id": _seed_completed_audit_run(db_session, business_id=seeded_business.id, site_id=site_a_id)},
+    ).json()["id"]
+    recommendation_id = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_a_id}/recommendation-runs/{run_id}/recommendations"
+    ).json()["items"][0]["id"]
+    resolved = client.patch(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_a_id}/recommendations/{recommendation_id}",
+        json={"decision": "resolve"},
+    )
+    assert resolved.status_code == 200
+
+    filtered = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_a_id}/recommendations",
+        params={"status": "resolved"},
+    )
+    assert filtered.status_code == 200
+    assert filtered.json()["total"] == 1
+    assert filtered.json()["items"][0]["id"] == recommendation_id
+
+    wrong_site = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_b_id}/recommendations/{recommendation_id}"
+    )
+    assert wrong_site.status_code == 404
+
+    cross_business = client.get(
+        f"/api/businesses/{other_business.id}/seo/sites/{site_a_id}/recommendations"
+    )
+    assert cross_business.status_code == 404
+
+
+def test_phase3b_v1_recommendation_workflow_routes(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id)
+    _seed_principal(db_session, business_id=seeded_business.id, principal_id="owner-v1")
+    audit_run_id = _seed_completed_audit_run(db_session, business_id=seeded_business.id, site_id=site_id)
+
+    create_run = client.post(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+        json={"audit_run_id": audit_run_id},
+    )
+    assert create_run.status_code == 201
+    run_id = create_run.json()["id"]
+
+    rec_list = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/recommendations"
+    )
+    recommendation_id = rec_list.json()["items"][0]["id"]
+
+    patch_rec = client.patch(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/{recommendation_id}",
+        json={"status": "in_progress", "assigned_principal_id": "owner-v1"},
+    )
+    assert patch_rec.status_code == 200
+    assert patch_rec.json()["status"] == "in_progress"
+
+    list_site = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations",
+        params={"sort_by": "updated_at", "sort_order": "asc"},
+    )
+    assert list_site.status_code == 200
+
+    backlog = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/backlog"
+    )
+    assert backlog.status_code == 200
+
+    report = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/prioritized-report"
+    )
+    assert report.status_code == 200
