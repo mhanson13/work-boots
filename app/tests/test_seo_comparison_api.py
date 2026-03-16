@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.api.deps import TenantContext, get_db, get_tenant_context
 from app.api.routes.seo import router as seo_router
+from app.api.routes.seo import router_v1 as seo_v1_router
 from app.models.business import Business
 from app.models.seo_audit_finding import SEOAuditFinding
 from app.models.seo_audit_page import SEOAuditPage
@@ -29,6 +30,7 @@ def _override_tenant_context(business_id: str):
 def _make_client(db_session, *, business_id: str) -> TestClient:
     app = FastAPI()
     app.include_router(seo_router)
+    app.include_router(seo_v1_router)
 
     def override_get_db():
         try:
@@ -462,3 +464,71 @@ def test_comparison_report_endpoint_returns_run_and_findings(db_session, seeded_
 
     cross_tenant_report = client.get(f"/api/businesses/{other_business.id}/seo/comparison-runs/{run_id}/report")
     assert cross_tenant_report.status_code == 404
+
+
+def test_phase2_v1_site_scoped_comparison_routes(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id, competitor_set_id, competitor_domain_id, snapshot_run_id = _create_site_set_domain_snapshot(
+        client,
+        seeded_business.id,
+    )
+    snapshot_run = _mark_snapshot_completed(db_session, snapshot_run_id=snapshot_run_id)
+    _seed_snapshot_page(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        competitor_set_id=competitor_set_id,
+        snapshot_run_id=snapshot_run.id,
+        competitor_domain_id=competitor_domain_id,
+        url="https://competitor.example/",
+        title="Home",
+        meta_description="desc",
+        h1_count=1,
+        word_count=180,
+        canonical_url="https://competitor.example/",
+    )
+    baseline_run = _seed_baseline_audit_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        page_count=2,
+        finding_counts={},
+    )
+    db_session.commit()
+
+    create_run = client.post(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-comparison-runs",
+        json={
+            "competitor_set_id": competitor_set_id,
+            "snapshot_run_id": snapshot_run.id,
+            "baseline_audit_run_id": baseline_run.id,
+        },
+    )
+    assert create_run.status_code == 201
+    run_id = create_run.json()["id"]
+
+    list_runs = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-comparison-runs"
+    )
+    assert list_runs.status_code == 200
+    assert list_runs.json()["total"] >= 1
+
+    get_run = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-comparison-runs/{run_id}"
+    )
+    assert get_run.status_code == 200
+
+    findings = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-comparison-runs/{run_id}/findings"
+    )
+    assert findings.status_code == 200
+
+    report = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-comparison-runs/{run_id}/report"
+    )
+    assert report.status_code == 200
+
+    wrong_site = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{uuid4()}/competitor-comparison-runs/{run_id}"
+    )
+    assert wrong_site.status_code == 404

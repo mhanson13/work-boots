@@ -219,6 +219,13 @@ class SEOCompetitorComparisonService:
             competitor_set_id,
         )
 
+    def list_runs_for_site(self, *, business_id: str, site_id: str) -> list[SEOCompetitorComparisonRun]:
+        self._require_business(business_id)
+        return self.seo_competitor_repository.list_comparison_runs_for_business_site(
+            business_id,
+            site_id,
+        )
+
     def get_run(self, *, business_id: str, comparison_run_id: str) -> SEOCompetitorComparisonRun:
         self._require_business(business_id)
         run = self.seo_competitor_repository.get_comparison_run_for_business(business_id, comparison_run_id)

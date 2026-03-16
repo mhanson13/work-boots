@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.api.deps import TenantContext, get_db, get_tenant_context
 from app.api.routes.seo import router as seo_router
+from app.api.routes.seo import router_v1 as seo_v1_router
 from app.models.business import Business
 from app.models.seo_audit_run import SEOAuditRun
 
@@ -25,6 +26,7 @@ def _override_tenant_context(business_id: str):
 def _make_client(db_session, *, business_id: str) -> TestClient:
     app = FastAPI()
     app.include_router(seo_router)
+    app.include_router(seo_v1_router)
 
     def override_get_db():
         try:
@@ -209,3 +211,50 @@ def test_snapshot_run_rejects_cross_business_client_audit_reference(db_session, 
         json={"client_audit_run_id": foreign_run.id},
     )
     assert create_snapshot_run.status_code == 422
+
+
+def test_phase2_v1_site_scoped_competitor_routes(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+
+    create_site = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites",
+        json={"display_name": "Main", "base_url": "https://example.com/"},
+    )
+    assert create_site.status_code == 201
+    site_id = create_site.json()["id"]
+
+    create_set = client.post(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-sets",
+        json={"name": "Front Range"},
+    )
+    assert create_set.status_code == 201
+    set_id = create_set.json()["id"]
+
+    get_set = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-sets/{set_id}"
+    )
+    assert get_set.status_code == 200
+    assert get_set.json()["site_id"] == site_id
+
+    add_domain = client.post(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-sets/{set_id}/domains",
+        json={"domain": "competitor.com"},
+    )
+    assert add_domain.status_code == 201
+
+    create_snapshot = client.post(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-sets/{set_id}/snapshot-runs",
+        json={"max_domains": 5, "max_pages_per_domain": 3, "max_depth": 1},
+    )
+    assert create_snapshot.status_code == 201
+    snapshot_id = create_snapshot.json()["id"]
+
+    get_snapshot = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-snapshot-runs/{snapshot_id}"
+    )
+    assert get_snapshot.status_code == 200
+
+    wrong_site_set = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{uuid4()}/competitor-sets/{set_id}"
+    )
+    assert wrong_site_set.status_code == 404

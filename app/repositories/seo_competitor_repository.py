@@ -252,6 +252,19 @@ class SEOCompetitorRepository:
         )
         return list(self.session.scalars(stmt))
 
+    def list_comparison_runs_for_business_site(
+        self,
+        business_id: str,
+        site_id: str,
+    ) -> list[SEOCompetitorComparisonRun]:
+        stmt: Select[tuple[SEOCompetitorComparisonRun]] = (
+            select(SEOCompetitorComparisonRun)
+            .where(SEOCompetitorComparisonRun.business_id == business_id)
+            .where(SEOCompetitorComparisonRun.site_id == site_id)
+            .order_by(SEOCompetitorComparisonRun.created_at.desc(), SEOCompetitorComparisonRun.id.desc())
+        )
+        return list(self.session.scalars(stmt))
+
     def add_comparison_finding(self, finding: SEOCompetitorComparisonFinding) -> SEOCompetitorComparisonFinding:
         comparison_run = self.session.scalar(
             select(SEOCompetitorComparisonRun).where(SEOCompetitorComparisonRun.id == finding.comparison_run_id)

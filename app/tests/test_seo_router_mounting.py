@@ -17,3 +17,15 @@ def test_main_app_mounts_seo_routes() -> None:
     assert "/api/businesses/{business_id}/seo/comparison-runs/{run_id}/summaries" in paths
     assert "/api/businesses/{business_id}/seo/comparison-runs/{run_id}/summaries/latest" in paths
     assert "/api/businesses/{business_id}/seo/comparison-summaries/{summary_id}" in paths
+    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-sets" in paths
+    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-sets/{competitor_set_id}" in paths
+    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-sets/{competitor_set_id}/domains" in paths
+    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-sets/{competitor_set_id}/snapshot-runs" in paths
+    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-snapshot-runs/{snapshot_run_id}" in paths
+    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs" in paths
+    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}" in paths
+    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}/findings" in paths
+    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}/report" in paths
+    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}/summaries" in paths
+    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}/summaries/latest" in paths
+    assert "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-summaries/{summary_id}" in paths

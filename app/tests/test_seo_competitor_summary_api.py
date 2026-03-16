@@ -12,6 +12,7 @@ from app.api.deps import (
     get_tenant_context,
 )
 from app.api.routes.seo import router as seo_router
+from app.api.routes.seo import router_v1 as seo_v1_router
 from app.integrations.seo_summary_provider import (
     SEOCompetitorComparisonSummaryOutput,
     SEOCompetitorComparisonSummaryProvider,
@@ -110,6 +111,7 @@ def _make_client(
 ) -> TestClient:
     app = FastAPI()
     app.include_router(seo_router)
+    app.include_router(seo_v1_router)
 
     def override_get_db():
         try:
@@ -498,3 +500,38 @@ def test_competitor_summary_is_grounded_in_persisted_comparison_outputs_only(db_
     assert call["findings_by_type"] == {"sentinel_gap": 7}
     assert call["findings_by_category"] == {"TECHNICAL": 7}
     assert call["findings_by_severity"] == {"INFO": 7}
+
+
+def test_phase2_v1_site_scoped_summary_routes(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    run_id, _ = _create_completed_comparison_run(client, db_session, seeded_business.id)
+    run = db_session.get(SEOCompetitorComparisonRun, run_id)
+    assert run is not None
+    site_id = run.site_id
+
+    create_summary = client.post(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-comparison-runs/{run_id}/summaries"
+    )
+    assert create_summary.status_code == 201
+    summary_id = create_summary.json()["id"]
+
+    list_summaries = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-comparison-runs/{run_id}/summaries"
+    )
+    assert list_summaries.status_code == 200
+    assert list_summaries.json()["total"] >= 1
+
+    latest = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-comparison-runs/{run_id}/summaries/latest"
+    )
+    assert latest.status_code == 200
+
+    by_id = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-summaries/{summary_id}"
+    )
+    assert by_id.status_code == 200
+
+    wrong_site = client.get(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{uuid4()}/competitor-summaries/{summary_id}"
+    )
+    assert wrong_site.status_code == 404

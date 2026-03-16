@@ -122,6 +122,12 @@ class SEOCompetitorComparisonRunCreateRequest(BaseModel):
     baseline_audit_run_id: str | None = None
 
 
+class SEOCompetitorComparisonRunSiteCreateRequest(BaseModel):
+    competitor_set_id: str
+    snapshot_run_id: str
+    baseline_audit_run_id: str | None = None
+
+
 class SEOCompetitorComparisonRunRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

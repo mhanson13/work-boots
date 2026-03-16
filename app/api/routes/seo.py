@@ -38,6 +38,7 @@ from app.schemas.seo_competitor import (
     SEOCompetitorComparisonSummaryRead,
     SEOCompetitorComparisonRunRollupsRead,
     SEOCompetitorComparisonRunCreateRequest,
+    SEOCompetitorComparisonRunSiteCreateRequest,
     SEOCompetitorComparisonRunListResponse,
     SEOCompetitorComparisonRunRead,
     SEOCompetitorDomainCreateRequest,
@@ -72,6 +73,12 @@ from app.services.seo_summary import SEOSummaryNotFoundError, SEOSummaryService,
 from app.schemas.seo_summary import SEOAuditSummaryRead
 
 router = APIRouter(prefix="/api/businesses/{business_id}/seo", tags=["seo"])
+router_v1 = APIRouter(prefix="/api/v1/businesses/{business_id}/seo", tags=["seo"])
+
+
+def _assert_site_match(*, expected_site_id: str, actual_site_id: str, detail: str) -> None:
+    if actual_site_id != expected_site_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
 
 
 @router.get("/sites", response_model=SEOSiteListResponse)
@@ -346,6 +353,7 @@ def summarize_seo_audit_run(
 
 
 @router.get("/sites/{site_id}/competitor-sets", response_model=SEOCompetitorSetListResponse)
+@router_v1.get("/sites/{site_id}/competitor-sets", response_model=SEOCompetitorSetListResponse)
 def list_competitor_sets(
     business_id: str,
     site_id: str,
@@ -367,6 +375,7 @@ def list_competitor_sets(
 
 
 @router.post("/sites/{site_id}/competitor-sets", response_model=SEOCompetitorSetRead, status_code=status.HTTP_201_CREATED)
+@router_v1.post("/sites/{site_id}/competitor-sets", response_model=SEOCompetitorSetRead, status_code=status.HTTP_201_CREATED)
 def create_competitor_set(
     business_id: str,
     site_id: str,
@@ -845,4 +854,606 @@ def get_competitor_comparison_summary(
         )
     except SEOCompetitorSummaryNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return SEOCompetitorComparisonSummaryRead.model_validate(summary)
+
+
+@router_v1.get("/sites/{site_id}/competitor-sets/{competitor_set_id}", response_model=SEOCompetitorSetRead)
+def get_competitor_set_for_site_v1(
+    business_id: str,
+    site_id: str,
+    competitor_set_id: str,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    seo_competitor_service: SEOCompetitorService = Depends(get_seo_competitor_service),
+) -> SEOCompetitorSetRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        competitor_set = seo_competitor_service.get_set(
+            business_id=scoped_business_id,
+            competitor_set_id=competitor_set_id,
+        )
+    except (SEOSiteNotFoundError, SEOCompetitorNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    _assert_site_match(
+        expected_site_id=site_id,
+        actual_site_id=competitor_set.site_id,
+        detail="Competitor set not found",
+    )
+    return SEOCompetitorSetRead.model_validate(competitor_set)
+
+
+@router_v1.get(
+    "/sites/{site_id}/competitor-sets/{competitor_set_id}/domains",
+    response_model=SEOCompetitorDomainListResponse,
+)
+def list_competitor_domains_v1(
+    business_id: str,
+    site_id: str,
+    competitor_set_id: str,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    seo_competitor_service: SEOCompetitorService = Depends(get_seo_competitor_service),
+) -> SEOCompetitorDomainListResponse:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        competitor_set = seo_competitor_service.get_set(
+            business_id=scoped_business_id,
+            competitor_set_id=competitor_set_id,
+        )
+        items = seo_competitor_service.list_domains(
+            business_id=scoped_business_id,
+            competitor_set_id=competitor_set_id,
+        )
+    except (SEOSiteNotFoundError, SEOCompetitorNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    _assert_site_match(
+        expected_site_id=site_id,
+        actual_site_id=competitor_set.site_id,
+        detail="Competitor set not found",
+    )
+    return SEOCompetitorDomainListResponse(
+        items=[SEOCompetitorDomainRead.model_validate(item) for item in items],
+        total=len(items),
+    )
+
+
+@router_v1.post(
+    "/sites/{site_id}/competitor-sets/{competitor_set_id}/domains",
+    response_model=SEOCompetitorDomainRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_competitor_domain_v1(
+    business_id: str,
+    site_id: str,
+    competitor_set_id: str,
+    payload: SEOCompetitorDomainCreateRequest,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    seo_competitor_service: SEOCompetitorService = Depends(get_seo_competitor_service),
+) -> SEOCompetitorDomainRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        competitor_set = seo_competitor_service.get_set(
+            business_id=scoped_business_id,
+            competitor_set_id=competitor_set_id,
+        )
+        competitor_domain = seo_competitor_service.add_domain(
+            business_id=scoped_business_id,
+            competitor_set_id=competitor_set_id,
+            payload=payload,
+        )
+    except (SEOSiteNotFoundError, SEOCompetitorNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except SEOCompetitorValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    _assert_site_match(
+        expected_site_id=site_id,
+        actual_site_id=competitor_set.site_id,
+        detail="Competitor set not found",
+    )
+    return SEOCompetitorDomainRead.model_validate(competitor_domain)
+
+
+@router_v1.post(
+    "/sites/{site_id}/competitor-sets/{competitor_set_id}/snapshot-runs",
+    response_model=SEOCompetitorSnapshotRunRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_competitor_snapshot_run_v1(
+    business_id: str,
+    site_id: str,
+    competitor_set_id: str,
+    payload: SEOCompetitorSnapshotRunCreateRequest,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    seo_competitor_service: SEOCompetitorService = Depends(get_seo_competitor_service),
+) -> SEOCompetitorSnapshotRunRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        competitor_set = seo_competitor_service.get_set(
+            business_id=scoped_business_id,
+            competitor_set_id=competitor_set_id,
+        )
+        snapshot_run = seo_competitor_service.create_snapshot_run(
+            business_id=scoped_business_id,
+            competitor_set_id=competitor_set_id,
+            payload=payload,
+            created_by_principal_id=tenant_context.principal_id,
+        )
+    except (SEOSiteNotFoundError, SEOCompetitorNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except SEOCompetitorValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    _assert_site_match(
+        expected_site_id=site_id,
+        actual_site_id=competitor_set.site_id,
+        detail="Competitor set not found",
+    )
+    return SEOCompetitorSnapshotRunRead.model_validate(snapshot_run)
+
+
+@router_v1.get(
+    "/sites/{site_id}/competitor-sets/{competitor_set_id}/snapshot-runs",
+    response_model=SEOCompetitorSnapshotRunListResponse,
+)
+def list_competitor_snapshot_runs_v1(
+    business_id: str,
+    site_id: str,
+    competitor_set_id: str,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    seo_competitor_service: SEOCompetitorService = Depends(get_seo_competitor_service),
+) -> SEOCompetitorSnapshotRunListResponse:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        competitor_set = seo_competitor_service.get_set(
+            business_id=scoped_business_id,
+            competitor_set_id=competitor_set_id,
+        )
+        items = seo_competitor_service.list_snapshot_runs(
+            business_id=scoped_business_id,
+            competitor_set_id=competitor_set_id,
+        )
+    except (SEOSiteNotFoundError, SEOCompetitorNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    _assert_site_match(
+        expected_site_id=site_id,
+        actual_site_id=competitor_set.site_id,
+        detail="Competitor set not found",
+    )
+    return SEOCompetitorSnapshotRunListResponse(
+        items=[SEOCompetitorSnapshotRunRead.model_validate(item) for item in items],
+        total=len(items),
+    )
+
+
+@router_v1.get(
+    "/sites/{site_id}/competitor-snapshot-runs/{snapshot_run_id}",
+    response_model=SEOCompetitorSnapshotRunRead,
+)
+def get_competitor_snapshot_run_v1(
+    business_id: str,
+    site_id: str,
+    snapshot_run_id: str,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    seo_competitor_service: SEOCompetitorService = Depends(get_seo_competitor_service),
+) -> SEOCompetitorSnapshotRunRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        snapshot_run = seo_competitor_service.get_snapshot_run(
+            business_id=scoped_business_id,
+            snapshot_run_id=snapshot_run_id,
+        )
+    except (SEOSiteNotFoundError, SEOCompetitorNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    _assert_site_match(
+        expected_site_id=site_id,
+        actual_site_id=snapshot_run.site_id,
+        detail="Competitor snapshot run not found",
+    )
+    return SEOCompetitorSnapshotRunRead.model_validate(snapshot_run)
+
+
+@router_v1.post(
+    "/sites/{site_id}/competitor-comparison-runs",
+    response_model=SEOCompetitorComparisonRunRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_competitor_comparison_run_v1(
+    business_id: str,
+    site_id: str,
+    payload: SEOCompetitorComparisonRunSiteCreateRequest,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    seo_competitor_service: SEOCompetitorService = Depends(get_seo_competitor_service),
+    comparison_service: SEOCompetitorComparisonService = Depends(get_seo_competitor_comparison_service),
+) -> SEOCompetitorComparisonRunRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        competitor_set = seo_competitor_service.get_set(
+            business_id=scoped_business_id,
+            competitor_set_id=payload.competitor_set_id,
+        )
+        _assert_site_match(
+            expected_site_id=site_id,
+            actual_site_id=competitor_set.site_id,
+            detail="Competitor set not found",
+        )
+        result = comparison_service.run_comparison(
+            business_id=scoped_business_id,
+            competitor_set_id=payload.competitor_set_id,
+            payload=SEOCompetitorComparisonRunCreateRequest(
+                snapshot_run_id=payload.snapshot_run_id,
+                baseline_audit_run_id=payload.baseline_audit_run_id,
+            ),
+            created_by_principal_id=tenant_context.principal_id,
+        )
+    except (SEOSiteNotFoundError, SEOCompetitorNotFoundError, SEOCompetitorComparisonNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except SEOCompetitorComparisonValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    _assert_site_match(
+        expected_site_id=site_id,
+        actual_site_id=result.run.site_id,
+        detail="Competitor comparison run not found",
+    )
+    return SEOCompetitorComparisonRunRead.model_validate(result.run)
+
+
+@router_v1.get(
+    "/sites/{site_id}/competitor-comparison-runs",
+    response_model=SEOCompetitorComparisonRunListResponse,
+)
+def list_competitor_comparison_runs_v1(
+    business_id: str,
+    site_id: str,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    comparison_service: SEOCompetitorComparisonService = Depends(get_seo_competitor_comparison_service),
+) -> SEOCompetitorComparisonRunListResponse:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        items = comparison_service.list_runs_for_site(
+            business_id=scoped_business_id,
+            site_id=site_id,
+        )
+    except (SEOSiteNotFoundError, SEOCompetitorComparisonNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return SEOCompetitorComparisonRunListResponse(
+        items=[SEOCompetitorComparisonRunRead.model_validate(item) for item in items],
+        total=len(items),
+    )
+
+
+@router_v1.get(
+    "/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}",
+    response_model=SEOCompetitorComparisonRunRead,
+)
+def get_competitor_comparison_run_v1(
+    business_id: str,
+    site_id: str,
+    comparison_run_id: str,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    comparison_service: SEOCompetitorComparisonService = Depends(get_seo_competitor_comparison_service),
+) -> SEOCompetitorComparisonRunRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        run = comparison_service.get_run(
+            business_id=scoped_business_id,
+            comparison_run_id=comparison_run_id,
+        )
+    except (SEOSiteNotFoundError, SEOCompetitorComparisonNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    _assert_site_match(
+        expected_site_id=site_id,
+        actual_site_id=run.site_id,
+        detail="Competitor comparison run not found",
+    )
+    return SEOCompetitorComparisonRunRead.model_validate(run)
+
+
+@router_v1.get(
+    "/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}/findings",
+    response_model=SEOCompetitorComparisonFindingListResponse,
+)
+def list_competitor_comparison_findings_v1(
+    business_id: str,
+    site_id: str,
+    comparison_run_id: str,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    comparison_service: SEOCompetitorComparisonService = Depends(get_seo_competitor_comparison_service),
+) -> SEOCompetitorComparisonFindingListResponse:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        run = comparison_service.get_run(
+            business_id=scoped_business_id,
+            comparison_run_id=comparison_run_id,
+        )
+        findings = comparison_service.list_findings(
+            business_id=scoped_business_id,
+            comparison_run_id=comparison_run_id,
+        )
+    except (SEOSiteNotFoundError, SEOCompetitorComparisonNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    _assert_site_match(
+        expected_site_id=site_id,
+        actual_site_id=run.site_id,
+        detail="Competitor comparison run not found",
+    )
+    by_category, by_severity = comparison_service.summarize_findings(findings=findings)
+    return SEOCompetitorComparisonFindingListResponse(
+        items=[SEOCompetitorComparisonFindingRead.model_validate(item) for item in findings],
+        total=len(findings),
+        by_category=by_category,
+        by_severity=by_severity,
+    )
+
+
+@router_v1.get(
+    "/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}/report",
+    response_model=SEOCompetitorComparisonReportRead,
+)
+def get_competitor_comparison_report_v1(
+    business_id: str,
+    site_id: str,
+    comparison_run_id: str,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    comparison_service: SEOCompetitorComparisonService = Depends(get_seo_competitor_comparison_service),
+) -> SEOCompetitorComparisonReportRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        report = comparison_service.get_report(
+            business_id=scoped_business_id,
+            comparison_run_id=comparison_run_id,
+        )
+    except (SEOSiteNotFoundError, SEOCompetitorComparisonNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    _assert_site_match(
+        expected_site_id=site_id,
+        actual_site_id=report.run.site_id,
+        detail="Competitor comparison run not found",
+    )
+    metric_rollups = []
+    for metric_key in sorted(report.metric_rollups):
+        metric = report.metric_rollups[metric_key]
+        metric_rollups.append(
+            SEOCompetitorComparisonMetricRollupRead(
+                key=metric_key,
+                title=str(metric.get("title", metric_key)),
+                category=str(metric.get("category", "TECHNICAL")),
+                unit=str(metric.get("unit", "count")),
+                higher_is_better=bool(metric.get("higher_is_better", False)),
+                client_value=int(metric.get("client_value", 0)),
+                competitor_value=int(metric.get("competitor_value", 0)),
+                delta=int(metric.get("delta", 0)),
+                severity=str(metric.get("severity", "INFO")),
+                gap_direction=str(metric.get("gap_direction", "unknown")),
+            )
+        )
+    return SEOCompetitorComparisonReportRead(
+        run=SEOCompetitorComparisonRunRead.model_validate(report.run),
+        rollups=SEOCompetitorComparisonRunRollupsRead(
+            client_pages_analyzed=report.run.client_pages_analyzed,
+            competitor_pages_analyzed=report.run.competitor_pages_analyzed,
+            findings_by_type=report.findings_by_type,
+            findings_by_category=report.findings_by_category,
+            findings_by_severity=report.findings_by_severity,
+            metric_rollups=metric_rollups,
+        ),
+        findings=SEOCompetitorComparisonFindingListResponse(
+            items=[SEOCompetitorComparisonFindingRead.model_validate(item) for item in report.findings],
+            total=len(report.findings),
+            by_category=report.findings_by_category,
+            by_severity=report.findings_by_severity,
+        ),
+    )
+
+
+@router_v1.post(
+    "/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}/summaries",
+    response_model=SEOCompetitorComparisonSummaryRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def summarize_competitor_comparison_run_v1(
+    business_id: str,
+    site_id: str,
+    comparison_run_id: str,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    comparison_service: SEOCompetitorComparisonService = Depends(get_seo_competitor_comparison_service),
+    summary_service: SEOCompetitorSummaryService = Depends(get_seo_competitor_summary_service),
+) -> SEOCompetitorComparisonSummaryRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        run = comparison_service.get_run(
+            business_id=scoped_business_id,
+            comparison_run_id=comparison_run_id,
+        )
+        result = summary_service.summarize_run(
+            business_id=scoped_business_id,
+            comparison_run_id=comparison_run_id,
+            created_by_principal_id=tenant_context.principal_id,
+        )
+    except (
+        SEOSiteNotFoundError,
+        SEOCompetitorComparisonNotFoundError,
+        SEOCompetitorSummaryNotFoundError,
+    ) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except SEOCompetitorSummaryValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    _assert_site_match(
+        expected_site_id=site_id,
+        actual_site_id=run.site_id,
+        detail="Competitor comparison run not found",
+    )
+    return SEOCompetitorComparisonSummaryRead.model_validate(result.summary)
+
+
+@router_v1.get(
+    "/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}/summaries",
+    response_model=SEOCompetitorComparisonSummaryListResponse,
+)
+def list_competitor_comparison_summaries_v1(
+    business_id: str,
+    site_id: str,
+    comparison_run_id: str,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    comparison_service: SEOCompetitorComparisonService = Depends(get_seo_competitor_comparison_service),
+    summary_service: SEOCompetitorSummaryService = Depends(get_seo_competitor_summary_service),
+) -> SEOCompetitorComparisonSummaryListResponse:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        run = comparison_service.get_run(
+            business_id=scoped_business_id,
+            comparison_run_id=comparison_run_id,
+        )
+        items = summary_service.list_summaries(
+            business_id=scoped_business_id,
+            comparison_run_id=comparison_run_id,
+        )
+    except (
+        SEOSiteNotFoundError,
+        SEOCompetitorComparisonNotFoundError,
+        SEOCompetitorSummaryNotFoundError,
+    ) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    _assert_site_match(
+        expected_site_id=site_id,
+        actual_site_id=run.site_id,
+        detail="Competitor comparison run not found",
+    )
+    return SEOCompetitorComparisonSummaryListResponse(
+        items=[SEOCompetitorComparisonSummaryRead.model_validate(item) for item in items],
+        total=len(items),
+    )
+
+
+@router_v1.get(
+    "/sites/{site_id}/competitor-comparison-runs/{comparison_run_id}/summaries/latest",
+    response_model=SEOCompetitorComparisonSummaryRead,
+)
+def get_latest_competitor_comparison_summary_v1(
+    business_id: str,
+    site_id: str,
+    comparison_run_id: str,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    comparison_service: SEOCompetitorComparisonService = Depends(get_seo_competitor_comparison_service),
+    summary_service: SEOCompetitorSummaryService = Depends(get_seo_competitor_summary_service),
+) -> SEOCompetitorComparisonSummaryRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        run = comparison_service.get_run(
+            business_id=scoped_business_id,
+            comparison_run_id=comparison_run_id,
+        )
+        summary = summary_service.get_latest_summary(
+            business_id=scoped_business_id,
+            comparison_run_id=comparison_run_id,
+        )
+    except (
+        SEOSiteNotFoundError,
+        SEOCompetitorComparisonNotFoundError,
+        SEOCompetitorSummaryNotFoundError,
+    ) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    _assert_site_match(
+        expected_site_id=site_id,
+        actual_site_id=run.site_id,
+        detail="Competitor comparison run not found",
+    )
+    return SEOCompetitorComparisonSummaryRead.model_validate(summary)
+
+
+@router_v1.get(
+    "/sites/{site_id}/competitor-summaries/{summary_id}",
+    response_model=SEOCompetitorComparisonSummaryRead,
+)
+def get_competitor_comparison_summary_v1(
+    business_id: str,
+    site_id: str,
+    summary_id: str,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    summary_service: SEOCompetitorSummaryService = Depends(get_seo_competitor_summary_service),
+) -> SEOCompetitorComparisonSummaryRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        summary = summary_service.get_summary(
+            business_id=scoped_business_id,
+            summary_id=summary_id,
+        )
+    except (SEOSiteNotFoundError, SEOCompetitorSummaryNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    _assert_site_match(
+        expected_site_id=site_id,
+        actual_site_id=summary.site_id,
+        detail="Competitor summary not found",
+    )
     return SEOCompetitorComparisonSummaryRead.model_validate(summary)
