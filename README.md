@@ -72,6 +72,7 @@ Project docs live under [`docs/`](docs):
 - `seo-ai-phase2-competitor-intelligence.md`
 - `seo-ai-phase2-data-model.md`
 - `seo-ai-phase2-api.md`
+- `seo-ai-phase2a-foundations-summary.md`
 - `phase3-response-and-reminders.md`
 - `phase4-notifications-and-hardening.md`
 - `security-architecture.md`

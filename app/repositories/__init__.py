@@ -5,6 +5,7 @@ from app.repositories.lead_repository import LeadRepository
 from app.repositories.principal_repository import PrincipalRepository
 from app.repositories.seo_audit_repository import SEOAuditRepository
 from app.repositories.seo_audit_summary_repository import SEOAuditSummaryRepository
+from app.repositories.seo_competitor_repository import SEOCompetitorRepository
 from app.repositories.seo_site_repository import SEOSiteRepository
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     "PrincipalRepository",
     "SEOAuditRepository",
     "SEOAuditSummaryRepository",
+    "SEOCompetitorRepository",
     "SEOSiteRepository",
 ]

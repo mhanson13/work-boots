@@ -31,6 +31,7 @@ from app.repositories.lead_repository import LeadRepository
 from app.repositories.principal_repository import PrincipalRepository
 from app.repositories.seo_audit_repository import SEOAuditRepository
 from app.repositories.seo_audit_summary_repository import SEOAuditSummaryRepository
+from app.repositories.seo_competitor_repository import SEOCompetitorRepository
 from app.repositories.seo_site_repository import SEOSiteRepository
 from app.services.business_settings import BusinessSettingsService
 from app.services.api_credentials import APICredentialService
@@ -45,6 +46,7 @@ from app.services.principals import PrincipalService
 from app.services.reminder_engine import ReminderEngineService
 from app.services.response_metrics import ResponseMetricsService
 from app.services.seo_audit import SEOAuditService
+from app.services.seo_competitors import SEOCompetitorService
 from app.services.seo_crawler import SEOCrawler
 from app.services.seo_extractor import SEOExtractor
 from app.services.seo_finding_rules import SEOFindingRules
@@ -104,6 +106,10 @@ def get_seo_audit_repository(db: Session = Depends(get_db)) -> SEOAuditRepositor
 
 def get_seo_audit_summary_repository(db: Session = Depends(get_db)) -> SEOAuditSummaryRepository:
     return SEOAuditSummaryRepository(db)
+
+
+def get_seo_competitor_repository(db: Session = Depends(get_db)) -> SEOCompetitorRepository:
+    return SEOCompetitorRepository(db)
 
 
 def get_parser_service() -> LeadParserService:
@@ -312,6 +318,20 @@ def get_seo_summary_service(
         seo_audit_repository=seo_audit_repository,
         seo_audit_summary_repository=seo_audit_summary_repository,
         provider=provider,
+    )
+
+
+def get_seo_competitor_service(
+    db: Session = Depends(get_db),
+    business_repository: BusinessRepository = Depends(get_business_repository),
+    seo_site_repository: SEOSiteRepository = Depends(get_seo_site_repository),
+    seo_competitor_repository: SEOCompetitorRepository = Depends(get_seo_competitor_repository),
+) -> SEOCompetitorService:
+    return SEOCompetitorService(
+        session=db,
+        business_repository=business_repository,
+        seo_site_repository=seo_site_repository,
+        seo_competitor_repository=seo_competitor_repository,
     )
 
 

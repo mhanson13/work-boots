@@ -27,6 +27,18 @@ from app.schemas.seo_audit import (
     SEOAuditRunRead,
 )
 from app.schemas.seo_summary import SEOAuditSummaryRead
+from app.schemas.seo_competitor import (
+    SEOCompetitorDomainCreateRequest,
+    SEOCompetitorDomainListResponse,
+    SEOCompetitorDomainRead,
+    SEOCompetitorSetCreateRequest,
+    SEOCompetitorSetListResponse,
+    SEOCompetitorSetRead,
+    SEOCompetitorSetUpdateRequest,
+    SEOCompetitorSnapshotRunCreateRequest,
+    SEOCompetitorSnapshotRunListResponse,
+    SEOCompetitorSnapshotRunRead,
+)
 from app.schemas.lead import (
     EmailIntakeRequest,
     EmailIntakeResponse,
@@ -85,5 +97,15 @@ __all__ = [
     "SEOAuditRunListResponse",
     "SEOAuditRunRead",
     "SEOAuditSummaryRead",
+    "SEOCompetitorDomainCreateRequest",
+    "SEOCompetitorDomainListResponse",
+    "SEOCompetitorDomainRead",
+    "SEOCompetitorSetCreateRequest",
+    "SEOCompetitorSetListResponse",
+    "SEOCompetitorSetRead",
+    "SEOCompetitorSetUpdateRequest",
+    "SEOCompetitorSnapshotRunCreateRequest",
+    "SEOCompetitorSnapshotRunListResponse",
+    "SEOCompetitorSnapshotRunRead",
     "StatusPatchResponse",
 ]
