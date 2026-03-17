@@ -134,6 +134,11 @@ Implemented baseline controls:
   - API-scoped `Content-Security-Policy`
 - configurable HSTS (`SECURITY_HEADERS_HSTS_ENABLED`, `SECURITY_HEADERS_HSTS_MAX_AGE_SECONDS`)
 
+Pilot runtime validation expectations:
+- validate effective CORS behavior through ingress for the deployed operator UI origin(s)
+- validate security headers on live `/api` responses after ingress/proxy traversal
+- validate TLS termination and HSTS behavior in the production-like ingress path
+
 Known risk posture (deferred to Phase 5):
 - token handling can be further hardened with secure `httpOnly` cookie-based refresh model + CSRF controls.
 
@@ -145,11 +150,11 @@ Known risk posture (deferred to Phase 5):
   - scoped quality gates (`ruff`, `black --check`)
   - narrow mypy gate (`app/core/config.py`) for incremental adoption
   - Alembic migration-chain validation
-  - backend tests with coverage reporting (`--cov=app`, term + XML)
+  - backend tests with coverage reporting (`--cov=app`, term + XML) and a modest CI fail-under floor (`--cov-fail-under=70`)
 - `frontend-ci.yml`:
   - deterministic install (`npm ci`)
   - lint/typecheck/build
-  - runs frontend tests only when a `test` script exists; otherwise logs explicit no-tests status
+  - runs frontend tests only when a `test` script exists; otherwise logs explicit no-tests status (current repo state: no frontend `test` script)
 - `deploy-gke.yml`:
   - build + push backend/UI OCI images
   - authenticate with GCP using Workload Identity Federation

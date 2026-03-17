@@ -100,11 +100,14 @@ Remaining:
 - verify operator UI lint/typecheck/build in the target CI environment with production-like config
 - verify runtime session behavior (token exchange, refresh, logout) in deployed environment
 - confirm documented behavior matches actual operator usage and browser lifecycle
+- explicitly confirm current frontend CI posture (lint/typecheck/build enforced; no frontend `test` script currently defined)
 
 ### C) CSP/Security Header Implementation Or Verification
 Remaining:
 - validate effective header behavior end-to-end through ingress and UI hosting (not only app responses)
 - confirm ingress/proxy layers preserve or intentionally override app-level security headers
+- validate CORS allowlist behavior in deployed environment against the configured operator UI origins
+- validate TLS termination and HSTS behavior at ingress in production-like environment
 
 ### D) Production Config Verification For Fail-Closed Security Defaults
 Remaining:
@@ -114,6 +117,7 @@ Remaining:
   - `RATE_LIMIT_FAIL_OPEN=false`
   - `SESSION_STATE_FAIL_OPEN=false`
 - validate deployment manifests/secrets/config include required auth/session/pepper settings
+- validate Redis DNS/network reachability from API pods in each target namespace
 
 ### E) Image Existence And Deploy Verification Checks
 Remaining:
@@ -129,6 +133,21 @@ Remaining:
   - operator UI login/session troubleshooting
   - automation run monitoring and failure handling
   - incident response contacts and escalation path
+
+## Phase 4 Exit Checklist (Pilot Signoff)
+Use this checklist as the required signoff gate to mark Phase 4 complete.
+
+- [ ] Frontend CI passes deterministically in GitHub Actions (`npm ci`, lint, typecheck, build).
+- [ ] Frontend runtime auth flow validated in deployed environment (exchange, refresh, logout, unauthorized handling).
+- [ ] Redis is reachable from API pods in target namespace(s).
+- [ ] Redis-backed security controls are enabled in pilot/prod (`RATE_LIMIT_BACKEND=redis`, `SESSION_STATE_BACKEND=redis`).
+- [ ] Fail-closed posture confirmed in pilot/prod (`RATE_LIMIT_FAIL_OPEN=false`, `SESSION_STATE_FAIL_OPEN=false`).
+- [ ] CORS allowlist validated against expected operator UI origin(s); wildcard not used.
+- [ ] API security headers validated through ingress (CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, HSTS as configured).
+- [ ] TLS termination and certificate posture validated at ingress.
+- [ ] Deployment flow validated end-to-end (build -> migration gate -> rollout -> rollout status).
+- [ ] Pilot secrets/config populated and reviewed (session secret, Google OIDC client ID, API token hash pepper, Redis URL).
+- [ ] Required GitHub branch protection checks enabled for backend CI, frontend CI, and deploy workflow.
 
 ## Suggested Work Breakdown
 
@@ -161,6 +180,9 @@ Phase 4 is complete for pilot when all of the following are true:
 - deploy pipeline uses deterministic built image refs with clear verification
 - Alembic migration discipline is enforced in CI and pre-rollout flow
 - pilot runbook and operational checklist are complete and reviewed
+
+Runtime signoff execution reference:
+- `docs/phase4-runtime-validation-runbook.md`
 
 ## Out Of Scope
 Out of scope for this roadmap:

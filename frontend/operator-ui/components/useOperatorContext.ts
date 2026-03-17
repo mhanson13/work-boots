@@ -31,13 +31,15 @@ export function useOperatorContext(): OperatorContextResult {
       router.push("/");
       return;
     }
+    const businessId = principal.business_id;
+    const accessToken = token;
 
     let cancelled = false;
     async function loadSites() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetchSites(token, principal.business_id);
+        const response = await fetchSites(accessToken, businessId);
         if (cancelled) {
           return;
         }
