@@ -412,13 +412,14 @@ def get_google_oauth_client() -> GoogleOAuthWebClient:
 def get_google_oauth_token_cipher() -> FernetTokenCipher:
     settings = get_settings()
     secret = (settings.google_oauth_token_encryption_secret or "").strip()
+    key_version = settings.google_oauth_token_encryption_key_version
     if not secret:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Google OAuth token encryption secret is not configured.",
         )
     try:
-        return FernetTokenCipher(secret=secret)
+        return FernetTokenCipher(secret=secret, key_version=key_version)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

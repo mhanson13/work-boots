@@ -66,10 +66,18 @@ def google_business_profile_connect_callback(
             error=error,
             error_description=error_description,
         )
+    except GoogleBusinessProfileConnectionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except GoogleBusinessProfileConnectionConfigurationError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except GoogleBusinessProfileConnectionValidationError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        detail: str | dict[str, object] = str(exc)
+        if exc.reconnect_required:
+            detail = {
+                "message": str(exc),
+                "reconnect_required": True,
+            }
+        raise HTTPException(status_code=exc.status_code, detail=detail) from exc
     return _to_connection_response(result)
 
 
@@ -81,6 +89,8 @@ def get_google_business_profile_connection(
 ) -> GoogleBusinessProfileConnectionStatusResponse:
     try:
         result = service.get_connection_status(business_id=tenant_context.business_id)
+    except GoogleBusinessProfileConnectionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except GoogleBusinessProfileConnectionConfigurationError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     return _to_connection_response(result)
@@ -100,6 +110,8 @@ def disconnect_google_business_profile(
         current = service.get_connection_status(business_id=tenant_context.business_id)
     except GoogleBusinessProfileConnectionConfigurationError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except GoogleBusinessProfileConnectionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except GoogleBusinessProfileConnectionValidationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
@@ -113,13 +125,13 @@ def _to_connection_response(
     result: GoogleBusinessProfileConnectionStatusResult,
 ) -> GoogleBusinessProfileConnectionStatusResponse:
     return GoogleBusinessProfileConnectionStatusResponse(
-        connected=result.connected,
         provider=result.provider,
+        connected=result.connected,
         business_id=result.business_id,
-        principal_id=result.principal_id,
-        scopes=list(result.scopes),
-        access_token_expires_at=result.access_token_expires_at,
+        granted_scopes=list(result.granted_scopes),
+        refresh_token_present=result.refresh_token_present,
+        expires_at=result.expires_at,
         connected_at=result.connected_at,
-        updated_at=result.updated_at,
-        last_error=result.last_error,
+        last_refreshed_at=result.last_refreshed_at,
+        reconnect_required=result.reconnect_required,
     )

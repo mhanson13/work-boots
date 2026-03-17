@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, select, update
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
@@ -50,3 +50,26 @@ class ProviderOAuthStateRepository:
         self.session.add(oauth_state)
         self.session.flush()
         return oauth_state
+
+    def mark_consumed_if_active(
+        self,
+        *,
+        provider: str,
+        oauth_state_id: str,
+        as_of: datetime | None = None,
+        consumed_at: datetime | None = None,
+    ) -> bool:
+        timestamp = as_of or utc_now()
+        consumed_timestamp = consumed_at or timestamp
+        stmt = (
+            update(ProviderOAuthState)
+            .where(ProviderOAuthState.id == oauth_state_id)
+            .where(ProviderOAuthState.provider == provider)
+            .where(ProviderOAuthState.consumed_at.is_(None))
+            .where(ProviderOAuthState.expires_at > timestamp)
+            .values(consumed_at=consumed_timestamp)
+            .execution_options(synchronize_session=False)
+        )
+        result = self.session.execute(stmt)
+        self.session.flush()
+        return bool(result.rowcount and result.rowcount > 0)

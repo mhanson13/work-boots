@@ -24,7 +24,10 @@ def upgrade() -> None:
         sa.Column("provider", sa.String(length=64), nullable=False),
         sa.Column("business_id", sa.String(length=36), nullable=False),
         sa.Column("principal_id", sa.String(length=64), nullable=False),
+        sa.Column("created_by_principal_id", sa.String(length=64), nullable=True),
+        sa.Column("updated_by_principal_id", sa.String(length=64), nullable=True),
         sa.Column("granted_scopes", sa.String(length=2048), nullable=False, server_default=""),
+        sa.Column("token_key_version", sa.String(length=32), nullable=False, server_default="v1"),
         sa.Column("access_token_encrypted", sa.Text(), nullable=True),
         sa.Column("refresh_token_encrypted", sa.Text(), nullable=True),
         sa.Column("access_token_expires_at", sa.DateTime(timezone=True), nullable=True),
@@ -38,6 +41,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
+        sa.Column("last_refreshed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("disconnected_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "created_at",
@@ -141,4 +145,3 @@ def downgrade() -> None:
     op.drop_index("ix_provider_connections_principal_id", table_name="provider_connections")
     op.drop_index("ix_provider_connections_business_id", table_name="provider_connections")
     op.drop_table("provider_connections")
-

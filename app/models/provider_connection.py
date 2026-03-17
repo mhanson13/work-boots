@@ -47,7 +47,10 @@ class ProviderConnection(Base):
     provider: Mapped[str] = mapped_column(String(64), nullable=False)
     business_id: Mapped[str] = mapped_column(String(36), ForeignKey("businesses.id"), nullable=False, index=True)
     principal_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_by_principal_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    updated_by_principal_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     granted_scopes: Mapped[str] = mapped_column(String(2048), nullable=False, default="")
+    token_key_version: Mapped[str] = mapped_column(String(32), nullable=False, default="v1")
     access_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     refresh_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     access_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -56,6 +59,7 @@ class ProviderConnection(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_error: Mapped[str | None] = mapped_column(String(512), nullable=True)
     connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    last_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     disconnected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

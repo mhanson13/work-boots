@@ -11,15 +11,15 @@ class GoogleBusinessProfileConnectStartResponse(BaseModel):
 
 
 class GoogleBusinessProfileConnectionStatusResponse(BaseModel):
-    connected: bool
     provider: str
+    connected: bool
     business_id: str
-    principal_id: str | None
-    scopes: list[str]
-    access_token_expires_at: str | None
+    granted_scopes: list[str]
+    refresh_token_present: bool
+    expires_at: str | None
     connected_at: str | None
-    updated_at: str | None
-    last_error: str | None
+    last_refreshed_at: str | None
+    reconnect_required: bool
 
 
 class GoogleBusinessProfileDisconnectResponse(BaseModel):

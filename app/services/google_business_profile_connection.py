@@ -29,9 +29,16 @@ class GoogleBusinessProfileConnectionConfigurationError(ValueError):
 
 
 class GoogleBusinessProfileConnectionValidationError(ValueError):
-    def __init__(self, message: str, *, status_code: int = 422) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int = 422,
+        reconnect_required: bool = False,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.reconnect_required = reconnect_required
 
 
 @dataclass(frozen=True)
@@ -44,15 +51,15 @@ class GoogleBusinessProfileConnectStartResult:
 
 @dataclass(frozen=True)
 class GoogleBusinessProfileConnectionStatusResult:
-    connected: bool
     provider: str
+    connected: bool
     business_id: str
-    principal_id: str | None
-    scopes: tuple[str, ...]
-    access_token_expires_at: str | None
+    granted_scopes: tuple[str, ...]
+    refresh_token_present: bool
+    expires_at: str | None
     connected_at: str | None
-    updated_at: str | None
-    last_error: str | None
+    last_refreshed_at: str | None
+    reconnect_required: bool
 
 
 class GoogleBusinessProfileConnectionService:
@@ -180,12 +187,11 @@ class GoogleBusinessProfileConnectionService:
                 status_code=401,
             )
 
-        principal = self.principal_repository.get_for_business(
-            oauth_state.business_id,
-            oauth_state.principal_id,
+        consumed = self.provider_oauth_state_repository.mark_consumed_if_active(
+            provider=self.PROVIDER,
+            oauth_state_id=oauth_state.id,
         )
-        self.provider_oauth_state_repository.mark_consumed(oauth_state)
-        if principal is None or not principal.is_active:
+        if not consumed:
             self.auth_audit_service.record_event(
                 business_id=oauth_state.business_id,
                 actor_principal_id=oauth_state.principal_id,
@@ -194,14 +200,18 @@ class GoogleBusinessProfileConnectionService:
                 event_type=self.EVENT_CALLBACK_REPLAYED,
                 details={
                     "provider": self.PROVIDER,
-                    "reason": "principal_inactive_or_missing",
+                    "reason": "state_already_consumed_or_expired",
                 },
             )
             self.session.commit()
             raise GoogleBusinessProfileConnectionValidationError(
-                "Principal is inactive or missing for OAuth callback.",
-                status_code=403,
+                "OAuth state is invalid or expired.",
+                status_code=401,
             )
+        self._ensure_business_and_active_principal(
+            business_id=oauth_state.business_id,
+            principal_id=oauth_state.principal_id,
+        )
 
         normalized_error = (error or "").strip()
         normalized_error_description = (error_description or "").strip()
@@ -270,8 +280,14 @@ class GoogleBusinessProfileConnectionService:
                 status_code=400,
             ) from exc
 
+        existing = self.provider_connection_repository.get_for_business_provider(
+            business_id=oauth_state.business_id,
+            provider=self.PROVIDER,
+        )
         normalized_scopes = self._normalize_scopes(tokens.scope)
-        if self.BUSINESS_PROFILE_SCOPE not in normalized_scopes:
+        existing_scopes = self._normalize_scopes(existing.granted_scopes if existing is not None else None)
+        effective_scopes = normalized_scopes if normalized_scopes else existing_scopes
+        if self.BUSINESS_PROFILE_SCOPE not in effective_scopes:
             self.auth_audit_service.record_event(
                 business_id=oauth_state.business_id,
                 actor_principal_id=oauth_state.principal_id,
@@ -282,7 +298,7 @@ class GoogleBusinessProfileConnectionService:
                     "provider": self.PROVIDER,
                     "error": "missing_scope",
                     "required_scope": self.BUSINESS_PROFILE_SCOPE,
-                    "granted_scopes": list(normalized_scopes),
+                    "granted_scopes": list(effective_scopes),
                 },
             )
             self.session.commit()
@@ -291,10 +307,6 @@ class GoogleBusinessProfileConnectionService:
                 status_code=422,
             )
 
-        existing = self.provider_connection_repository.get_for_business_provider(
-            business_id=oauth_state.business_id,
-            provider=self.PROVIDER,
-        )
         try:
             access_token_encrypted = self.token_cipher.encrypt(tokens.access_token)
         except TokenCipherError as exc:
@@ -330,11 +342,13 @@ class GoogleBusinessProfileConnectionService:
                     "to grant offline access."
                 ),
                 status_code=422,
+                reconnect_required=True,
             )
 
+        now = utc_now()
         expires_at = None
         if tokens.expires_in is not None:
-            expires_at = utc_now() + timedelta(seconds=tokens.expires_in)
+            expires_at = now + timedelta(seconds=tokens.expires_in)
 
         if existing is None:
             connection = ProviderConnection(
@@ -342,7 +356,10 @@ class GoogleBusinessProfileConnectionService:
                 provider=self.PROVIDER,
                 business_id=oauth_state.business_id,
                 principal_id=oauth_state.principal_id,
-                granted_scopes=" ".join(normalized_scopes),
+                created_by_principal_id=oauth_state.principal_id,
+                updated_by_principal_id=oauth_state.principal_id,
+                granted_scopes=" ".join(effective_scopes),
+                token_key_version=self.token_cipher.key_version,
                 access_token_encrypted=access_token_encrypted,
                 refresh_token_encrypted=refresh_token_encrypted,
                 access_token_expires_at=expires_at,
@@ -350,13 +367,16 @@ class GoogleBusinessProfileConnectionService:
                 external_account_email=tokens.id_token_email,
                 is_active=True,
                 last_error=None,
-                connected_at=utc_now(),
+                connected_at=now,
+                last_refreshed_at=now,
                 disconnected_at=None,
             )
             self.provider_connection_repository.create(connection)
         else:
             existing.principal_id = oauth_state.principal_id
-            existing.granted_scopes = " ".join(normalized_scopes)
+            existing.updated_by_principal_id = oauth_state.principal_id
+            existing.granted_scopes = " ".join(effective_scopes)
+            existing.token_key_version = self.token_cipher.key_version
             existing.access_token_encrypted = access_token_encrypted
             existing.refresh_token_encrypted = refresh_token_encrypted
             existing.access_token_expires_at = expires_at
@@ -366,7 +386,8 @@ class GoogleBusinessProfileConnectionService:
                 existing.external_account_email = tokens.id_token_email
             existing.is_active = True
             existing.last_error = None
-            existing.connected_at = utc_now()
+            existing.connected_at = now
+            existing.last_refreshed_at = now
             existing.disconnected_at = None
             connection = self.provider_connection_repository.save(existing)
 
@@ -378,7 +399,7 @@ class GoogleBusinessProfileConnectionService:
             event_type=self.EVENT_CONNECT_SUCCEEDED,
             details={
                 "provider": self.PROVIDER,
-                "granted_scopes": list(normalized_scopes),
+                "granted_scopes": list(effective_scopes),
                 "principal_id": oauth_state.principal_id,
             },
         )
@@ -390,21 +411,24 @@ class GoogleBusinessProfileConnectionService:
         *,
         business_id: str,
     ) -> GoogleBusinessProfileConnectionStatusResult:
+        business = self.business_repository.get(business_id)
+        if business is None:
+            raise GoogleBusinessProfileConnectionNotFoundError("Business not found.")
         connection = self.provider_connection_repository.get_for_business_provider(
             business_id=business_id,
             provider=self.PROVIDER,
         )
-        if connection is None or not connection.is_active:
+        if connection is None:
             return GoogleBusinessProfileConnectionStatusResult(
-                connected=False,
                 provider=self.PROVIDER,
+                connected=False,
                 business_id=business_id,
-                principal_id=None,
-                scopes=(),
-                access_token_expires_at=None,
+                granted_scopes=(),
+                refresh_token_present=False,
+                expires_at=None,
                 connected_at=None,
-                updated_at=None,
-                last_error=connection.last_error if connection is not None else None,
+                last_refreshed_at=None,
+                reconnect_required=False,
             )
         return self._status_from_connection(connection)
 
@@ -453,6 +477,9 @@ class GoogleBusinessProfileConnectionService:
             connection.granted_scopes = " ".join(self._normalize_scopes(refreshed.scope))
         if refreshed.expires_in is not None:
             connection.access_token_expires_at = utc_now() + timedelta(seconds=refreshed.expires_in)
+        connection.token_key_version = self.token_cipher.key_version
+        connection.updated_by_principal_id = connection.principal_id
+        connection.last_refreshed_at = utc_now()
         connection.last_error = None
         self.provider_connection_repository.save(connection)
         self.session.commit()
@@ -489,6 +516,7 @@ class GoogleBusinessProfileConnectionService:
         connection.refresh_token_encrypted = None
         connection.access_token_expires_at = None
         connection.disconnected_at = utc_now()
+        connection.updated_by_principal_id = actor_principal_id
         connection.last_error = None if revoked else "Google token revoke was not confirmed."
         self.provider_connection_repository.save(connection)
         self.auth_audit_service.record_event(
@@ -509,19 +537,21 @@ class GoogleBusinessProfileConnectionService:
         self,
         connection: ProviderConnection,
     ) -> GoogleBusinessProfileConnectionStatusResult:
-        scopes = tuple(scope for scope in connection.granted_scopes.split(" ") if scope)
+        scopes = self._normalize_scopes(connection.granted_scopes)
+        refresh_token_present = bool(connection.refresh_token_encrypted)
+        scope_sufficient = self.BUSINESS_PROFILE_SCOPE in scopes
+        connected = bool(connection.is_active and refresh_token_present and scope_sufficient)
+        reconnect_required = bool(connection.is_active and (not refresh_token_present or not scope_sufficient))
         return GoogleBusinessProfileConnectionStatusResult(
-            connected=bool(connection.is_active and connection.refresh_token_encrypted),
             provider=connection.provider,
+            connected=connected,
             business_id=connection.business_id,
-            principal_id=connection.principal_id,
-            scopes=scopes,
-            access_token_expires_at=(
-                connection.access_token_expires_at.isoformat() if connection.access_token_expires_at else None
-            ),
+            granted_scopes=scopes,
+            refresh_token_present=refresh_token_present,
+            expires_at=connection.access_token_expires_at.isoformat() if connection.access_token_expires_at else None,
             connected_at=connection.connected_at.isoformat() if connection.connected_at else None,
-            updated_at=connection.updated_at.isoformat() if connection.updated_at else None,
-            last_error=connection.last_error,
+            last_refreshed_at=connection.last_refreshed_at.isoformat() if connection.last_refreshed_at else None,
+            reconnect_required=reconnect_required,
         )
 
     def _ensure_business_and_active_principal(self, *, business_id: str, principal_id: str) -> None:

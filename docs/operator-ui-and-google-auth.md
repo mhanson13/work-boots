@@ -83,6 +83,7 @@ Security controls in this flow:
 - fixed, server-configured redirect URI
 - no access/refresh token exposure in browser API responses
 - encrypted token persistence at rest
+- token encryption key version persisted with provider credentials for future key rotation compatibility
 - denial/missing-refresh/replay/refresh-failure handling with auth audit events
 
 ## UI Scope (Initial Operator Surface)
@@ -113,6 +114,7 @@ Business Profile authorization (new integration connect flow):
 - `GOOGLE_OAUTH_CLIENT_SECRET`
 - `GOOGLE_BUSINESS_PROFILE_REDIRECT_URI`
 - `GOOGLE_OAUTH_TOKEN_ENCRYPTION_SECRET`
+- `GOOGLE_OAUTH_TOKEN_ENCRYPTION_KEY_VERSION`
 - `GOOGLE_BUSINESS_PROFILE_STATE_TTL_SECONDS`
 
 `GOOGLE_OAUTH_CLIENT_ID`/`GOOGLE_OAUTH_CLIENT_SECRET` default to the OIDC values when omitted, but dedicated OAuth client credentials are recommended for production clarity.

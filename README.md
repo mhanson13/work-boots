@@ -293,6 +293,16 @@ When using `twilio` or `smtp`, configure the corresponding credentials in `.env`
   - `GET /api/integrations/google/business-profile/connect/callback`
   - `GET /api/integrations/google/business-profile/connection`
   - `POST /api/integrations/google/business-profile/disconnect`
+- Stable connection status payload:
+  - `provider`
+  - `connected`
+  - `business_id`
+  - `granted_scopes`
+  - `refresh_token_present`
+  - `expires_at`
+  - `connected_at`
+  - `last_refreshed_at`
+  - `reconnect_required`
 - Business Profile integration requires scope:
   - `https://www.googleapis.com/auth/business.manage`
 - Business Profile OAuth env vars:
@@ -300,6 +310,7 @@ When using `twilio` or `smtp`, configure the corresponding credentials in `.env`
   - `GOOGLE_OAUTH_CLIENT_SECRET`
   - `GOOGLE_BUSINESS_PROFILE_REDIRECT_URI`
   - `GOOGLE_OAUTH_TOKEN_ENCRYPTION_SECRET`
+  - `GOOGLE_OAUTH_TOKEN_ENCRYPTION_KEY_VERSION`
   - `GOOGLE_BUSINESS_PROFILE_STATE_TTL_SECONDS`
 - OAuth redirect URI must include:
   - `<API_BASE_URL>/api/integrations/google/business-profile/connect/callback`

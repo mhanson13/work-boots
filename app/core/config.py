@@ -28,6 +28,7 @@ class Settings:
     google_business_profile_redirect_uri: str | None
     google_business_profile_state_ttl_seconds: int
     google_oauth_token_encryption_secret: str | None
+    google_oauth_token_encryption_key_version: str
     app_session_secret: str | None
     app_session_issuer: str
     app_session_audience: str
@@ -157,6 +158,7 @@ def get_settings() -> Settings:
         google_business_profile_redirect_uri=os.getenv("GOOGLE_BUSINESS_PROFILE_REDIRECT_URI"),
         google_business_profile_state_ttl_seconds=int(os.getenv("GOOGLE_BUSINESS_PROFILE_STATE_TTL_SECONDS", "600")),
         google_oauth_token_encryption_secret=google_oauth_token_encryption_secret,
+        google_oauth_token_encryption_key_version=os.getenv("GOOGLE_OAUTH_TOKEN_ENCRYPTION_KEY_VERSION", "v1"),
         app_session_secret=app_session_secret,
         app_session_issuer=os.getenv("APP_SESSION_ISSUER", "work-boots-console"),
         app_session_audience=os.getenv("APP_SESSION_AUDIENCE", "work-boots-api"),

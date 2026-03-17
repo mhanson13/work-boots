@@ -138,6 +138,7 @@ def _set_auth_env(monkeypatch: pytest.MonkeyPatch, *, default_business_id: str) 
         "https://operator.workboots.example/api/integrations/google/business-profile/connect/callback",
     )
     monkeypatch.setenv("GOOGLE_OAUTH_TOKEN_ENCRYPTION_SECRET", "gbp-token-encryption-secret")
+    monkeypatch.setenv("GOOGLE_OAUTH_TOKEN_ENCRYPTION_KEY_VERSION", "v1")
     monkeypatch.setenv("GOOGLE_BUSINESS_PROFILE_STATE_TTL_SECONDS", "600")
 
 
@@ -390,11 +391,16 @@ def test_google_business_profile_callback_success_persists_encrypted_tokens(
     payload = callback.json()
     assert payload["connected"] is True
     assert payload["provider"] == "google_business_profile"
-    assert "https://www.googleapis.com/auth/business.manage" in payload["scopes"]
+    assert "https://www.googleapis.com/auth/business.manage" in payload["granted_scopes"]
+    assert payload["refresh_token_present"] is True
+    assert payload["reconnect_required"] is False
 
     row = _provider_connection_for_business(db_session, seeded_business.id)
     assert row is not None
     assert row.is_active is True
+    assert row.created_by_principal_id == "admin-success"
+    assert row.updated_by_principal_id == "admin-success"
+    assert row.token_key_version == "v1"
     assert row.access_token_encrypted is not None
     assert row.refresh_token_encrypted is not None
     assert row.access_token_encrypted != "ya29.access-token"
@@ -405,6 +411,58 @@ def test_google_business_profile_callback_success_persists_encrypted_tokens(
     cipher = FernetTokenCipher(secret="gbp-token-encryption-secret")
     assert cipher.decrypt(row.access_token_encrypted) == "ya29.access-token"
     assert cipher.decrypt(row.refresh_token_encrypted) == "1//refresh-token"
+
+
+def test_google_business_profile_connection_status_contract_is_stable(
+    db_session,
+    seeded_business,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
+    _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-status")
+    oauth_client = _StubGoogleOAuthClient()
+    oauth_client.exchange_map["status-code"] = GoogleOAuthTokenResponse(
+        access_token="status-access-token",
+        token_type="Bearer",
+        expires_in=3600,
+        refresh_token="status-refresh-token",
+        scope="https://www.googleapis.com/auth/business.manage",
+        id_token_subject=None,
+        id_token_email=None,
+    )
+    client = _make_integrations_client(
+        db_session,
+        oauth_client=oauth_client,
+        business_id=seeded_business.id,
+        principal_id="admin-status",
+    )
+
+    start_payload = _start_connect(client)
+    state = _extract_state(str(start_payload["authorization_url"]))
+    callback = client.get(
+        "/api/integrations/google/business-profile/connect/callback",
+        params={"state": state, "code": "status-code"},
+    )
+    assert callback.status_code == 200
+
+    status_response = client.get("/api/integrations/google/business-profile/connection")
+    assert status_response.status_code == 200
+    payload = status_response.json()
+    assert set(payload.keys()) == {
+        "provider",
+        "connected",
+        "business_id",
+        "granted_scopes",
+        "refresh_token_present",
+        "expires_at",
+        "connected_at",
+        "last_refreshed_at",
+        "reconnect_required",
+    }
+    assert payload["provider"] == "google_business_profile"
+    assert payload["connected"] is True
+    assert payload["refresh_token_present"] is True
+    assert payload["reconnect_required"] is False
 
 
 def test_google_business_profile_callback_requires_refresh_token_for_initial_connection(
@@ -438,8 +496,70 @@ def test_google_business_profile_callback_requires_refresh_token_for_initial_con
         params={"state": state, "code": "code-no-refresh"},
     )
     assert callback.status_code == 422
-    assert "refresh token" in callback.json()["detail"].lower()
+    detail = callback.json()["detail"]
+    assert detail["reconnect_required"] is True
+    assert "refresh token" in detail["message"].lower()
     assert _provider_connection_for_business(db_session, seeded_business.id) is None
+
+
+def test_google_business_profile_callback_preserves_existing_refresh_token_when_not_reissued(
+    db_session,
+    seeded_business,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
+    _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-refresh-preserve")
+    cipher = FernetTokenCipher(secret="gbp-token-encryption-secret")
+    existing = ProviderConnection(
+        id=str(uuid4()),
+        provider="google_business_profile",
+        business_id=seeded_business.id,
+        principal_id="admin-refresh-preserve",
+        created_by_principal_id="admin-refresh-preserve",
+        updated_by_principal_id="admin-refresh-preserve",
+        granted_scopes="https://www.googleapis.com/auth/business.manage openid",
+        token_key_version="v1",
+        access_token_encrypted=cipher.encrypt("old-access-token"),
+        refresh_token_encrypted=cipher.encrypt("existing-refresh-token"),
+        is_active=True,
+    )
+    db_session.add(existing)
+    db_session.commit()
+
+    oauth_client = _StubGoogleOAuthClient()
+    oauth_client.exchange_map["code-preserve-refresh"] = GoogleOAuthTokenResponse(
+        access_token="new-access-token",
+        token_type="Bearer",
+        expires_in=3600,
+        refresh_token=None,
+        scope=None,
+        id_token_subject="google-subject-keep-refresh",
+        id_token_email="refresh-preserve@workboots.example",
+    )
+    client = _make_integrations_client(
+        db_session,
+        oauth_client=oauth_client,
+        business_id=seeded_business.id,
+        principal_id="admin-refresh-preserve",
+    )
+
+    start_payload = _start_connect(client)
+    state = _extract_state(str(start_payload["authorization_url"]))
+    callback = client.get(
+        "/api/integrations/google/business-profile/connect/callback",
+        params={"state": state, "code": "code-preserve-refresh"},
+    )
+    assert callback.status_code == 200
+    payload = callback.json()
+    assert payload["connected"] is True
+    assert payload["refresh_token_present"] is True
+    assert payload["reconnect_required"] is False
+
+    db_session.expire_all()
+    row = _provider_connection_for_business(db_session, seeded_business.id)
+    assert row is not None
+    assert cipher.decrypt(row.access_token_encrypted or "") == "new-access-token"
+    assert cipher.decrypt(row.refresh_token_encrypted or "") == "existing-refresh-token"
 
 
 def test_google_business_profile_callback_state_is_single_use(
@@ -519,6 +639,7 @@ def test_google_business_profile_disconnect_clears_tokens_and_revokes(
     payload = disconnect.json()
     assert payload["status"] == "disconnected"
     assert payload["connection"]["connected"] is False
+    assert payload["connection"]["refresh_token_present"] is False
 
     row = _provider_connection_for_business(db_session, seeded_business.id)
     assert row is not None
@@ -526,7 +647,53 @@ def test_google_business_profile_disconnect_clears_tokens_and_revokes(
     assert row.access_token_encrypted is None
     assert row.refresh_token_encrypted is None
     assert row.disconnected_at is not None
+    assert row.updated_by_principal_id == "admin-disconnect"
     assert oauth_client.revoke_calls == ["1//refresh-token"]
+
+
+def test_google_business_profile_disconnect_tombstones_even_if_revoke_not_confirmed(
+    db_session,
+    seeded_business,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
+    _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-disconnect-no-revoke")
+    oauth_client = _StubGoogleOAuthClient()
+    oauth_client.revoke_result = False
+    oauth_client.exchange_map["disconnect-code-no-revoke"] = GoogleOAuthTokenResponse(
+        access_token="ya29.access-token",
+        token_type="Bearer",
+        expires_in=3600,
+        refresh_token="1//refresh-token",
+        scope="https://www.googleapis.com/auth/business.manage",
+        id_token_subject=None,
+        id_token_email=None,
+    )
+    client = _make_integrations_client(
+        db_session,
+        oauth_client=oauth_client,
+        business_id=seeded_business.id,
+        principal_id="admin-disconnect-no-revoke",
+    )
+
+    start_payload = _start_connect(client)
+    state = _extract_state(str(start_payload["authorization_url"]))
+    callback = client.get(
+        "/api/integrations/google/business-profile/connect/callback",
+        params={"state": state, "code": "disconnect-code-no-revoke"},
+    )
+    assert callback.status_code == 200
+
+    disconnect = client.post("/api/integrations/google/business-profile/disconnect")
+    assert disconnect.status_code == 200
+
+    row = _provider_connection_for_business(db_session, seeded_business.id)
+    assert row is not None
+    assert row.is_active is False
+    assert row.access_token_encrypted is None
+    assert row.refresh_token_encrypted is None
+    assert row.last_error is not None
+    assert "revoke" in row.last_error.lower()
 
 
 def test_google_business_profile_connection_isolated_by_business_scope(
