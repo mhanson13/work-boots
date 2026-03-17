@@ -18,6 +18,8 @@ from app.models.business import Business
 from app.models.lead import Lead, LeadSource, LeadStatus
 from app.models.principal import Principal  # noqa: F401
 from app.models.principal_identity import PrincipalIdentity  # noqa: F401
+from app.models.provider_connection import ProviderConnection  # noqa: F401
+from app.models.provider_oauth_state import ProviderOAuthState  # noqa: F401
 from app.models.seo_audit_finding import SEOAuditFinding  # noqa: F401
 from app.models.seo_audit_page import SEOAuditPage  # noqa: F401
 from app.models.seo_audit_run import SEOAuditRun  # noqa: F401

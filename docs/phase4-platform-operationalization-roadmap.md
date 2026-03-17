@@ -32,6 +32,12 @@ Completed:
 - JWKS-based Google token verification (issuer, audience, subject, email verification policy)
 - mapping to persisted `principal_identities` (`provider=google`, `provider_subject=sub`)
 - internal principal/business/role authorization remains authoritative
+- separate Google Business Profile OAuth authorization flow for tenant-scoped integration connection:
+  - `POST /api/integrations/google/business-profile/connect/start`
+  - `GET /api/integrations/google/business-profile/connect/callback`
+  - `GET /api/integrations/google/business-profile/connection`
+  - `POST /api/integrations/google/business-profile/disconnect`
+- integration credential persistence model with encrypted token storage and replay-resistant OAuth state handling
 
 ### 3) Auth/Session Hardening
 Completed:

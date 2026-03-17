@@ -16,6 +16,11 @@ from app.schemas.auth import (
 )
 from app.schemas.auth_audit import AuthAuditEventListResponse, AuthAuditEventRead
 from app.schemas.business import BusinessSettingsRead, BusinessSettingsUpdateRequest
+from app.schemas.google_business_profile import (
+    GoogleBusinessProfileConnectionStatusResponse,
+    GoogleBusinessProfileConnectStartResponse,
+    GoogleBusinessProfileDisconnectResponse,
+)
 from app.schemas.principal import (
     PrincipalCreateRequest,
     PrincipalListResponse,
@@ -120,6 +125,9 @@ __all__ = [
     "EmailLeadFields",
     "BusinessSettingsRead",
     "BusinessSettingsUpdateRequest",
+    "GoogleBusinessProfileConnectionStatusResponse",
+    "GoogleBusinessProfileConnectStartResponse",
+    "GoogleBusinessProfileDisconnectResponse",
     "LeadTimelineEventRead",
     "LeadTimelineResponse",
     "LeadListResponse",

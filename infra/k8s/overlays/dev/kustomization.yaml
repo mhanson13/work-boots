@@ -15,6 +15,9 @@ patches:
       - op: replace
         path: /data/NEXT_PUBLIC_API_BASE_URL
         value: https://dev.workboots.example.com
+      - op: replace
+        path: /data/GOOGLE_BUSINESS_PROFILE_REDIRECT_URI
+        value: https://dev.workboots.example.com/api/integrations/google/business-profile/connect/callback
   - target:
       kind: Ingress
       name: work-boots-ingress

@@ -64,10 +64,28 @@ Key routes:
 5. API issues app JWT access/refresh tokens (`app/core/session_token.py`).
 6. `TenantContext` is derived from internal claims and used for business scoping.
 
+### Google Business Profile authorization path (separate from login)
+1. Authenticated principal starts connect flow:
+   - `POST /api/integrations/google/business-profile/connect/start`
+2. API generates one-time OAuth state and returns Google authorization URL with:
+   - scope: `https://www.googleapis.com/auth/business.manage`
+   - `access_type=offline` and consent prompt parameters for refresh-token capable access
+3. Google redirects to:
+   - `GET /api/integrations/google/business-profile/connect/callback`
+4. API validates state, performs server-side authorization-code exchange, and stores encrypted provider credentials.
+5. Connection status/disconnect routes remain tenant-scoped and internal-auth protected:
+   - `GET /api/integrations/google/business-profile/connection`
+   - `POST /api/integrations/google/business-profile/disconnect`
+
+Data persistence for integration authorization:
+- `provider_oauth_states`: replay-resistant one-time state hashes with expiry/consumption tracking
+- `provider_connections`: tenant-scoped provider metadata + encrypted access/refresh token material
+
 ### Authorization boundary
 - Google answers identity (`who is the user`).
 - Work Boots answers authorization (`what can they do`) via principal/business/role checks.
 - Authorization is never granted solely by Google email/domain.
+- OIDC login and Google API authorization remain intentionally decoupled.
 
 ### DB API credential path
 - DB token hash lookup remains supported in `get_tenant_context`.
@@ -115,6 +133,7 @@ Implemented in auth service flow:
 - `POST /api/auth/logout` revokes the presented access token and optionally the presented refresh token
 - refresh replay detection emits security audit events
 - audit payloads are structured and secret-safe
+- Business Profile connect/disconnect events are also audit-tracked without secret token values
 
 ### Current browser token posture
 Current operator UI behavior:

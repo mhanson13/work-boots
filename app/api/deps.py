@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.core.rate_limit import RateLimiter, get_rate_limiter
 from app.core.session_state import get_session_state_store
 from app.core.session_token import AppSessionTokenError, AppSessionTokenService
+from app.core.token_cipher import FernetTokenCipher
 from app.db.session import get_db_session
 from app.integrations import (
     DevEmailProvider,
@@ -26,6 +27,7 @@ from app.integrations import (
     SEOCompetitorComparisonSummaryProvider,
     SEOAuditSummaryProvider,
     GoogleOIDCJWKSVerifier,
+    GoogleOAuthWebClient,
     SMTPEmailProvider,
     SMSProvider,
     TwilioSMSProvider,
@@ -39,6 +41,8 @@ from app.repositories.business_repository import BusinessRepository
 from app.repositories.lead_repository import LeadRepository
 from app.repositories.principal_identity_repository import PrincipalIdentityRepository
 from app.repositories.principal_repository import PrincipalRepository
+from app.repositories.provider_connection_repository import ProviderConnectionRepository
+from app.repositories.provider_oauth_state_repository import ProviderOAuthStateRepository
 from app.repositories.seo_audit_repository import SEOAuditRepository
 from app.repositories.seo_audit_summary_repository import SEOAuditSummaryRepository
 from app.repositories.seo_automation_repository import SEOAutomationRepository
@@ -53,6 +57,10 @@ from app.services.auth_identity import AuthIdentityService
 from app.services.auth_audit import AuthAuditService
 from app.services.dedupe import LeadDeduplicationService
 from app.services.email_intake import EmailIntakeService
+from app.services.google_business_profile_connection import (
+    GoogleBusinessProfileConnectionConfigurationError,
+    GoogleBusinessProfileConnectionService,
+)
 from app.services.lead_intake import LeadIntakeService
 from app.services.lifecycle import LeadLifecycleService
 from app.services.notifications import NotificationDispatchService
@@ -120,6 +128,14 @@ def get_principal_repository(db: Session = Depends(get_db)) -> PrincipalReposito
 
 def get_principal_identity_repository(db: Session = Depends(get_db)) -> PrincipalIdentityRepository:
     return PrincipalIdentityRepository(db)
+
+
+def get_provider_connection_repository(db: Session = Depends(get_db)) -> ProviderConnectionRepository:
+    return ProviderConnectionRepository(db)
+
+
+def get_provider_oauth_state_repository(db: Session = Depends(get_db)) -> ProviderOAuthStateRepository:
+    return ProviderOAuthStateRepository(db)
 
 
 def get_seo_site_repository(db: Session = Depends(get_db)) -> SEOSiteRepository:
@@ -374,6 +390,42 @@ def get_google_oidc_verifier() -> GoogleOIDCJWKSVerifier:
     )
 
 
+def get_google_oauth_client() -> GoogleOAuthWebClient:
+    settings = get_settings()
+    client_id = (settings.google_oauth_client_id or "").strip()
+    client_secret = (settings.google_oauth_client_secret or "").strip()
+    if not settings.google_auth_enabled or not client_id or not client_secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google OAuth authorization is not configured.",
+        )
+    return GoogleOAuthWebClient(
+        client_id=client_id,
+        client_secret=client_secret,
+        authorization_url=settings.google_oauth_authorization_url,
+        token_url=settings.google_oauth_token_url,
+        revoke_url=settings.google_oauth_revoke_url,
+        timeout_seconds=settings.google_oauth_timeout_seconds,
+    )
+
+
+def get_google_oauth_token_cipher() -> FernetTokenCipher:
+    settings = get_settings()
+    secret = (settings.google_oauth_token_encryption_secret or "").strip()
+    if not secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google OAuth token encryption secret is not configured.",
+        )
+    try:
+        return FernetTokenCipher(secret=secret)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+
 def get_session_token_service() -> AppSessionTokenService | None:
     settings = get_settings()
     secret = (settings.app_session_secret or "").strip()
@@ -607,6 +659,43 @@ def get_auth_identity_service(
         session_token_service=session_token_service,
         auth_audit_service=auth_audit_service,
     )
+
+
+def get_google_business_profile_connection_service(
+    db: Session = Depends(get_db),
+    business_repository: BusinessRepository = Depends(get_business_repository),
+    principal_repository: PrincipalRepository = Depends(get_principal_repository),
+    provider_connection_repository: ProviderConnectionRepository = Depends(get_provider_connection_repository),
+    provider_oauth_state_repository: ProviderOAuthStateRepository = Depends(get_provider_oauth_state_repository),
+    oauth_client: GoogleOAuthWebClient = Depends(get_google_oauth_client),
+    token_cipher: FernetTokenCipher = Depends(get_google_oauth_token_cipher),
+    auth_audit_service: AuthAuditService = Depends(get_auth_audit_service),
+) -> GoogleBusinessProfileConnectionService:
+    settings = get_settings()
+    redirect_uri = (settings.google_business_profile_redirect_uri or "").strip()
+    if not redirect_uri:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google Business Profile redirect URI is not configured.",
+        )
+    try:
+        return GoogleBusinessProfileConnectionService(
+            session=db,
+            business_repository=business_repository,
+            principal_repository=principal_repository,
+            provider_connection_repository=provider_connection_repository,
+            provider_oauth_state_repository=provider_oauth_state_repository,
+            oauth_client=oauth_client,
+            token_cipher=token_cipher,
+            auth_audit_service=auth_audit_service,
+            redirect_uri=redirect_uri,
+            state_ttl_seconds=settings.google_business_profile_state_ttl_seconds,
+        )
+    except GoogleBusinessProfileConnectionConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
 
 
 def _client_ip(request: Request) -> str:

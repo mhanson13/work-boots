@@ -14,6 +14,12 @@ from app.services.auth_audit import AuthAuditNotFoundError, AuthAuditService
 from app.services.business_settings import BusinessSettingsService
 from app.services.dedupe import LeadDeduplicationService
 from app.services.email_intake import EmailIntakeService
+from app.services.google_business_profile_connection import (
+    GoogleBusinessProfileConnectionConfigurationError,
+    GoogleBusinessProfileConnectionNotFoundError,
+    GoogleBusinessProfileConnectionService,
+    GoogleBusinessProfileConnectionValidationError,
+)
 from app.services.lead_intake import LeadIntakeService
 from app.services.lifecycle import InvalidStatusTransitionError, LeadLifecycleService
 from app.services.notifications import NotificationDispatchService, NotificationService
@@ -70,6 +76,10 @@ __all__ = [
     "AuthIdentityValidationError",
     "BusinessSettingsService",
     "EmailIntakeService",
+    "GoogleBusinessProfileConnectionConfigurationError",
+    "GoogleBusinessProfileConnectionNotFoundError",
+    "GoogleBusinessProfileConnectionService",
+    "GoogleBusinessProfileConnectionValidationError",
     "InvalidStatusTransitionError",
     "LeadDeduplicationService",
     "LeadIntakeService",

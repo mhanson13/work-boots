@@ -29,6 +29,11 @@ from app.integrations.google_auth import (
     GoogleOIDCTokenInfoVerifier,
     GoogleOIDCVerificationError,
 )
+from app.integrations.google_oauth import (
+    GoogleOAuthError,
+    GoogleOAuthTokenResponse,
+    GoogleOAuthWebClient,
+)
 
 __all__ = [
     "DevEmailProvider",
@@ -53,5 +58,8 @@ __all__ = [
     "GoogleOIDCJWKSVerifier",
     "GoogleOIDCTokenInfoVerifier",
     "GoogleOIDCVerificationError",
+    "GoogleOAuthError",
+    "GoogleOAuthTokenResponse",
+    "GoogleOAuthWebClient",
     "TwilioSMSProvider",
 ]

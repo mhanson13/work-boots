@@ -4,6 +4,8 @@ from app.repositories.business_repository import BusinessRepository
 from app.repositories.lead_repository import LeadRepository
 from app.repositories.principal_repository import PrincipalRepository
 from app.repositories.principal_identity_repository import PrincipalIdentityRepository
+from app.repositories.provider_connection_repository import ProviderConnectionRepository
+from app.repositories.provider_oauth_state_repository import ProviderOAuthStateRepository
 from app.repositories.seo_audit_repository import SEOAuditRepository
 from app.repositories.seo_audit_summary_repository import SEOAuditSummaryRepository
 from app.repositories.seo_automation_repository import SEOAutomationRepository
@@ -20,6 +22,8 @@ __all__ = [
     "LeadRepository",
     "PrincipalRepository",
     "PrincipalIdentityRepository",
+    "ProviderConnectionRepository",
+    "ProviderOAuthStateRepository",
     "SEOAuditRepository",
     "SEOAuditSummaryRepository",
     "SEOAutomationRepository",

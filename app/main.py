@@ -10,6 +10,7 @@ from starlette.responses import Response
 from app.api.routes import (
     auth_router,
     businesses_router,
+    integrations_router,
     intake_router,
     jobs_router,
     leads_router,
@@ -128,5 +129,6 @@ app.include_router(leads_router)
 app.include_router(jobs_router)
 app.include_router(businesses_router)
 app.include_router(auth_router)
+app.include_router(integrations_router)
 app.include_router(seo_router)
 app.include_router(seo_v1_router)

@@ -281,12 +281,29 @@ When using `twilio` or `smtp`, configure the corresponding credentials in `.env`
 - Runtime auth supports two bearer-token paths:
   - DB API credentials (`api_credentials`) for service-to-service and operator-issued keys.
   - Google OIDC exchange -> internal signed JWT access/refresh app session tokens for human operator UI sessions.
-- Google remains identity-only; authorization is enforced by internal principal/business/role mappings.
+- Google sign-in remains identity-only for Work Boots access control; authorization is enforced by internal principal/business/role mappings.
+- Google API authorization for Business Profile is a separate, explicit integration flow with its own consent/scope.
 - Google auth endpoints:
   - `POST /api/auth/google/exchange` (exchange Google ID token for app bearer token)
   - `POST /api/auth/refresh` (rotate refresh token and mint a new access/refresh pair)
   - `POST /api/auth/logout` (revoke current access token and optionally the presented refresh token)
   - `GET /api/auth/me` (current principal context)
+- Google Business Profile integration endpoints:
+  - `POST /api/integrations/google/business-profile/connect/start`
+  - `GET /api/integrations/google/business-profile/connect/callback`
+  - `GET /api/integrations/google/business-profile/connection`
+  - `POST /api/integrations/google/business-profile/disconnect`
+- Business Profile integration requires scope:
+  - `https://www.googleapis.com/auth/business.manage`
+- Business Profile OAuth env vars:
+  - `GOOGLE_OAUTH_CLIENT_ID`
+  - `GOOGLE_OAUTH_CLIENT_SECRET`
+  - `GOOGLE_BUSINESS_PROFILE_REDIRECT_URI`
+  - `GOOGLE_OAUTH_TOKEN_ENCRYPTION_SECRET`
+  - `GOOGLE_BUSINESS_PROFILE_STATE_TTL_SECONDS`
+- OAuth redirect URI must include:
+  - `<API_BASE_URL>/api/integrations/google/business-profile/connect/callback`
+- Business Profile API enablement/access approval is required in Google Cloud; OAuth setup alone is not sufficient.
 - Principal identity mapping endpoints (admin only):
   - `GET /api/businesses/{business_id}/principal-identities`
   - `POST /api/businesses/{business_id}/principal-identities`

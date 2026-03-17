@@ -26,6 +26,8 @@ from app.models import (
     lead_event,
     principal,
     principal_identity,
+    provider_connection,
+    provider_oauth_state,
     seo_audit_finding,
     seo_audit_page,
     seo_audit_run,

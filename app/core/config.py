@@ -19,6 +19,15 @@ class Settings:
     google_oidc_allowed_issuers: tuple[str, ...]
     google_oidc_require_email_verified: bool
     google_oidc_timeout_seconds: int
+    google_oauth_client_id: str | None
+    google_oauth_client_secret: str | None
+    google_oauth_authorization_url: str
+    google_oauth_token_url: str
+    google_oauth_revoke_url: str
+    google_oauth_timeout_seconds: int
+    google_business_profile_redirect_uri: str | None
+    google_business_profile_state_ttl_seconds: int
+    google_oauth_token_encryption_secret: str | None
     app_session_secret: str | None
     app_session_issuer: str
     app_session_audience: str
@@ -74,7 +83,10 @@ def get_settings() -> Settings:
     app_env = os.getenv("APP_ENV", environment).strip().lower()
     google_auth_enabled = _env_bool("GOOGLE_AUTH_ENABLED", False)
     google_oidc_client_id = os.getenv("GOOGLE_OIDC_CLIENT_ID")
+    google_oauth_client_id = os.getenv("GOOGLE_OAUTH_CLIENT_ID") or google_oidc_client_id
+    google_oauth_client_secret = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET") or os.getenv("GOOGLE_OIDC_CLIENT_SECRET")
     app_session_secret = os.getenv("APP_SESSION_SECRET")
+    google_oauth_token_encryption_secret = os.getenv("GOOGLE_OAUTH_TOKEN_ENCRYPTION_SECRET") or app_session_secret
     redis_url = os.getenv("REDIS_URL")
     api_token_hash_pepper = os.getenv("API_TOKEN_HASH_PEPPER")
     cors_allowed_origins = _env_csv("API_CORS_ALLOWED_ORIGINS")
@@ -133,6 +145,18 @@ def get_settings() -> Settings:
         ),
         google_oidc_require_email_verified=_env_bool("GOOGLE_OIDC_REQUIRE_EMAIL_VERIFIED", True),
         google_oidc_timeout_seconds=int(os.getenv("GOOGLE_OIDC_TIMEOUT_SECONDS", "5")),
+        google_oauth_client_id=google_oauth_client_id,
+        google_oauth_client_secret=google_oauth_client_secret,
+        google_oauth_authorization_url=os.getenv(
+            "GOOGLE_OAUTH_AUTHORIZATION_URL",
+            "https://accounts.google.com/o/oauth2/v2/auth",
+        ),
+        google_oauth_token_url=os.getenv("GOOGLE_OAUTH_TOKEN_URL", "https://oauth2.googleapis.com/token"),
+        google_oauth_revoke_url=os.getenv("GOOGLE_OAUTH_REVOKE_URL", "https://oauth2.googleapis.com/revoke"),
+        google_oauth_timeout_seconds=int(os.getenv("GOOGLE_OAUTH_TIMEOUT_SECONDS", "10")),
+        google_business_profile_redirect_uri=os.getenv("GOOGLE_BUSINESS_PROFILE_REDIRECT_URI"),
+        google_business_profile_state_ttl_seconds=int(os.getenv("GOOGLE_BUSINESS_PROFILE_STATE_TTL_SECONDS", "600")),
+        google_oauth_token_encryption_secret=google_oauth_token_encryption_secret,
         app_session_secret=app_session_secret,
         app_session_issuer=os.getenv("APP_SESSION_ISSUER", "work-boots-console"),
         app_session_audience=os.getenv("APP_SESSION_AUDIENCE", "work-boots-api"),
