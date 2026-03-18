@@ -114,11 +114,13 @@ jobs:
 
           gcloud builds submit \
             --project "${GCP_PROJECT_ID}" \
+            --gcs-source-staging-dir "gs://mbsrn-build-source/source" \
             --pack image="${API_IMAGE}" \
             .
 
           gcloud builds submit \
             --project "${GCP_PROJECT_ID}" \
+            --gcs-source-staging-dir "gs://mbsrn-build-source/source" \
             --pack image="${UI_IMAGE}" \
             frontend/operator-ui
 
