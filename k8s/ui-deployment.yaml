@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mbsrn-ui
+  namespace: mbsrn
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mbsrn-ui
+  template:
+    metadata:
+      labels:
+        app: mbsrn-ui
+    spec:
+      containers:
+        - name: mbsrn-ui
+          image: __UI_IMAGE__
+          ports:
+            - containerPort: 8080
+          env:
+            - name: API_BASE_URL
+              value: /api
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
