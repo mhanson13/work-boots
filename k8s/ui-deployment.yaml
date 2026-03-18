@@ -21,6 +21,15 @@ spec:
           env:
             - name: API_BASE_URL
               value: /api
+          resources:
+            requests:
+              cpu: __UI_CPU_REQUEST__
+              memory: __UI_MEMORY_REQUEST__
+              ephemeral-storage: __UI_EPHEMERAL_STORAGE_REQUEST__
+            limits:
+              cpu: __UI_CPU_LIMIT__
+              memory: __UI_MEMORY_LIMIT__
+              ephemeral-storage: __UI_EPHEMERAL_STORAGE_LIMIT__
           readinessProbe:
             httpGet:
               path: /

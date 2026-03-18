@@ -18,6 +18,15 @@ spec:
           image: __API_IMAGE__
           ports:
             - containerPort: 8000
+          resources:
+            requests:
+              cpu: __API_CPU_REQUEST__
+              memory: __API_MEMORY_REQUEST__
+              ephemeral-storage: __API_EPHEMERAL_STORAGE_REQUEST__
+            limits:
+              cpu: __API_CPU_LIMIT__
+              memory: __API_MEMORY_LIMIT__
+              ephemeral-storage: __API_EPHEMERAL_STORAGE_LIMIT__
           readinessProbe:
             httpGet:
               path: /healthz

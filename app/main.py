@@ -120,6 +120,7 @@ def on_startup() -> None:
 
 
 @app.get("/health")
+@app.get("/healthz")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": settings.app_name}
 
