@@ -126,6 +126,7 @@ Project docs live under [`docs/`](docs):
 - `phase5-security-maturity-roadmap.md` (next-phase security maturity plan for browser/session hardening, observability, and production posture validation)
 - `operator-ui-and-google-auth.md` (implemented operator UI + Google identity exchange to internal principal authorization)
 - `deployment-gke-cicd.md` (implemented GKE deployment, Artifact Registry image flow, and GitHub Actions CI/CD)
+- `gcp-github-actions-bootstrap.md` (production-safe bootstrap script and minimum setup for WIF + Artifact Registry + IAM)
 - `gcp-github-actions-deployment-prerequisites.md` (step-by-step prerequisite setup for GKE deploys from GitHub Actions, including WIF, secrets, and runtime config mapping)
 - `phase3-response-and-reminders.md`
 - `phase4-notifications-and-hardening.md`

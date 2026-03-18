@@ -5,6 +5,9 @@ Deployment targets Google Kubernetes Engine (containerd runtime) with OCI images
 
 CI/CD is implemented with GitHub Actions and Google Workload Identity Federation.
 
+Bootstrap/runbook:
+- `docs/gcp-github-actions-bootstrap.md`
+
 ## Kubernetes Assets
 
 Kustomize manifests live under:
@@ -62,13 +65,18 @@ This produces OCI-compatible images suitable for containerd on GKE.
 
 ## Required GitHub Secrets
 
-- `GCP_PROJECT_ID`
 - `GAR_LOCATION`
 - `GAR_REPOSITORY`
-- `GCP_WIF_PROVIDER`
-- `GCP_WIF_SERVICE_ACCOUNT`
+- `GCP_WORKLOAD_IDENTITY_PROVIDER`
+- `GCP_SERVICE_ACCOUNT_EMAIL`
 - `GKE_CLUSTER`
 - `GKE_LOCATION`
+
+Notes:
+- `PROJECT_ID` in `deploy-gke.yml` is deterministic (`work-boots`) and is not secret-backed.
+- WIF auth uses `google-github-actions/auth@v3` with:
+  - `workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}`
+  - `service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}`
 
 ## Runtime Configuration
 

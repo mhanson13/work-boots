@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   backend-build:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -90,7 +90,7 @@ jobs:
           echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
 
   frontend-build:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -174,7 +174,7 @@ jobs:
           echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
 
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     needs:
       - backend-build
       - frontend-build
@@ -192,6 +192,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Validate deploy environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "PROJECT_ID=${PROJECT_ID:-<empty>}"
+          echo "GKE_CLUSTER_SET=$([ -n \"${GKE_CLUSTER//[[:space:]]/}\" ] && echo true || echo false)"
+          echo "GKE_LOCATION_SET=$([ -n \"${GKE_LOCATION//[[:space:]]/}\" ] && echo true || echo false)"
+          if [ -z "${PROJECT_ID//[[:space:]]/}" ]; then
+            echo "::error::PROJECT_ID is empty."
+            exit 1
+          fi
+          if [ -z "${GKE_CLUSTER//[[:space:]]/}" ]; then
+            echo "::error::GKE_CLUSTER is empty. Set GitHub secret GKE_CLUSTER."
+            exit 1
+          fi
+          if [ -z "${GKE_LOCATION//[[:space:]]/}" ]; then
+            echo "::error::GKE_LOCATION is empty. Set GitHub secret GKE_LOCATION."
+            exit 1
+          fi
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3

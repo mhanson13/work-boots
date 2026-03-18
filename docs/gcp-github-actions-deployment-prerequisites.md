@@ -1,5 +1,17 @@
 # GCP + GitHub Actions Deployment Prerequisites (GKE)
 
+> Current canonical bootstrap/setup reference for this repository is:
+> `docs/gcp-github-actions-bootstrap.md`.
+>
+> `deploy-gke.yml` currently uses:
+> - `PROJECT_ID=work-boots` (literal in workflow)
+> - `GCP_WORKLOAD_IDENTITY_PROVIDER`
+> - `GCP_SERVICE_ACCOUNT_EMAIL`
+> - `GAR_LOCATION`
+> - `GAR_REPOSITORY`
+> - `GKE_CLUSTER`
+> - `GKE_LOCATION`
+
 ## 1) Purpose And Scope
 This guide is a prerequisite/setup runbook for deploying Work Boots to GKE from GitHub Actions.
 
