@@ -86,6 +86,8 @@ jobs:
 
           files=(
             k8s/namespace.yaml
+            k8s/ui-serviceaccount.yaml
+            k8s/api-serviceaccount.yaml
             k8s/ui-deployment.yaml
             k8s/ui-service.yaml
             k8s/api-deployment.yaml
@@ -169,6 +171,8 @@ jobs:
           mkdir -p "${render_dir}"
 
           cp k8s/namespace.yaml "${render_dir}/namespace.yaml"
+          cp k8s/ui-serviceaccount.yaml "${render_dir}/ui-serviceaccount.yaml"
+          cp k8s/api-serviceaccount.yaml "${render_dir}/api-serviceaccount.yaml"
           cp k8s/ui-service.yaml "${render_dir}/ui-service.yaml"
           cp k8s/api-service.yaml "${render_dir}/api-service.yaml"
 
@@ -214,6 +218,8 @@ jobs:
           set -euo pipefail
 
           kubectl apply -f "${RENDER_DIR}/namespace.yaml"
+          kubectl apply -n "${K8S_NAMESPACE}" -f "${RENDER_DIR}/ui-serviceaccount.yaml"
+          kubectl apply -n "${K8S_NAMESPACE}" -f "${RENDER_DIR}/api-serviceaccount.yaml"
           kubectl apply -n "${K8S_NAMESPACE}" -f "${RENDER_DIR}/ui-deployment.yaml"
           kubectl apply -n "${K8S_NAMESPACE}" -f "${RENDER_DIR}/ui-service.yaml"
           kubectl apply -n "${K8S_NAMESPACE}" -f "${RENDER_DIR}/api-deployment.yaml"
