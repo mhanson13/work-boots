@@ -18,6 +18,11 @@ spec:
           image: __API_IMAGE__
           ports:
             - containerPort: 8000
+          env:
+            - name: APP_ENV
+              value: production
+            - name: DB_AUTO_CREATE_LOCAL
+              value: "false"
           resources:
             requests:
               cpu: __API_CPU_REQUEST__

@@ -9,13 +9,6 @@ on:
         default: "prod"
         type: choice
         options: ["dev", "prod"]
-  push:
-    branches: ["main"]
-    paths:
-      - "app/**"
-      - "frontend/operator-ui/**"
-      - "infra/k8s/**"
-      - ".github/workflows/deploy-gke.yml"
 
 concurrency:
   group: deploy-gke-${{ github.event.inputs.environment || 'prod' }}
