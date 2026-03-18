@@ -31,10 +31,10 @@ jobs:
     outputs:
       image_uri: ${{ steps.publish.outputs.image_uri }}
     env:
-      PROJECT_ID: work-boots
-      GAR_LOCATION: ${{ secrets.GAR_LOCATION }}
-      GAR_REPOSITORY: ${{ secrets.GAR_REPOSITORY }}
-      BUILD_SOURCE_BUCKET: ${{ secrets.BUILD_SOURCE_BUCKET }}
+      GCP_PROJECT_ID: work-boots
+      CONTAINER_REGISTRY_REGION: ${{ secrets.CONTAINER_REGISTRY_REGION }}
+      CONTAINER_REGISTRY_REPOSITORY: ${{ secrets.CONTAINER_REGISTRY_REPOSITORY }}
+      BUILD_SOURCE_DIR: ${{ secrets.BUILD_SOURCE_DIR }}
 
     steps:
       - name: Checkout
@@ -58,32 +58,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "PROJECT_ID=${PROJECT_ID:-<empty>}"
-          echo "GAR_LOCATION_SET=$([ -n \"${GAR_LOCATION//[[:space:]]/}\" ] && echo true || echo false)"
-          echo "GAR_REPOSITORY_SET=$([ -n \"${GAR_REPOSITORY//[[:space:]]/}\" ] && echo true || echo false)"
-          echo "BUILD_SOURCE_BUCKET_SET=$([ -n \"${BUILD_SOURCE_BUCKET//[[:space:]]/}\" ] && echo true || echo false)"
-          if [ -z "${PROJECT_ID//[[:space:]]/}" ]; then
-            echo "::error::PROJECT_ID is empty."
+          echo "GCP_PROJECT_ID=${GCP_PROJECT_ID:-<empty>}"
+          echo "CONTAINER_REGISTRY_REGION_SET=$([ -n \"${CONTAINER_REGISTRY_REGION//[[:space:]]/}\" ] && echo true || echo false)"
+          echo "CONTAINER_REGISTRY_REPOSITORY_SET=$([ -n \"${CONTAINER_REGISTRY_REPOSITORY//[[:space:]]/}\" ] && echo true || echo false)"
+          echo "BUILD_SOURCE_DIR_SET=$([ -n \"${BUILD_SOURCE_DIR//[[:space:]]/}\" ] && echo true || echo false)"
+          if [ -z "${GCP_PROJECT_ID//[[:space:]]/}" ]; then
+            echo "::error::GCP_PROJECT_ID is empty."
             exit 1
           fi
-          if [ -z "${GAR_LOCATION//[[:space:]]/}" ]; then
-            echo "::error::GAR_LOCATION is empty. Set GitHub secret GAR_LOCATION."
+          if [ -z "${CONTAINER_REGISTRY_REGION//[[:space:]]/}" ]; then
+            echo "::error::CONTAINER_REGISTRY_REGION is empty. Set GitHub secret CONTAINER_REGISTRY_REGION."
             exit 1
           fi
-          if [ -z "${GAR_REPOSITORY//[[:space:]]/}" ]; then
-            echo "::error::GAR_REPOSITORY is empty. Set GitHub secret GAR_REPOSITORY."
+          if [ -z "${CONTAINER_REGISTRY_REPOSITORY//[[:space:]]/}" ]; then
+            echo "::error::CONTAINER_REGISTRY_REPOSITORY is empty. Set GitHub secret CONTAINER_REGISTRY_REPOSITORY."
             exit 1
           fi
-          if [ -z "${BUILD_SOURCE_BUCKET//[[:space:]]/}" ]; then
-            echo "::error::BUILD_SOURCE_BUCKET is empty. Set GitHub secret BUILD_SOURCE_BUCKET."
+          if [ -z "${BUILD_SOURCE_DIR//[[:space:]]/}" ]; then
+            echo "::error::BUILD_SOURCE_DIR is empty. Set GitHub secret BUILD_SOURCE_DIR."
             exit 1
           fi
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+          workload_identity_provider: ${{ secrets.OIDC_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v3
@@ -91,8 +91,8 @@ jobs:
       - name: Build and push API image (Cloud Buildpacks)
         id: publish
         run: |
-          IMAGE_URI="${GAR_LOCATION}-docker.pkg.dev/${PROJECT_ID}/${GAR_REPOSITORY}/api:${GITHUB_SHA}"
-          gcloud builds submit --project="${PROJECT_ID}" --gcs-source-staging-dir="${BUILD_SOURCE_BUCKET}" --pack image="${IMAGE_URI}" .
+          IMAGE_URI="${CONTAINER_REGISTRY_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${CONTAINER_REGISTRY_REPOSITORY}/api:${GITHUB_SHA}"
+          gcloud builds submit --project="${GCP_PROJECT_ID}" --gcs-source-staging-dir="${BUILD_SOURCE_DIR}" --pack image="${IMAGE_URI}" .
           echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
 
   frontend-build:
@@ -104,10 +104,10 @@ jobs:
     outputs:
       image_uri: ${{ steps.publish.outputs.image_uri }}
     env:
-      PROJECT_ID: work-boots
-      GAR_LOCATION: ${{ secrets.GAR_LOCATION }}
-      GAR_REPOSITORY: ${{ secrets.GAR_REPOSITORY }}
-      BUILD_SOURCE_BUCKET: ${{ secrets.BUILD_SOURCE_BUCKET }}
+      GCP_PROJECT_ID: work-boots
+      CONTAINER_REGISTRY_REGION: ${{ secrets.CONTAINER_REGISTRY_REGION }}
+      CONTAINER_REGISTRY_REPOSITORY: ${{ secrets.CONTAINER_REGISTRY_REPOSITORY }}
+      BUILD_SOURCE_DIR: ${{ secrets.BUILD_SOURCE_DIR }}
 
     steps:
       - name: Checkout
@@ -148,32 +148,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "PROJECT_ID=${PROJECT_ID:-<empty>}"
-          echo "GAR_LOCATION_SET=$([ -n \"${GAR_LOCATION//[[:space:]]/}\" ] && echo true || echo false)"
-          echo "GAR_REPOSITORY_SET=$([ -n \"${GAR_REPOSITORY//[[:space:]]/}\" ] && echo true || echo false)"
-          echo "BUILD_SOURCE_BUCKET_SET=$([ -n \"${BUILD_SOURCE_BUCKET//[[:space:]]/}\" ] && echo true || echo false)"
-          if [ -z "${PROJECT_ID//[[:space:]]/}" ]; then
-            echo "::error::PROJECT_ID is empty."
+          echo "GCP_PROJECT_ID=${GCP_PROJECT_ID:-<empty>}"
+          echo "CONTAINER_REGISTRY_REGION_SET=$([ -n \"${CONTAINER_REGISTRY_REGION//[[:space:]]/}\" ] && echo true || echo false)"
+          echo "CONTAINER_REGISTRY_REPOSITORY_SET=$([ -n \"${CONTAINER_REGISTRY_REPOSITORY//[[:space:]]/}\" ] && echo true || echo false)"
+          echo "BUILD_SOURCE_DIR_SET=$([ -n \"${BUILD_SOURCE_DIR//[[:space:]]/}\" ] && echo true || echo false)"
+          if [ -z "${GCP_PROJECT_ID//[[:space:]]/}" ]; then
+            echo "::error::GCP_PROJECT_ID is empty."
             exit 1
           fi
-          if [ -z "${GAR_LOCATION//[[:space:]]/}" ]; then
-            echo "::error::GAR_LOCATION is empty. Set GitHub secret GAR_LOCATION."
+          if [ -z "${CONTAINER_REGISTRY_REGION//[[:space:]]/}" ]; then
+            echo "::error::CONTAINER_REGISTRY_REGION is empty. Set GitHub secret CONTAINER_REGISTRY_REGION."
             exit 1
           fi
-          if [ -z "${GAR_REPOSITORY//[[:space:]]/}" ]; then
-            echo "::error::GAR_REPOSITORY is empty. Set GitHub secret GAR_REPOSITORY."
+          if [ -z "${CONTAINER_REGISTRY_REPOSITORY//[[:space:]]/}" ]; then
+            echo "::error::CONTAINER_REGISTRY_REPOSITORY is empty. Set GitHub secret CONTAINER_REGISTRY_REPOSITORY."
             exit 1
           fi
-          if [ -z "${BUILD_SOURCE_BUCKET//[[:space:]]/}" ]; then
-            echo "::error::BUILD_SOURCE_BUCKET is empty. Set GitHub secret BUILD_SOURCE_BUCKET."
+          if [ -z "${BUILD_SOURCE_DIR//[[:space:]]/}" ]; then
+            echo "::error::BUILD_SOURCE_DIR is empty. Set GitHub secret BUILD_SOURCE_DIR."
             exit 1
           fi
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+          workload_identity_provider: ${{ secrets.OIDC_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v3
@@ -181,8 +181,8 @@ jobs:
       - name: Build and push UI image (Cloud Buildpacks)
         id: publish
         run: |
-          IMAGE_URI="${GAR_LOCATION}-docker.pkg.dev/${PROJECT_ID}/${GAR_REPOSITORY}/ui:${GITHUB_SHA}"
-          gcloud builds submit --project="${PROJECT_ID}" --gcs-source-staging-dir="${BUILD_SOURCE_BUCKET}" --pack image="${IMAGE_URI}" frontend/operator-ui
+          IMAGE_URI="${CONTAINER_REGISTRY_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${CONTAINER_REGISTRY_REPOSITORY}/ui:${GITHUB_SHA}"
+          gcloud builds submit --project="${GCP_PROJECT_ID}" --gcs-source-staging-dir="${BUILD_SOURCE_DIR}" --pack image="${IMAGE_URI}" frontend/operator-ui
           echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
 
   deploy:
@@ -197,9 +197,9 @@ jobs:
 
     env:
       TARGET_OVERLAY: ${{ github.event.inputs.environment || 'prod' }}
-      PROJECT_ID: work-boots
-      GKE_CLUSTER: ${{ secrets.GKE_CLUSTER }}
-      GKE_LOCATION: ${{ secrets.GKE_LOCATION }}
+      GCP_PROJECT_ID: work-boots
+      KUBERNETES_CLUSTER_NAME: ${{ secrets.KUBERNETES_CLUSTER_NAME }}
+      KUBERNETES_CLUSTER_REGION: ${{ secrets.KUBERNETES_CLUSTER_REGION }}
 
     steps:
       - name: Checkout
@@ -209,27 +209,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "PROJECT_ID=${PROJECT_ID:-<empty>}"
-          echo "GKE_CLUSTER_SET=$([ -n \"${GKE_CLUSTER//[[:space:]]/}\" ] && echo true || echo false)"
-          echo "GKE_LOCATION_SET=$([ -n \"${GKE_LOCATION//[[:space:]]/}\" ] && echo true || echo false)"
-          if [ -z "${PROJECT_ID//[[:space:]]/}" ]; then
-            echo "::error::PROJECT_ID is empty."
+          echo "GCP_PROJECT_ID=${GCP_PROJECT_ID:-<empty>}"
+          echo "KUBERNETES_CLUSTER_NAME_SET=$([ -n \"${KUBERNETES_CLUSTER_NAME//[[:space:]]/}\" ] && echo true || echo false)"
+          echo "KUBERNETES_CLUSTER_REGION_SET=$([ -n \"${KUBERNETES_CLUSTER_REGION//[[:space:]]/}\" ] && echo true || echo false)"
+          if [ -z "${GCP_PROJECT_ID//[[:space:]]/}" ]; then
+            echo "::error::GCP_PROJECT_ID is empty."
             exit 1
           fi
-          if [ -z "${GKE_CLUSTER//[[:space:]]/}" ]; then
-            echo "::error::GKE_CLUSTER is empty. Set GitHub secret GKE_CLUSTER."
+          if [ -z "${KUBERNETES_CLUSTER_NAME//[[:space:]]/}" ]; then
+            echo "::error::KUBERNETES_CLUSTER_NAME is empty. Set GitHub secret KUBERNETES_CLUSTER_NAME."
             exit 1
           fi
-          if [ -z "${GKE_LOCATION//[[:space:]]/}" ]; then
-            echo "::error::GKE_LOCATION is empty. Set GitHub secret GKE_LOCATION."
+          if [ -z "${KUBERNETES_CLUSTER_REGION//[[:space:]]/}" ]; then
+            echo "::error::KUBERNETES_CLUSTER_REGION is empty. Set GitHub secret KUBERNETES_CLUSTER_REGION."
             exit 1
           fi
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+          workload_identity_provider: ${{ secrets.OIDC_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v3
@@ -239,7 +239,7 @@ jobs:
 
       - name: Configure kubectl for GKE
         run: |
-          gcloud container clusters get-credentials "${GKE_CLUSTER}" --region "${GKE_LOCATION}" --project "${PROJECT_ID}"
+          gcloud container clusters get-credentials "${KUBERNETES_CLUSTER_NAME}" --region "${KUBERNETES_CLUSTER_REGION}" --project "${GCP_PROJECT_ID}"
 
       - name: Resolve deployment namespace
         id: target

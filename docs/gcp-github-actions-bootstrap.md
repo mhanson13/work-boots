@@ -9,31 +9,33 @@ This runbook sets up a fresh or existing Google Cloud project so this repository
 
 Script:
 - `scripts/bootstrap_gcp_github_actions.sh`
+- Naming contract: `docs/deployment-configuration-contract.md`
 
 ## Inputs
 
 Required:
-- `PROJECT_ID`
-- `GAR_LOCATION`
-- `GAR_REPOSITORY`
+- `GCP_PROJECT_ID`
+- `CONTAINER_REGISTRY_REGION`
+- `CONTAINER_REGISTRY_REPOSITORY`
 
 Optional (with defaults):
 - `REPO` (default: `mhanson13/work-boots`)
 - `POOL_ID` (default: `github-pool`)
 - `PROVIDER_ID` (default: `github-provider`)
 - `SERVICE_ACCOUNT_ID` (default: `work-boots-github-deployer`)
-- `BUILD_SOURCE_BUCKET` (default: `gs://<PROJECT_ID>-build-source/source`)
-- `GKE_CLUSTER` (for output/manual checklist only)
-- `GKE_LOCATION` (for output/manual checklist only)
+- `BUILD_SOURCE_DIR` (default: `gs://<GCP_PROJECT_ID>-build-source/source`)
+- `KUBERNETES_CLUSTER_NAME` (optional create/reuse target)
+- `KUBERNETES_CLUSTER_REGION` (optional create/reuse target)
+- `KUBERNETES_CLUSTER_MODE` (default: `autopilot`; allowed: `autopilot`, `standard`)
 
 ## Run
 
 Example:
 
 ```bash
-PROJECT_ID=work-boots \
-GAR_LOCATION=us-central1 \
-GAR_REPOSITORY=work-boots \
+GCP_PROJECT_ID=work-boots \
+CONTAINER_REGISTRY_REGION=us-central1 \
+CONTAINER_REGISTRY_REPOSITORY=work-boots \
 REPO=mhanson13/work-boots \
 scripts/bootstrap_gcp_github_actions.sh
 ```
@@ -42,11 +44,14 @@ Flag-based equivalent:
 
 ```bash
 scripts/bootstrap_gcp_github_actions.sh \
-  --project-id work-boots \
-  --gar-location us-central1 \
-  --gar-repository work-boots \
+  --gcp-project-id work-boots \
+  --container-registry-region us-central1 \
+  --container-registry-repository work-boots \
+  --kubernetes-cluster-mode autopilot \
   --repo mhanson13/work-boots
 ```
+
+Legacy flag aliases (`--project-id`, `--gar-location`, `--gar-repository`, `--build-source-bucket`, `--gke-cluster`, `--gke-location`) are still accepted for transition, but canonical names are preferred.
 
 ## What The Script Configures
 
@@ -69,7 +74,7 @@ scripts/bootstrap_gcp_github_actions.sh \
    - `roles/cloudbuild.builds.editor`
    - `roles/artifactregistry.writer`
    - `roles/container.developer`
-4. Creates or reuses Cloud Build source staging bucket from `BUILD_SOURCE_BUCKET`
+4. Creates or reuses Cloud Build source staging bucket from `BUILD_SOURCE_DIR`
    and grants bucket IAM:
    - deploy SA: `roles/storage.objectAdmin`
    - Cloud Build SA: `roles/storage.objectViewer`
@@ -77,6 +82,10 @@ scripts/bootstrap_gcp_github_actions.sh \
    - `roles/iam.workloadIdentityUser`
 6. Grants Artifact Registry writer on the target repository to:
    - `<PROJECT_NUMBER>@cloudbuild.gserviceaccount.com`
+7. Optionally creates or reuses a Kubernetes cluster when both
+   `KUBERNETES_CLUSTER_NAME` and `KUBERNETES_CLUSTER_REGION` are set:
+   - `KUBERNETES_CLUSTER_MODE=autopilot` -> `gcloud container clusters create-auto`
+   - `KUBERNETES_CLUSTER_MODE=standard` -> `gcloud container clusters create`
 
 The script is idempotent where practical (create-if-missing, safe re-apply for IAM bindings).
 
@@ -84,28 +93,28 @@ The script is idempotent where practical (create-if-missing, safe re-apply for I
 
 From `.github/workflows/deploy-gke.yml`:
 
-- `GCP_WORKLOAD_IDENTITY_PROVIDER`
-- `GCP_SERVICE_ACCOUNT_EMAIL`
-- `GAR_LOCATION`
-- `GAR_REPOSITORY`
-- `BUILD_SOURCE_BUCKET`
-- `GKE_CLUSTER`
-- `GKE_LOCATION`
+- `OIDC_WORKLOAD_IDENTITY_PROVIDER`
+- `DEPLOY_SERVICE_ACCOUNT`
+- `CONTAINER_REGISTRY_REGION`
+- `CONTAINER_REGISTRY_REPOSITORY`
+- `BUILD_SOURCE_DIR`
+- `KUBERNETES_CLUSTER_NAME`
+- `KUBERNETES_CLUSTER_REGION`
 
 Notes:
-- `PROJECT_ID` is deterministic in workflow (`work-boots`) and not secret-backed.
+- `GCP_PROJECT_ID` is deterministic in workflow (`work-boots`) and not secret-backed.
 - Script prints exact values for:
-  - `GCP_WORKLOAD_IDENTITY_PROVIDER`
-  - `GCP_SERVICE_ACCOUNT_EMAIL`
-  - `GAR_LOCATION`
-  - `GAR_REPOSITORY`
-  - `BUILD_SOURCE_BUCKET`
+  - `OIDC_WORKLOAD_IDENTITY_PROVIDER`
+  - `DEPLOY_SERVICE_ACCOUNT`
+  - `CONTAINER_REGISTRY_REGION`
+  - `CONTAINER_REGISTRY_REPOSITORY`
+  - `BUILD_SOURCE_DIR`
 
 ## What Is Still Manual
 
-- Ensure the GKE cluster exists and set:
-  - `GKE_CLUSTER`
-  - `GKE_LOCATION`
+- If you do not provide `KUBERNETES_CLUSTER_NAME` and `KUBERNETES_CLUSTER_REGION`, ensure the GKE cluster exists and set:
+  - `KUBERNETES_CLUSTER_NAME`
+  - `KUBERNETES_CLUSTER_REGION`
 - Ensure Kubernetes RBAC in the cluster allows deploy identity operations used by workflow:
   - `kubectl apply -k ...`
   - migration Job create/wait/log/delete
@@ -119,14 +128,14 @@ After bootstrap:
 gcloud iam workload-identity-pools providers describe <PROVIDER_ID> \
   --workload-identity-pool <POOL_ID> \
   --location global \
-  --project <PROJECT_ID>
+  --project <GCP_PROJECT_ID>
 
 gcloud iam service-accounts get-iam-policy <SERVICE_ACCOUNT_EMAIL> \
-  --project <PROJECT_ID>
+  --project <GCP_PROJECT_ID>
 
-gcloud artifacts repositories describe <GAR_REPOSITORY> \
-  --location <GAR_LOCATION> \
-  --project <PROJECT_ID>
+gcloud artifacts repositories describe <CONTAINER_REGISTRY_REPOSITORY> \
+  --location <CONTAINER_REGISTRY_REGION> \
+  --project <GCP_PROJECT_ID>
 ```
 
 Then run deploy pipeline from GitHub Actions:

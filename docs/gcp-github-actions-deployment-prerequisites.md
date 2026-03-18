@@ -3,15 +3,18 @@
 > Current canonical bootstrap/setup reference for this repository is:
 > `docs/gcp-github-actions-bootstrap.md`.
 >
+> Canonical deploy-time naming contract:
+> `docs/deployment-configuration-contract.md`.
+>
 > `deploy-gke.yml` currently uses:
-> - `PROJECT_ID=work-boots` (literal in workflow)
-> - `GCP_WORKLOAD_IDENTITY_PROVIDER`
-> - `GCP_SERVICE_ACCOUNT_EMAIL`
-> - `GAR_LOCATION`
-> - `GAR_REPOSITORY`
-> - `BUILD_SOURCE_BUCKET`
-> - `GKE_CLUSTER`
-> - `GKE_LOCATION`
+> - `GCP_PROJECT_ID=work-boots` (literal in workflow)
+> - `OIDC_WORKLOAD_IDENTITY_PROVIDER`
+> - `DEPLOY_SERVICE_ACCOUNT`
+> - `CONTAINER_REGISTRY_REGION`
+> - `CONTAINER_REGISTRY_REPOSITORY`
+> - `BUILD_SOURCE_DIR`
+> - `KUBERNETES_CLUSTER_NAME`
+> - `KUBERNETES_CLUSTER_REGION`
 
 ## 1) Purpose And Scope
 This guide is a prerequisite/setup runbook for deploying Work Boots to GKE from GitHub Actions.
@@ -70,9 +73,9 @@ Google Cloud Console -> top project selector -> `New Project`
 - Project Number: `123456789012` (example)
 
 **Used In:**
-- deterministic `PROJECT_ID` in `.github/workflows/deploy-gke.yml` (`work-boots` by current default)
+- deterministic `GCP_PROJECT_ID` in `.github/workflows/deploy-gke.yml` (`work-boots` by current default)
 - Workload Identity Provider resource string (uses Project Number)
-- Artifact Registry path (`<LOCATION>-docker.pkg.dev/<PROJECT_ID>/<REPO>`)
+- Artifact Registry path (`<LOCATION>-docker.pkg.dev/<GCP_PROJECT_ID>/<REPO>`)
 
 ### 3.2 Enable Required APIs
 **Console Path:**
@@ -106,15 +109,15 @@ Google Cloud Console -> Artifact Registry -> Repositories -> `Create Repository`
 - Region: `us-central1`
 - Repository name: `work-boots`
 - Full repository prefix:
-  `us-central1-docker.pkg.dev/<PROJECT_ID>/work-boots`
+  `us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/work-boots`
 
 **Used In:**
 - GitHub secrets:
-  - `GAR_LOCATION` = `us-central1`
-  - `GAR_REPOSITORY` = `work-boots`
+  - `CONTAINER_REGISTRY_REGION` = `us-central1`
+  - `CONTAINER_REGISTRY_REPOSITORY` = `work-boots`
 - Image URI construction in `.github/workflows/deploy-gke.yml`:
-  - API: `${GAR_LOCATION}-docker.pkg.dev/${PROJECT_ID}/${GAR_REPOSITORY}/api:${GITHUB_SHA}`
-  - UI: `${GAR_LOCATION}-docker.pkg.dev/${PROJECT_ID}/${GAR_REPOSITORY}/ui:${GITHUB_SHA}`
+  - API: `${CONTAINER_REGISTRY_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${CONTAINER_REGISTRY_REPOSITORY}/api:${GITHUB_SHA}`
+  - UI: `${CONTAINER_REGISTRY_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${CONTAINER_REGISTRY_REPOSITORY}/ui:${GITHUB_SHA}`
 
 ### 3.4 Create GKE Autopilot Cluster
 **Console Path:**
@@ -135,8 +138,8 @@ Google Cloud Console -> Kubernetes Engine -> Clusters -> `Create` -> `Switch to 
 
 **Used In:**
 - GitHub secrets:
-  - `GKE_CLUSTER` = cluster name
-  - `GKE_LOCATION` = region
+  - `KUBERNETES_CLUSTER_NAME` = cluster name
+  - `KUBERNETES_CLUSTER_REGION` = region
 - Used by `gcloud container clusters get-credentials` in `.github/workflows/deploy-gke.yml`
 
 ### 3.5 Create Workload Identity Pool
@@ -155,7 +158,7 @@ Google Cloud Console -> IAM & Admin -> Workload Identity Federation -> `Create P
 - Pool ID: `github-pool`
 
 **Used In:**
-- Part of provider resource string stored in GitHub secret `GCP_WORKLOAD_IDENTITY_PROVIDER`.
+- Part of provider resource string stored in GitHub secret `OIDC_WORKLOAD_IDENTITY_PROVIDER`.
 
 ### 3.6 Create Workload Identity Provider (GitHub OIDC)
 Full detailed WIF setup is in Section 5; this subsection is the resource creation summary.
@@ -175,7 +178,7 @@ Google Cloud Console -> IAM & Admin -> Workload Identity Federation -> select po
   `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL_ID>/providers/<PROVIDER_ID>`
 
 **Used In:**
-- GitHub secret `GCP_WORKLOAD_IDENTITY_PROVIDER`
+- GitHub secret `OIDC_WORKLOAD_IDENTITY_PROVIDER`
 - `google-github-actions/auth@v3` in `.github/workflows/deploy-gke.yml`
 
 ### 3.7 Create Service Account For GitHub Actions
@@ -192,10 +195,10 @@ Google Cloud Console -> IAM & Admin -> Service Accounts -> `Create Service Accou
 
 **Copy This Value:**
 - Service account email:
-  `work-boots-github-deployer@<PROJECT_ID>.iam.gserviceaccount.com`
+  `work-boots-github-deployer@<GCP_PROJECT_ID>.iam.gserviceaccount.com`
 
 **Used In:**
-- GitHub secret `GCP_SERVICE_ACCOUNT_EMAIL`
+- GitHub secret `DEPLOY_SERVICE_ACCOUNT`
 - `google-github-actions/auth@v3` in `.github/workflows/deploy-gke.yml`
 
 ### 3.8 Configure IAM Bindings (WIF + Deploy Permissions)
@@ -383,7 +386,7 @@ Google Cloud Console -> IAM & Admin -> Workload Identity Federation -> `Create P
 - Pool ID: `github-pool`
 
 **Used In:**
-- Provider resource string stored in GitHub secret `GCP_WORKLOAD_IDENTITY_PROVIDER`.
+- Provider resource string stored in GitHub secret `OIDC_WORKLOAD_IDENTITY_PROVIDER`.
 
 ### 5.3 Create Workload Identity Provider
 **Console Path:**
@@ -412,7 +415,7 @@ Google Cloud Console -> IAM & Admin -> Workload Identity Federation -> select `g
   `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github-pool/providers/github-provider`
 
 **Used In:**
-- GitHub secret `GCP_WORKLOAD_IDENTITY_PROVIDER`
+- GitHub secret `OIDC_WORKLOAD_IDENTITY_PROVIDER`
 - `workload_identity_provider:` in `.github/workflows/deploy-gke.yml`
 
 ### 5.4 Create/Configure Deployer Service Account
@@ -431,10 +434,10 @@ Google Cloud Console -> IAM & Admin -> Service Accounts -> `Create Service Accou
 
 **Copy This Value:**
 - Service account email:
-  `work-boots-github-deployer@<PROJECT_ID>.iam.gserviceaccount.com`
+  `work-boots-github-deployer@<GCP_PROJECT_ID>.iam.gserviceaccount.com`
 
 **Used In:**
-- GitHub secret `GCP_SERVICE_ACCOUNT_EMAIL`
+- GitHub secret `DEPLOY_SERVICE_ACCOUNT`
 - `service_account:` in `.github/workflows/deploy-gke.yml`
 
 ### 5.5 Bind WIF Principal To Service Account
@@ -460,11 +463,11 @@ Required value formats:
 - Provider resource string:
   `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL_ID>/providers/<PROVIDER_ID>`
 - Service account email:
-  `<SA_NAME>@<PROJECT_ID>.iam.gserviceaccount.com`
+  `<SA_NAME>@<GCP_PROJECT_ID>.iam.gserviceaccount.com`
 
 Mapping to repository secrets:
-- `GCP_WORKLOAD_IDENTITY_PROVIDER` <- provider resource string
-- `GCP_SERVICE_ACCOUNT_EMAIL` <- service account email
+- `OIDC_WORKLOAD_IDENTITY_PROVIDER` <- provider resource string
+- `DEPLOY_SERVICE_ACCOUNT` <- service account email
 
 ## 6) GitHub Secrets And Variables
 Add secrets in GitHub:
@@ -476,16 +479,16 @@ Create these repository secrets (exact names from `.github/workflows/deploy-gke.
 
 | Name | Type | Example | Where to get it | Used in |
 |---|---|---|---|---|
-| `GAR_LOCATION` | Secret | `us-central1` | Artifact Registry repository region | image URI build/push paths |
-| `GAR_REPOSITORY` | Secret | `work-boots` | Artifact Registry repository name | image URI build/push paths |
-| `BUILD_SOURCE_BUCKET` | Secret | `gs://work-boots-build-source/source` | bootstrap script output or GCS bucket design | `gcloud builds submit --gcs-source-staging-dir=...` |
-| `GCP_WORKLOAD_IDENTITY_PROVIDER` | Secret | `projects/123456789012/locations/global/workloadIdentityPools/github-pool/providers/github-provider` | WIF provider details | `google-github-actions/auth@v3` |
-| `GCP_SERVICE_ACCOUNT_EMAIL` | Secret | `work-boots-github-deployer@my-work-boots-prod.iam.gserviceaccount.com` | IAM Service Accounts | `google-github-actions/auth@v3` |
-| `GKE_CLUSTER` | Secret | `work-boots-cluster` | GKE cluster details | `gcloud container clusters get-credentials` |
-| `GKE_LOCATION` | Secret | `us-central1` | GKE cluster region | `gcloud container clusters get-credentials --region` |
+| `CONTAINER_REGISTRY_REGION` | Secret | `us-central1` | Artifact Registry repository region | image URI build/push paths |
+| `CONTAINER_REGISTRY_REPOSITORY` | Secret | `work-boots` | Artifact Registry repository name | image URI build/push paths |
+| `BUILD_SOURCE_DIR` | Secret | `gs://work-boots-build-source/source` | bootstrap script output or GCS bucket design | `gcloud builds submit --gcs-source-staging-dir=...` |
+| `OIDC_WORKLOAD_IDENTITY_PROVIDER` | Secret | `projects/123456789012/locations/global/workloadIdentityPools/github-pool/providers/github-provider` | WIF provider details | `google-github-actions/auth@v3` |
+| `DEPLOY_SERVICE_ACCOUNT` | Secret | `work-boots-github-deployer@my-work-boots-prod.iam.gserviceaccount.com` | IAM Service Accounts | `google-github-actions/auth@v3` |
+| `KUBERNETES_CLUSTER_NAME` | Secret | `work-boots-cluster` | GKE cluster details | `gcloud container clusters get-credentials` |
+| `KUBERNETES_CLUSTER_REGION` | Secret | `us-central1` | GKE cluster region | `gcloud container clusters get-credentials --region` |
 
 Notes:
-- `PROJECT_ID` is deterministic in current deploy workflow (`work-boots`) and not secret-backed.
+- `GCP_PROJECT_ID` is deterministic in current deploy workflow (`work-boots`) and not secret-backed.
 - Deploy workflow runs on `push` to `main` and `workflow_dispatch`.
 - Secrets are not available to workflows triggered from untrusted forks.
 - Keep `permissions.id-token: write` in deploy jobs; WIF fails without it.
@@ -651,7 +654,7 @@ Consequences if misconfigured:
 ## 11) Common Failure Modes (Cause + Fix)
 ### 11.1 Google Auth Failure In Workflow
 Cause:
-- Wrong `GCP_WORKLOAD_IDENTITY_PROVIDER` or `GCP_SERVICE_ACCOUNT_EMAIL`
+- Wrong `OIDC_WORKLOAD_IDENTITY_PROVIDER` or `DEPLOY_SERVICE_ACCOUNT`
 - Workflow expecting WIF but configured with wrong/unused `credentials_json` mode
 - missing `id-token: write` permission
 - WIF provider attribute condition excludes current branch/repo
@@ -674,7 +677,7 @@ Fix:
 
 ### 11.3 Wrong Cluster Name Or Region
 Cause:
-- `GKE_CLUSTER`/`GKE_LOCATION` secret mismatch.
+- `KUBERNETES_CLUSTER_NAME`/`KUBERNETES_CLUSTER_REGION` secret mismatch.
 
 Fix:
 1. Open GKE cluster details.

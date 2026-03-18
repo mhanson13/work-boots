@@ -7,6 +7,7 @@ CI/CD is implemented with GitHub Actions and Google Workload Identity Federation
 
 Bootstrap/runbook:
 - `docs/gcp-github-actions-bootstrap.md`
+- `docs/deployment-configuration-contract.md` (canonical naming contract for deploy-time secrets/env/inputs)
 
 ## Kubernetes Assets
 
@@ -33,7 +34,7 @@ A secret template is provided at:
 Workflows use Google Cloud Buildpacks:
 - `gcloud builds submit --pack image=...`
 - deploy workflow passes explicit source staging dir:
-  - `--gcs-source-staging-dir="${BUILD_SOURCE_BUCKET}"`
+  - `--gcs-source-staging-dir="${BUILD_SOURCE_DIR}"`
 
 This produces OCI-compatible images suitable for containerd on GKE.
 
@@ -67,19 +68,19 @@ This produces OCI-compatible images suitable for containerd on GKE.
 
 ## Required GitHub Secrets
 
-- `GAR_LOCATION`
-- `GAR_REPOSITORY`
-- `BUILD_SOURCE_BUCKET`
-- `GCP_WORKLOAD_IDENTITY_PROVIDER`
-- `GCP_SERVICE_ACCOUNT_EMAIL`
-- `GKE_CLUSTER`
-- `GKE_LOCATION`
+- `CONTAINER_REGISTRY_REGION`
+- `CONTAINER_REGISTRY_REPOSITORY`
+- `BUILD_SOURCE_DIR`
+- `OIDC_WORKLOAD_IDENTITY_PROVIDER`
+- `DEPLOY_SERVICE_ACCOUNT`
+- `KUBERNETES_CLUSTER_NAME`
+- `KUBERNETES_CLUSTER_REGION`
 
 Notes:
-- `PROJECT_ID` in `deploy-gke.yml` is deterministic (`work-boots`) and is not secret-backed.
+- `GCP_PROJECT_ID` in `deploy-gke.yml` is deterministic (`work-boots`) and is not secret-backed.
 - WIF auth uses `google-github-actions/auth@v3` with:
-  - `workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}`
-  - `service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}`
+  - `workload_identity_provider: ${{ secrets.OIDC_WORKLOAD_IDENTITY_PROVIDER }}`
+  - `service_account: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}`
 
 ## Runtime Configuration
 

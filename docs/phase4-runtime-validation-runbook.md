@@ -21,14 +21,15 @@ Before starting runtime validation, confirm all of the following:
   - Cloud Logging
 - `kubectl` access to the target cluster/namespace.
 - GitHub Actions Workload Identity Federation is configured:
-  - `GCP_WIF_PROVIDER`
-  - `GCP_WIF_SERVICE_ACCOUNT`
+  - `OIDC_WORKLOAD_IDENTITY_PROVIDER`
+  - `DEPLOY_SERVICE_ACCOUNT`
 - GitHub Actions deploy secrets are populated:
-  - `GCP_PROJECT_ID`
-  - `GAR_LOCATION`
-  - `GAR_REPOSITORY`
-  - `GKE_CLUSTER`
-  - `GKE_LOCATION`
+  - `CONTAINER_REGISTRY_REGION`
+  - `CONTAINER_REGISTRY_REPOSITORY`
+  - `KUBERNETES_CLUSTER_NAME`
+  - `KUBERNETES_CLUSTER_REGION`
+- Deploy workflow uses deterministic project setting:
+  - `GCP_PROJECT_ID=work-boots`
 - Target namespace exists:
   - dev: `work-boots-dev`
   - prod: `work-boots`
