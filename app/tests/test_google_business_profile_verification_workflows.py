@@ -27,6 +27,7 @@ from app.models.business import Business
 from app.models.principal import Principal, PrincipalRole
 from app.models.provider_connection import ProviderConnection
 from app.services.google_business_profile_verification_observability import (
+    record_gbp_verification_observation,
     verification_observability,
 )
 
@@ -200,12 +201,13 @@ def _seed_principal(
     *,
     business_id: str,
     principal_id: str,
+    role: PrincipalRole = PrincipalRole.ADMIN,
 ) -> Principal:
     principal = Principal(
         business_id=business_id,
         id=principal_id,
         display_name=principal_id,
-        role=PrincipalRole.ADMIN,
+        role=role,
         is_active=True,
     )
     db_session.add(principal)
@@ -473,6 +475,92 @@ def test_verification_status_unknown_provider_state_increments_observability_cou
     )
     assert response.status_code == 200, response.text
     assert verification_observability.snapshot().get("provider_state_unmapped", 0) >= 1
+
+
+def test_verification_observability_counters_export(
+    db_session,
+    seeded_business,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
+    _seed_principal(db_session, business_id=seeded_business.id, principal_id="verify-observability-admin")
+    _seed_provider_connection(
+        db_session,
+        business_id=seeded_business.id,
+        principal_id="verify-observability-admin",
+        access_token="verify-observability-token",
+        refresh_token="verify-observability-refresh",
+        expires_in_seconds=3600,
+    )
+
+    # Seed representative in-process observability events.
+    record_gbp_verification_observation("provider_state_unmapped")
+    record_gbp_verification_observation("provider_method_missing")
+    record_gbp_verification_observation("provider_method_unmapped")
+    record_gbp_verification_observation("provider_error_fallback")
+    record_gbp_verification_observation("option_token_invalid")
+    record_gbp_verification_observation("option_provider_method_unavailable")
+    record_gbp_verification_observation("option_selected_method_unavailable")
+    record_gbp_verification_observation("option_destination_unavailable")
+    record_gbp_verification_observation("verification_record_missing_fields")
+    record_gbp_verification_observation("guidance_fallback_unknown")
+
+    client = _make_integrations_client(
+        db_session,
+        oauth_client=_StubGoogleOAuthClient(),
+        gbp_client=_StubGoogleBusinessProfileClient(),
+        business_id=seeded_business.id,
+        principal_id="verify-observability-admin",
+    )
+
+    response = client.get("/api/integrations/google/business-profile/verification/observability/counters")
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload == {
+        "unknown_provider_state": 1,
+        "unknown_provider_method": 2,
+        "provider_error_fallback": 1,
+        "invalid_option_token": 1,
+        "unavailable_method_revalidation": 2,
+        "unavailable_destination_revalidation": 1,
+        "missing_expected_verification_fields": 1,
+        "mapping_gaps": 5,
+        "guidance_fallback": 1,
+    }
+
+
+def test_verification_observability_counters_require_admin_principal(
+    db_session,
+    seeded_business,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
+    _seed_principal(
+        db_session,
+        business_id=seeded_business.id,
+        principal_id="verify-observability-operator",
+        role=PrincipalRole.OPERATOR,
+    )
+    _seed_provider_connection(
+        db_session,
+        business_id=seeded_business.id,
+        principal_id="verify-observability-operator",
+        access_token="verify-observability-operator-token",
+        refresh_token="verify-observability-operator-refresh",
+        expires_in_seconds=3600,
+    )
+
+    client = _make_integrations_client(
+        db_session,
+        oauth_client=_StubGoogleOAuthClient(),
+        gbp_client=_StubGoogleBusinessProfileClient(),
+        business_id=seeded_business.id,
+        principal_id="verify-observability-operator",
+    )
+
+    response = client.get("/api/integrations/google/business-profile/verification/observability/counters")
+    assert response.status_code == 403
+    assert "not allowed" in response.json()["detail"].lower()
 
 
 def test_start_verification_success_path(

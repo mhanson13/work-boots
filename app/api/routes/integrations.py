@@ -8,6 +8,7 @@ from app.api.deps import (
     get_google_business_profile_connection_service,
     get_google_business_profile_service,
     get_tenant_context,
+    require_credential_manager_principal,
 )
 from app.models.principal import Principal
 from app.schemas.google_business_profile import (
@@ -32,6 +33,7 @@ from app.schemas.google_business_profile import (
     GoogleBusinessProfileVerificationGuidanceResponse,
     GoogleBusinessProfileVerificationErrorDetailResponse,
     GoogleBusinessProfileVerificationStatusCurrentResponse,
+    GoogleBusinessProfileVerificationObservabilityCountersResponse,
     GoogleBusinessProfileVerificationStatusResponse,
 )
 from app.services.google_business_profile_connection import (
@@ -58,6 +60,7 @@ from app.services.google_business_profile_service import (
     GoogleBusinessProfileVerificationResult,
     VerificationGuidanceResult,
 )
+from app.services.google_business_profile_verification_observability import export_gbp_verification_counters
 from app.services.verification_guidance_service import VerificationGuidanceService
 
 router = APIRouter(prefix="/api/integrations/google/business-profile", tags=["integrations"])
@@ -327,6 +330,19 @@ def retry_google_business_profile_location_verification(
     except GoogleBusinessProfileServiceError as exc:
         raise HTTPException(status_code=exc.status_code, detail=_service_error_detail(exc)) from exc
     return _to_retry_verification_response(result)
+
+
+@router.get(
+    "/verification/observability/counters",
+    response_model=GoogleBusinessProfileVerificationObservabilityCountersResponse,
+)
+def get_google_business_profile_verification_observability_counters(
+    _: TenantContext = Depends(get_tenant_context),
+    __: Principal = Depends(require_credential_manager_principal),
+) -> GoogleBusinessProfileVerificationObservabilityCountersResponse:
+    return GoogleBusinessProfileVerificationObservabilityCountersResponse(
+        **export_gbp_verification_counters(),
+    )
 
 
 def _to_connection_response(

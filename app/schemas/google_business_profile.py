@@ -274,3 +274,15 @@ class GoogleBusinessProfileVerificationErrorDetailResponse(BaseModel):
     message: str
     reconnect_required: bool
     guidance: GoogleBusinessProfileVerificationGuidanceResponse | None = None
+
+
+class GoogleBusinessProfileVerificationObservabilityCountersResponse(BaseModel):
+    unknown_provider_state: int = Field(ge=0)
+    unknown_provider_method: int = Field(ge=0)
+    provider_error_fallback: int = Field(ge=0)
+    invalid_option_token: int = Field(ge=0)
+    unavailable_method_revalidation: int = Field(ge=0)
+    unavailable_destination_revalidation: int = Field(ge=0)
+    missing_expected_verification_fields: int = Field(ge=0)
+    mapping_gaps: int = Field(ge=0)
+    guidance_fallback: int = Field(ge=0)

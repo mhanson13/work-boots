@@ -11,6 +11,7 @@ This document covers currently implemented Google Business Profile API routes.
 - `POST /api/integrations/google/business-profile/locations/{location_id}/verification/start`
 - `POST /api/integrations/google/business-profile/locations/{location_id}/verification/complete`
 - `POST /api/integrations/google/business-profile/locations/{location_id}/verification/retry`
+- `GET /api/integrations/google/business-profile/verification/observability/counters`
 
 All routes require authenticated tenant context and are business-scoped server-side.
 
@@ -232,6 +233,29 @@ Implemented `code` values:
 - `provider_error`
 - `not_found`
 
+## Verification Observability Counters
+
+### `GET /verification/observability/counters`
+Purpose:
+- Exposes sanitized in-process counters for GBP verification fallback/unknown paths.
+- Intended for operational diagnostics and contract hardening feedback.
+
+Access:
+- Authenticated tenant context plus admin principal role is required.
+
+Response fields:
+- `unknown_provider_state`
+- `unknown_provider_method`
+- `provider_error_fallback`
+- `invalid_option_token`
+- `unavailable_method_revalidation`
+- `unavailable_destination_revalidation`
+- `missing_expected_verification_fields`
+- `mapping_gaps`
+- `guidance_fallback`
+
+All fields are integer counters with no tenant/business/user identifiers and no provider payload content.
+
 ## Notes
 - Verification routes do not expose OAuth tokens to the browser.
 - Tenant/business boundaries are enforced server-side for every route.
@@ -239,3 +263,4 @@ Implemented `code` values:
 - Operator guidance is generated server-side from normalized state using deterministic rules (no live LLM dependency).
 - Unknown/unmapped provider states, methods, and fallback error mappings degrade safely and emit structured observability logs.
 - Unknown/fallback normalization and guidance events are also counted via lightweight in-process GBP verification observability counters.
+- Canonical verification contract schema is checked in at `docs/contracts/gbp-verification-contract.schema.json` and enforced in CI via `python scripts/gbp_verification_contract_guard.py --check`.

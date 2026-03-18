@@ -337,6 +337,11 @@ When using `twilio` or `smtp`, configure the corresponding credentials in `.env`
 - Verification workflow responses use a stable backend-defined contract (shared workflow fields + guidance) across `status`, `start`, `complete`, and `retry`.
 - Verification endpoint error details include normalized `code`, `message`, `reconnect_required`, and additive renderable `guidance` for consistent frontend handling.
 - GBP verification normalization/guidance fallback paths are tracked with lightweight in-process counters plus structured logs.
+- Admin diagnostics endpoint for these counters:
+  - `GET /api/integrations/google/business-profile/verification/observability/counters`
+- Verification contract drift guard:
+  - canonical artifact: `docs/contracts/gbp-verification-contract.schema.json`
+  - check command: `python scripts/gbp_verification_contract_guard.py --check`
 - System guarantees are documented in [`docs/security.md#system-guarantees`](docs/security.md#system-guarantees).
 - Operator key-rotation/rewrap procedure is documented in `docs/operator-ui-and-google-auth.md`.
 - Business Profile API enablement/access approval is required in Google Cloud; OAuth setup alone is not sufficient.

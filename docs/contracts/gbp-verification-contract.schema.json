@@ -1,0 +1,3303 @@
+{
+  "contract": "google_business_profile_verification",
+  "enums": {
+    "GoogleBusinessProfileGuidanceCtaType": [
+      "start_verification",
+      "choose_method",
+      "submit_code",
+      "reconnect",
+      "retry",
+      "refresh_status",
+      "none"
+    ],
+    "GoogleBusinessProfileGuidancePriority": [
+      "high",
+      "medium",
+      "low",
+      "info"
+    ],
+    "GoogleBusinessProfileGuidanceRecommendedAction": [
+      "verify_business",
+      "choose_method",
+      "enter_code",
+      "wait_for_code",
+      "retry_verification",
+      "reconnect_google",
+      "contact_support",
+      "no_action_needed",
+      "check_business_access",
+      "review_business_details",
+      "unknown"
+    ],
+    "GoogleBusinessProfileGuidanceVerificationState": [
+      "verified",
+      "unverified",
+      "pending",
+      "unknown",
+      "in_progress",
+      "completed",
+      "failed"
+    ],
+    "GoogleBusinessProfileVerificationActionRequired": [
+      "none",
+      "choose_method",
+      "enter_code",
+      "wait",
+      "retry",
+      "reconnect_google",
+      "resolve_access"
+    ],
+    "GoogleBusinessProfileVerificationErrorCode": [
+      "reconnect_required",
+      "insufficient_scope",
+      "permission_denied",
+      "verification_not_supported",
+      "method_not_available",
+      "invalid_verification_state",
+      "invalid_code",
+      "provider_conflict",
+      "provider_error",
+      "not_found"
+    ],
+    "GoogleBusinessProfileVerificationMethod": [
+      "postcard",
+      "phone",
+      "sms",
+      "email",
+      "live_call",
+      "video",
+      "vetted_partner",
+      "address",
+      "other",
+      "unknown"
+    ],
+    "GoogleBusinessProfileVerificationWorkflowState": [
+      "unverified",
+      "pending",
+      "in_progress",
+      "completed",
+      "failed",
+      "unknown"
+    ]
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/integrations/google/business-profile/locations/{location_id}/verification",
+      "response_model": "GoogleBusinessProfileLocationVerificationResponse"
+    },
+    {
+      "method": "GET",
+      "path": "/api/integrations/google/business-profile/locations/{location_id}/verification/options",
+      "response_model": "GoogleBusinessProfileVerificationOptionsResponse"
+    },
+    {
+      "method": "GET",
+      "path": "/api/integrations/google/business-profile/locations/{location_id}/verification/status",
+      "response_model": "GoogleBusinessProfileVerificationStatusResponse"
+    },
+    {
+      "method": "POST",
+      "path": "/api/integrations/google/business-profile/locations/{location_id}/verification/complete",
+      "response_model": "GoogleBusinessProfileCompleteVerificationResponse"
+    },
+    {
+      "method": "POST",
+      "path": "/api/integrations/google/business-profile/locations/{location_id}/verification/retry",
+      "response_model": "GoogleBusinessProfileRetryVerificationResponse"
+    },
+    {
+      "method": "POST",
+      "path": "/api/integrations/google/business-profile/locations/{location_id}/verification/start",
+      "response_model": "GoogleBusinessProfileStartVerificationResponse"
+    }
+  ],
+  "schemas": {
+    "GoogleBusinessProfileCompleteVerificationResponse": {
+      "$defs": {
+        "GoogleBusinessProfileVerificationGuidanceResponse": {
+          "properties": {
+            "cta_label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cta Label"
+            },
+            "cta_type": {
+              "enum": [
+                "start_verification",
+                "choose_method",
+                "submit_code",
+                "reconnect",
+                "retry",
+                "refresh_status",
+                "none"
+              ],
+              "title": "Cta Type",
+              "type": "string"
+            },
+            "estimated_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Estimated Time"
+            },
+            "instructions": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Instructions",
+              "type": "array"
+            },
+            "priority": {
+              "enum": [
+                "high",
+                "medium",
+                "low",
+                "info"
+              ],
+              "title": "Priority",
+              "type": "string"
+            },
+            "recommendation_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommendation Reason"
+            },
+            "recommended_action": {
+              "enum": [
+                "verify_business",
+                "choose_method",
+                "enter_code",
+                "wait_for_code",
+                "retry_verification",
+                "reconnect_google",
+                "contact_support",
+                "no_action_needed",
+                "check_business_access",
+                "review_business_details",
+                "unknown"
+              ],
+              "title": "Recommended Action",
+              "type": "string"
+            },
+            "recommended_method": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "postcard",
+                    "phone",
+                    "sms",
+                    "email",
+                    "live_call",
+                    "video",
+                    "vetted_partner",
+                    "address",
+                    "other",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommended Method"
+            },
+            "summary": {
+              "title": "Summary",
+              "type": "string"
+            },
+            "tips": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Tips",
+              "type": "array"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "troubleshooting": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Troubleshooting",
+              "type": "array"
+            },
+            "verification_state": {
+              "enum": [
+                "verified",
+                "unverified",
+                "pending",
+                "unknown",
+                "in_progress",
+                "completed",
+                "failed"
+              ],
+              "title": "Verification State",
+              "type": "string"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            }
+          },
+          "required": [
+            "verification_state",
+            "recommended_action",
+            "priority",
+            "title",
+            "summary",
+            "instructions",
+            "tips",
+            "warnings",
+            "troubleshooting",
+            "estimated_time",
+            "cta_label",
+            "cta_type",
+            "recommended_method",
+            "recommendation_reason"
+          ],
+          "title": "GoogleBusinessProfileVerificationGuidanceResponse",
+          "type": "object"
+        },
+        "GoogleBusinessProfileVerificationMethodOptionResponse": {
+          "properties": {
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "destination": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Destination"
+            },
+            "eligible": {
+              "title": "Eligible",
+              "type": "boolean"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            },
+            "method": {
+              "enum": [
+                "postcard",
+                "phone",
+                "sms",
+                "email",
+                "live_call",
+                "video",
+                "vetted_partner",
+                "address",
+                "other",
+                "unknown"
+              ],
+              "title": "Method",
+              "type": "string"
+            },
+            "option_id": {
+              "title": "Option Id",
+              "type": "string"
+            },
+            "provider_method": {
+              "title": "Provider Method",
+              "type": "string"
+            },
+            "requires_code": {
+              "title": "Requires Code",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "option_id",
+            "method",
+            "provider_method",
+            "label",
+            "description",
+            "destination",
+            "requires_code",
+            "eligible"
+          ],
+          "title": "GoogleBusinessProfileVerificationMethodOptionResponse",
+          "type": "object"
+        },
+        "GoogleBusinessProfileVerificationStatusCurrentResponse": {
+          "properties": {
+            "complete_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Complete Time"
+            },
+            "create_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Create Time"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At"
+            },
+            "method": {
+              "enum": [
+                "postcard",
+                "phone",
+                "sms",
+                "email",
+                "live_call",
+                "video",
+                "vetted_partner",
+                "address",
+                "other",
+                "unknown"
+              ],
+              "title": "Method",
+              "type": "string"
+            },
+            "provider_method": {
+              "title": "Provider Method",
+              "type": "string"
+            },
+            "provider_state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider State"
+            },
+            "verification_id": {
+              "title": "Verification Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verification_id",
+            "provider_state",
+            "method",
+            "provider_method",
+            "create_time",
+            "complete_time",
+            "expires_at"
+          ],
+          "title": "GoogleBusinessProfileVerificationStatusCurrentResponse",
+          "type": "object"
+        },
+        "GoogleBusinessProfileVerificationStatusResponse": {
+          "properties": {
+            "action_required": {
+              "enum": [
+                "none",
+                "choose_method",
+                "enter_code",
+                "wait",
+                "retry",
+                "reconnect_google",
+                "resolve_access"
+              ],
+              "title": "Action Required",
+              "type": "string"
+            },
+            "available_methods": {
+              "items": {
+                "$ref": "#/$defs/GoogleBusinessProfileVerificationMethodOptionResponse"
+              },
+              "title": "Available Methods",
+              "type": "array"
+            },
+            "current_verification": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/GoogleBusinessProfileVerificationStatusCurrentResponse"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "guidance": {
+              "$ref": "#/$defs/GoogleBusinessProfileVerificationGuidanceResponse"
+            },
+            "location_id": {
+              "title": "Location Id",
+              "type": "string"
+            },
+            "message": {
+              "title": "Message",
+              "type": "string"
+            },
+            "reconnect_required": {
+              "title": "Reconnect Required",
+              "type": "boolean"
+            },
+            "verification_state": {
+              "enum": [
+                "unverified",
+                "pending",
+                "in_progress",
+                "completed",
+                "failed",
+                "unknown"
+              ],
+              "title": "Verification State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "location_id",
+            "verification_state",
+            "action_required",
+            "message",
+            "reconnect_required",
+            "guidance",
+            "current_verification",
+            "available_methods"
+          ],
+          "title": "GoogleBusinessProfileVerificationStatusResponse",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "action_required": {
+          "enum": [
+            "none",
+            "choose_method",
+            "enter_code",
+            "wait",
+            "retry",
+            "reconnect_google",
+            "resolve_access"
+          ],
+          "title": "Action Required",
+          "type": "string"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expires At"
+        },
+        "guidance": {
+          "$ref": "#/$defs/GoogleBusinessProfileVerificationGuidanceResponse"
+        },
+        "location_id": {
+          "title": "Location Id",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "reconnect_required": {
+          "title": "Reconnect Required",
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/$defs/GoogleBusinessProfileVerificationStatusResponse"
+        },
+        "verification_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Verification Id"
+        },
+        "verification_state": {
+          "enum": [
+            "unverified",
+            "pending",
+            "in_progress",
+            "completed",
+            "failed",
+            "unknown"
+          ],
+          "title": "Verification State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "location_id",
+        "verification_state",
+        "action_required",
+        "message",
+        "reconnect_required",
+        "guidance",
+        "verification_id",
+        "expires_at",
+        "status"
+      ],
+      "title": "GoogleBusinessProfileCompleteVerificationResponse",
+      "type": "object"
+    },
+    "GoogleBusinessProfileLocationVerificationResponse": {
+      "$defs": {
+        "GoogleBusinessProfileVerificationGuidanceResponse": {
+          "properties": {
+            "cta_label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cta Label"
+            },
+            "cta_type": {
+              "enum": [
+                "start_verification",
+                "choose_method",
+                "submit_code",
+                "reconnect",
+                "retry",
+                "refresh_status",
+                "none"
+              ],
+              "title": "Cta Type",
+              "type": "string"
+            },
+            "estimated_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Estimated Time"
+            },
+            "instructions": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Instructions",
+              "type": "array"
+            },
+            "priority": {
+              "enum": [
+                "high",
+                "medium",
+                "low",
+                "info"
+              ],
+              "title": "Priority",
+              "type": "string"
+            },
+            "recommendation_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommendation Reason"
+            },
+            "recommended_action": {
+              "enum": [
+                "verify_business",
+                "choose_method",
+                "enter_code",
+                "wait_for_code",
+                "retry_verification",
+                "reconnect_google",
+                "contact_support",
+                "no_action_needed",
+                "check_business_access",
+                "review_business_details",
+                "unknown"
+              ],
+              "title": "Recommended Action",
+              "type": "string"
+            },
+            "recommended_method": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "postcard",
+                    "phone",
+                    "sms",
+                    "email",
+                    "live_call",
+                    "video",
+                    "vetted_partner",
+                    "address",
+                    "other",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommended Method"
+            },
+            "summary": {
+              "title": "Summary",
+              "type": "string"
+            },
+            "tips": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Tips",
+              "type": "array"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "troubleshooting": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Troubleshooting",
+              "type": "array"
+            },
+            "verification_state": {
+              "enum": [
+                "verified",
+                "unverified",
+                "pending",
+                "unknown",
+                "in_progress",
+                "completed",
+                "failed"
+              ],
+              "title": "Verification State",
+              "type": "string"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            }
+          },
+          "required": [
+            "verification_state",
+            "recommended_action",
+            "priority",
+            "title",
+            "summary",
+            "instructions",
+            "tips",
+            "warnings",
+            "troubleshooting",
+            "estimated_time",
+            "cta_label",
+            "cta_type",
+            "recommended_method",
+            "recommendation_reason"
+          ],
+          "title": "GoogleBusinessProfileVerificationGuidanceResponse",
+          "type": "object"
+        },
+        "GoogleBusinessProfileVerificationRecordResponse": {
+          "properties": {
+            "complete_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Complete Time"
+            },
+            "create_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Create Time"
+            },
+            "method": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Method"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          "required": [
+            "name",
+            "method",
+            "state",
+            "create_time",
+            "complete_time"
+          ],
+          "title": "GoogleBusinessProfileVerificationRecordResponse",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "guidance": {
+          "$ref": "#/$defs/GoogleBusinessProfileVerificationGuidanceResponse"
+        },
+        "has_voice_of_merchant": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Has Voice Of Merchant"
+        },
+        "recommended_next_action": {
+          "enum": [
+            "none",
+            "start_verification",
+            "complete_pending",
+            "resolve_access",
+            "reconnect_google"
+          ],
+          "title": "Recommended Next Action",
+          "type": "string"
+        },
+        "state_summary": {
+          "enum": [
+            "verified",
+            "unverified",
+            "pending",
+            "unknown"
+          ],
+          "title": "State Summary",
+          "type": "string"
+        },
+        "verification_methods": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Verification Methods",
+          "type": "array"
+        },
+        "verifications": {
+          "items": {
+            "$ref": "#/$defs/GoogleBusinessProfileVerificationRecordResponse"
+          },
+          "title": "Verifications",
+          "type": "array"
+        }
+      },
+      "required": [
+        "has_voice_of_merchant",
+        "state_summary",
+        "verification_methods",
+        "verifications",
+        "recommended_next_action",
+        "guidance"
+      ],
+      "title": "GoogleBusinessProfileLocationVerificationResponse",
+      "type": "object"
+    },
+    "GoogleBusinessProfileRetryVerificationResponse": {
+      "$defs": {
+        "GoogleBusinessProfileVerificationGuidanceResponse": {
+          "properties": {
+            "cta_label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cta Label"
+            },
+            "cta_type": {
+              "enum": [
+                "start_verification",
+                "choose_method",
+                "submit_code",
+                "reconnect",
+                "retry",
+                "refresh_status",
+                "none"
+              ],
+              "title": "Cta Type",
+              "type": "string"
+            },
+            "estimated_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Estimated Time"
+            },
+            "instructions": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Instructions",
+              "type": "array"
+            },
+            "priority": {
+              "enum": [
+                "high",
+                "medium",
+                "low",
+                "info"
+              ],
+              "title": "Priority",
+              "type": "string"
+            },
+            "recommendation_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommendation Reason"
+            },
+            "recommended_action": {
+              "enum": [
+                "verify_business",
+                "choose_method",
+                "enter_code",
+                "wait_for_code",
+                "retry_verification",
+                "reconnect_google",
+                "contact_support",
+                "no_action_needed",
+                "check_business_access",
+                "review_business_details",
+                "unknown"
+              ],
+              "title": "Recommended Action",
+              "type": "string"
+            },
+            "recommended_method": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "postcard",
+                    "phone",
+                    "sms",
+                    "email",
+                    "live_call",
+                    "video",
+                    "vetted_partner",
+                    "address",
+                    "other",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommended Method"
+            },
+            "summary": {
+              "title": "Summary",
+              "type": "string"
+            },
+            "tips": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Tips",
+              "type": "array"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "troubleshooting": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Troubleshooting",
+              "type": "array"
+            },
+            "verification_state": {
+              "enum": [
+                "verified",
+                "unverified",
+                "pending",
+                "unknown",
+                "in_progress",
+                "completed",
+                "failed"
+              ],
+              "title": "Verification State",
+              "type": "string"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            }
+          },
+          "required": [
+            "verification_state",
+            "recommended_action",
+            "priority",
+            "title",
+            "summary",
+            "instructions",
+            "tips",
+            "warnings",
+            "troubleshooting",
+            "estimated_time",
+            "cta_label",
+            "cta_type",
+            "recommended_method",
+            "recommendation_reason"
+          ],
+          "title": "GoogleBusinessProfileVerificationGuidanceResponse",
+          "type": "object"
+        },
+        "GoogleBusinessProfileVerificationMethodOptionResponse": {
+          "properties": {
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "destination": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Destination"
+            },
+            "eligible": {
+              "title": "Eligible",
+              "type": "boolean"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            },
+            "method": {
+              "enum": [
+                "postcard",
+                "phone",
+                "sms",
+                "email",
+                "live_call",
+                "video",
+                "vetted_partner",
+                "address",
+                "other",
+                "unknown"
+              ],
+              "title": "Method",
+              "type": "string"
+            },
+            "option_id": {
+              "title": "Option Id",
+              "type": "string"
+            },
+            "provider_method": {
+              "title": "Provider Method",
+              "type": "string"
+            },
+            "requires_code": {
+              "title": "Requires Code",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "option_id",
+            "method",
+            "provider_method",
+            "label",
+            "description",
+            "destination",
+            "requires_code",
+            "eligible"
+          ],
+          "title": "GoogleBusinessProfileVerificationMethodOptionResponse",
+          "type": "object"
+        },
+        "GoogleBusinessProfileVerificationStatusCurrentResponse": {
+          "properties": {
+            "complete_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Complete Time"
+            },
+            "create_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Create Time"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At"
+            },
+            "method": {
+              "enum": [
+                "postcard",
+                "phone",
+                "sms",
+                "email",
+                "live_call",
+                "video",
+                "vetted_partner",
+                "address",
+                "other",
+                "unknown"
+              ],
+              "title": "Method",
+              "type": "string"
+            },
+            "provider_method": {
+              "title": "Provider Method",
+              "type": "string"
+            },
+            "provider_state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider State"
+            },
+            "verification_id": {
+              "title": "Verification Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verification_id",
+            "provider_state",
+            "method",
+            "provider_method",
+            "create_time",
+            "complete_time",
+            "expires_at"
+          ],
+          "title": "GoogleBusinessProfileVerificationStatusCurrentResponse",
+          "type": "object"
+        },
+        "GoogleBusinessProfileVerificationStatusResponse": {
+          "properties": {
+            "action_required": {
+              "enum": [
+                "none",
+                "choose_method",
+                "enter_code",
+                "wait",
+                "retry",
+                "reconnect_google",
+                "resolve_access"
+              ],
+              "title": "Action Required",
+              "type": "string"
+            },
+            "available_methods": {
+              "items": {
+                "$ref": "#/$defs/GoogleBusinessProfileVerificationMethodOptionResponse"
+              },
+              "title": "Available Methods",
+              "type": "array"
+            },
+            "current_verification": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/GoogleBusinessProfileVerificationStatusCurrentResponse"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "guidance": {
+              "$ref": "#/$defs/GoogleBusinessProfileVerificationGuidanceResponse"
+            },
+            "location_id": {
+              "title": "Location Id",
+              "type": "string"
+            },
+            "message": {
+              "title": "Message",
+              "type": "string"
+            },
+            "reconnect_required": {
+              "title": "Reconnect Required",
+              "type": "boolean"
+            },
+            "verification_state": {
+              "enum": [
+                "unverified",
+                "pending",
+                "in_progress",
+                "completed",
+                "failed",
+                "unknown"
+              ],
+              "title": "Verification State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "location_id",
+            "verification_state",
+            "action_required",
+            "message",
+            "reconnect_required",
+            "guidance",
+            "current_verification",
+            "available_methods"
+          ],
+          "title": "GoogleBusinessProfileVerificationStatusResponse",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "action_required": {
+          "enum": [
+            "none",
+            "choose_method",
+            "enter_code",
+            "wait",
+            "retry",
+            "reconnect_google",
+            "resolve_access"
+          ],
+          "title": "Action Required",
+          "type": "string"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expires At"
+        },
+        "guidance": {
+          "$ref": "#/$defs/GoogleBusinessProfileVerificationGuidanceResponse"
+        },
+        "location_id": {
+          "title": "Location Id",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "reconnect_required": {
+          "title": "Reconnect Required",
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/$defs/GoogleBusinessProfileVerificationStatusResponse"
+        },
+        "verification_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Verification Id"
+        },
+        "verification_state": {
+          "enum": [
+            "unverified",
+            "pending",
+            "in_progress",
+            "completed",
+            "failed",
+            "unknown"
+          ],
+          "title": "Verification State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "location_id",
+        "verification_state",
+        "action_required",
+        "message",
+        "reconnect_required",
+        "guidance",
+        "verification_id",
+        "expires_at",
+        "status"
+      ],
+      "title": "GoogleBusinessProfileRetryVerificationResponse",
+      "type": "object"
+    },
+    "GoogleBusinessProfileStartVerificationResponse": {
+      "$defs": {
+        "GoogleBusinessProfileVerificationGuidanceResponse": {
+          "properties": {
+            "cta_label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cta Label"
+            },
+            "cta_type": {
+              "enum": [
+                "start_verification",
+                "choose_method",
+                "submit_code",
+                "reconnect",
+                "retry",
+                "refresh_status",
+                "none"
+              ],
+              "title": "Cta Type",
+              "type": "string"
+            },
+            "estimated_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Estimated Time"
+            },
+            "instructions": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Instructions",
+              "type": "array"
+            },
+            "priority": {
+              "enum": [
+                "high",
+                "medium",
+                "low",
+                "info"
+              ],
+              "title": "Priority",
+              "type": "string"
+            },
+            "recommendation_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommendation Reason"
+            },
+            "recommended_action": {
+              "enum": [
+                "verify_business",
+                "choose_method",
+                "enter_code",
+                "wait_for_code",
+                "retry_verification",
+                "reconnect_google",
+                "contact_support",
+                "no_action_needed",
+                "check_business_access",
+                "review_business_details",
+                "unknown"
+              ],
+              "title": "Recommended Action",
+              "type": "string"
+            },
+            "recommended_method": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "postcard",
+                    "phone",
+                    "sms",
+                    "email",
+                    "live_call",
+                    "video",
+                    "vetted_partner",
+                    "address",
+                    "other",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommended Method"
+            },
+            "summary": {
+              "title": "Summary",
+              "type": "string"
+            },
+            "tips": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Tips",
+              "type": "array"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "troubleshooting": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Troubleshooting",
+              "type": "array"
+            },
+            "verification_state": {
+              "enum": [
+                "verified",
+                "unverified",
+                "pending",
+                "unknown",
+                "in_progress",
+                "completed",
+                "failed"
+              ],
+              "title": "Verification State",
+              "type": "string"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            }
+          },
+          "required": [
+            "verification_state",
+            "recommended_action",
+            "priority",
+            "title",
+            "summary",
+            "instructions",
+            "tips",
+            "warnings",
+            "troubleshooting",
+            "estimated_time",
+            "cta_label",
+            "cta_type",
+            "recommended_method",
+            "recommendation_reason"
+          ],
+          "title": "GoogleBusinessProfileVerificationGuidanceResponse",
+          "type": "object"
+        },
+        "GoogleBusinessProfileVerificationMethodOptionResponse": {
+          "properties": {
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "destination": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Destination"
+            },
+            "eligible": {
+              "title": "Eligible",
+              "type": "boolean"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            },
+            "method": {
+              "enum": [
+                "postcard",
+                "phone",
+                "sms",
+                "email",
+                "live_call",
+                "video",
+                "vetted_partner",
+                "address",
+                "other",
+                "unknown"
+              ],
+              "title": "Method",
+              "type": "string"
+            },
+            "option_id": {
+              "title": "Option Id",
+              "type": "string"
+            },
+            "provider_method": {
+              "title": "Provider Method",
+              "type": "string"
+            },
+            "requires_code": {
+              "title": "Requires Code",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "option_id",
+            "method",
+            "provider_method",
+            "label",
+            "description",
+            "destination",
+            "requires_code",
+            "eligible"
+          ],
+          "title": "GoogleBusinessProfileVerificationMethodOptionResponse",
+          "type": "object"
+        },
+        "GoogleBusinessProfileVerificationStatusCurrentResponse": {
+          "properties": {
+            "complete_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Complete Time"
+            },
+            "create_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Create Time"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At"
+            },
+            "method": {
+              "enum": [
+                "postcard",
+                "phone",
+                "sms",
+                "email",
+                "live_call",
+                "video",
+                "vetted_partner",
+                "address",
+                "other",
+                "unknown"
+              ],
+              "title": "Method",
+              "type": "string"
+            },
+            "provider_method": {
+              "title": "Provider Method",
+              "type": "string"
+            },
+            "provider_state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider State"
+            },
+            "verification_id": {
+              "title": "Verification Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verification_id",
+            "provider_state",
+            "method",
+            "provider_method",
+            "create_time",
+            "complete_time",
+            "expires_at"
+          ],
+          "title": "GoogleBusinessProfileVerificationStatusCurrentResponse",
+          "type": "object"
+        },
+        "GoogleBusinessProfileVerificationStatusResponse": {
+          "properties": {
+            "action_required": {
+              "enum": [
+                "none",
+                "choose_method",
+                "enter_code",
+                "wait",
+                "retry",
+                "reconnect_google",
+                "resolve_access"
+              ],
+              "title": "Action Required",
+              "type": "string"
+            },
+            "available_methods": {
+              "items": {
+                "$ref": "#/$defs/GoogleBusinessProfileVerificationMethodOptionResponse"
+              },
+              "title": "Available Methods",
+              "type": "array"
+            },
+            "current_verification": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/GoogleBusinessProfileVerificationStatusCurrentResponse"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "guidance": {
+              "$ref": "#/$defs/GoogleBusinessProfileVerificationGuidanceResponse"
+            },
+            "location_id": {
+              "title": "Location Id",
+              "type": "string"
+            },
+            "message": {
+              "title": "Message",
+              "type": "string"
+            },
+            "reconnect_required": {
+              "title": "Reconnect Required",
+              "type": "boolean"
+            },
+            "verification_state": {
+              "enum": [
+                "unverified",
+                "pending",
+                "in_progress",
+                "completed",
+                "failed",
+                "unknown"
+              ],
+              "title": "Verification State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "location_id",
+            "verification_state",
+            "action_required",
+            "message",
+            "reconnect_required",
+            "guidance",
+            "current_verification",
+            "available_methods"
+          ],
+          "title": "GoogleBusinessProfileVerificationStatusResponse",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "action_required": {
+          "enum": [
+            "none",
+            "choose_method",
+            "enter_code",
+            "wait",
+            "retry",
+            "reconnect_google",
+            "resolve_access"
+          ],
+          "title": "Action Required",
+          "type": "string"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expires At"
+        },
+        "guidance": {
+          "$ref": "#/$defs/GoogleBusinessProfileVerificationGuidanceResponse"
+        },
+        "location_id": {
+          "title": "Location Id",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "reconnect_required": {
+          "title": "Reconnect Required",
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/$defs/GoogleBusinessProfileVerificationStatusResponse"
+        },
+        "verification_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Verification Id"
+        },
+        "verification_state": {
+          "enum": [
+            "unverified",
+            "pending",
+            "in_progress",
+            "completed",
+            "failed",
+            "unknown"
+          ],
+          "title": "Verification State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "location_id",
+        "verification_state",
+        "action_required",
+        "message",
+        "reconnect_required",
+        "guidance",
+        "verification_id",
+        "expires_at",
+        "status"
+      ],
+      "title": "GoogleBusinessProfileStartVerificationResponse",
+      "type": "object"
+    },
+    "GoogleBusinessProfileVerificationErrorDetailResponse": {
+      "$defs": {
+        "GoogleBusinessProfileVerificationGuidanceResponse": {
+          "properties": {
+            "cta_label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cta Label"
+            },
+            "cta_type": {
+              "enum": [
+                "start_verification",
+                "choose_method",
+                "submit_code",
+                "reconnect",
+                "retry",
+                "refresh_status",
+                "none"
+              ],
+              "title": "Cta Type",
+              "type": "string"
+            },
+            "estimated_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Estimated Time"
+            },
+            "instructions": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Instructions",
+              "type": "array"
+            },
+            "priority": {
+              "enum": [
+                "high",
+                "medium",
+                "low",
+                "info"
+              ],
+              "title": "Priority",
+              "type": "string"
+            },
+            "recommendation_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommendation Reason"
+            },
+            "recommended_action": {
+              "enum": [
+                "verify_business",
+                "choose_method",
+                "enter_code",
+                "wait_for_code",
+                "retry_verification",
+                "reconnect_google",
+                "contact_support",
+                "no_action_needed",
+                "check_business_access",
+                "review_business_details",
+                "unknown"
+              ],
+              "title": "Recommended Action",
+              "type": "string"
+            },
+            "recommended_method": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "postcard",
+                    "phone",
+                    "sms",
+                    "email",
+                    "live_call",
+                    "video",
+                    "vetted_partner",
+                    "address",
+                    "other",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommended Method"
+            },
+            "summary": {
+              "title": "Summary",
+              "type": "string"
+            },
+            "tips": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Tips",
+              "type": "array"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "troubleshooting": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Troubleshooting",
+              "type": "array"
+            },
+            "verification_state": {
+              "enum": [
+                "verified",
+                "unverified",
+                "pending",
+                "unknown",
+                "in_progress",
+                "completed",
+                "failed"
+              ],
+              "title": "Verification State",
+              "type": "string"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            }
+          },
+          "required": [
+            "verification_state",
+            "recommended_action",
+            "priority",
+            "title",
+            "summary",
+            "instructions",
+            "tips",
+            "warnings",
+            "troubleshooting",
+            "estimated_time",
+            "cta_label",
+            "cta_type",
+            "recommended_method",
+            "recommendation_reason"
+          ],
+          "title": "GoogleBusinessProfileVerificationGuidanceResponse",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "code": {
+          "enum": [
+            "reconnect_required",
+            "insufficient_scope",
+            "permission_denied",
+            "verification_not_supported",
+            "method_not_available",
+            "invalid_verification_state",
+            "invalid_code",
+            "provider_conflict",
+            "provider_error",
+            "not_found"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "guidance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GoogleBusinessProfileVerificationGuidanceResponse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "reconnect_required": {
+          "title": "Reconnect Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "reconnect_required"
+      ],
+      "title": "GoogleBusinessProfileVerificationErrorDetailResponse",
+      "type": "object"
+    },
+    "GoogleBusinessProfileVerificationGuidanceResponse": {
+      "properties": {
+        "cta_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cta Label"
+        },
+        "cta_type": {
+          "enum": [
+            "start_verification",
+            "choose_method",
+            "submit_code",
+            "reconnect",
+            "retry",
+            "refresh_status",
+            "none"
+          ],
+          "title": "Cta Type",
+          "type": "string"
+        },
+        "estimated_time": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Estimated Time"
+        },
+        "instructions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Instructions",
+          "type": "array"
+        },
+        "priority": {
+          "enum": [
+            "high",
+            "medium",
+            "low",
+            "info"
+          ],
+          "title": "Priority",
+          "type": "string"
+        },
+        "recommendation_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recommendation Reason"
+        },
+        "recommended_action": {
+          "enum": [
+            "verify_business",
+            "choose_method",
+            "enter_code",
+            "wait_for_code",
+            "retry_verification",
+            "reconnect_google",
+            "contact_support",
+            "no_action_needed",
+            "check_business_access",
+            "review_business_details",
+            "unknown"
+          ],
+          "title": "Recommended Action",
+          "type": "string"
+        },
+        "recommended_method": {
+          "anyOf": [
+            {
+              "enum": [
+                "postcard",
+                "phone",
+                "sms",
+                "email",
+                "live_call",
+                "video",
+                "vetted_partner",
+                "address",
+                "other",
+                "unknown"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recommended Method"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "tips": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tips",
+          "type": "array"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "troubleshooting": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Troubleshooting",
+          "type": "array"
+        },
+        "verification_state": {
+          "enum": [
+            "verified",
+            "unverified",
+            "pending",
+            "unknown",
+            "in_progress",
+            "completed",
+            "failed"
+          ],
+          "title": "Verification State",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "verification_state",
+        "recommended_action",
+        "priority",
+        "title",
+        "summary",
+        "instructions",
+        "tips",
+        "warnings",
+        "troubleshooting",
+        "estimated_time",
+        "cta_label",
+        "cta_type",
+        "recommended_method",
+        "recommendation_reason"
+      ],
+      "title": "GoogleBusinessProfileVerificationGuidanceResponse",
+      "type": "object"
+    },
+    "GoogleBusinessProfileVerificationMethodOptionResponse": {
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "destination": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Destination"
+        },
+        "eligible": {
+          "title": "Eligible",
+          "type": "boolean"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "method": {
+          "enum": [
+            "postcard",
+            "phone",
+            "sms",
+            "email",
+            "live_call",
+            "video",
+            "vetted_partner",
+            "address",
+            "other",
+            "unknown"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "option_id": {
+          "title": "Option Id",
+          "type": "string"
+        },
+        "provider_method": {
+          "title": "Provider Method",
+          "type": "string"
+        },
+        "requires_code": {
+          "title": "Requires Code",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "option_id",
+        "method",
+        "provider_method",
+        "label",
+        "description",
+        "destination",
+        "requires_code",
+        "eligible"
+      ],
+      "title": "GoogleBusinessProfileVerificationMethodOptionResponse",
+      "type": "object"
+    },
+    "GoogleBusinessProfileVerificationOptionsResponse": {
+      "$defs": {
+        "GoogleBusinessProfileVerificationGuidanceResponse": {
+          "properties": {
+            "cta_label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cta Label"
+            },
+            "cta_type": {
+              "enum": [
+                "start_verification",
+                "choose_method",
+                "submit_code",
+                "reconnect",
+                "retry",
+                "refresh_status",
+                "none"
+              ],
+              "title": "Cta Type",
+              "type": "string"
+            },
+            "estimated_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Estimated Time"
+            },
+            "instructions": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Instructions",
+              "type": "array"
+            },
+            "priority": {
+              "enum": [
+                "high",
+                "medium",
+                "low",
+                "info"
+              ],
+              "title": "Priority",
+              "type": "string"
+            },
+            "recommendation_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommendation Reason"
+            },
+            "recommended_action": {
+              "enum": [
+                "verify_business",
+                "choose_method",
+                "enter_code",
+                "wait_for_code",
+                "retry_verification",
+                "reconnect_google",
+                "contact_support",
+                "no_action_needed",
+                "check_business_access",
+                "review_business_details",
+                "unknown"
+              ],
+              "title": "Recommended Action",
+              "type": "string"
+            },
+            "recommended_method": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "postcard",
+                    "phone",
+                    "sms",
+                    "email",
+                    "live_call",
+                    "video",
+                    "vetted_partner",
+                    "address",
+                    "other",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommended Method"
+            },
+            "summary": {
+              "title": "Summary",
+              "type": "string"
+            },
+            "tips": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Tips",
+              "type": "array"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "troubleshooting": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Troubleshooting",
+              "type": "array"
+            },
+            "verification_state": {
+              "enum": [
+                "verified",
+                "unverified",
+                "pending",
+                "unknown",
+                "in_progress",
+                "completed",
+                "failed"
+              ],
+              "title": "Verification State",
+              "type": "string"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            }
+          },
+          "required": [
+            "verification_state",
+            "recommended_action",
+            "priority",
+            "title",
+            "summary",
+            "instructions",
+            "tips",
+            "warnings",
+            "troubleshooting",
+            "estimated_time",
+            "cta_label",
+            "cta_type",
+            "recommended_method",
+            "recommendation_reason"
+          ],
+          "title": "GoogleBusinessProfileVerificationGuidanceResponse",
+          "type": "object"
+        },
+        "GoogleBusinessProfileVerificationMethodOptionResponse": {
+          "properties": {
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "destination": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Destination"
+            },
+            "eligible": {
+              "title": "Eligible",
+              "type": "boolean"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            },
+            "method": {
+              "enum": [
+                "postcard",
+                "phone",
+                "sms",
+                "email",
+                "live_call",
+                "video",
+                "vetted_partner",
+                "address",
+                "other",
+                "unknown"
+              ],
+              "title": "Method",
+              "type": "string"
+            },
+            "option_id": {
+              "title": "Option Id",
+              "type": "string"
+            },
+            "provider_method": {
+              "title": "Provider Method",
+              "type": "string"
+            },
+            "requires_code": {
+              "title": "Requires Code",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "option_id",
+            "method",
+            "provider_method",
+            "label",
+            "description",
+            "destination",
+            "requires_code",
+            "eligible"
+          ],
+          "title": "GoogleBusinessProfileVerificationMethodOptionResponse",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "current_verification_state": {
+          "enum": [
+            "unverified",
+            "pending",
+            "in_progress",
+            "completed",
+            "failed",
+            "unknown"
+          ],
+          "title": "Current Verification State",
+          "type": "string"
+        },
+        "guidance": {
+          "$ref": "#/$defs/GoogleBusinessProfileVerificationGuidanceResponse"
+        },
+        "location_id": {
+          "title": "Location Id",
+          "type": "string"
+        },
+        "methods": {
+          "items": {
+            "$ref": "#/$defs/GoogleBusinessProfileVerificationMethodOptionResponse"
+          },
+          "title": "Methods",
+          "type": "array"
+        }
+      },
+      "required": [
+        "location_id",
+        "current_verification_state",
+        "methods",
+        "guidance"
+      ],
+      "title": "GoogleBusinessProfileVerificationOptionsResponse",
+      "type": "object"
+    },
+    "GoogleBusinessProfileVerificationStatusCurrentResponse": {
+      "properties": {
+        "complete_time": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Complete Time"
+        },
+        "create_time": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Create Time"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expires At"
+        },
+        "method": {
+          "enum": [
+            "postcard",
+            "phone",
+            "sms",
+            "email",
+            "live_call",
+            "video",
+            "vetted_partner",
+            "address",
+            "other",
+            "unknown"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "provider_method": {
+          "title": "Provider Method",
+          "type": "string"
+        },
+        "provider_state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Provider State"
+        },
+        "verification_id": {
+          "title": "Verification Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verification_id",
+        "provider_state",
+        "method",
+        "provider_method",
+        "create_time",
+        "complete_time",
+        "expires_at"
+      ],
+      "title": "GoogleBusinessProfileVerificationStatusCurrentResponse",
+      "type": "object"
+    },
+    "GoogleBusinessProfileVerificationStatusResponse": {
+      "$defs": {
+        "GoogleBusinessProfileVerificationGuidanceResponse": {
+          "properties": {
+            "cta_label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cta Label"
+            },
+            "cta_type": {
+              "enum": [
+                "start_verification",
+                "choose_method",
+                "submit_code",
+                "reconnect",
+                "retry",
+                "refresh_status",
+                "none"
+              ],
+              "title": "Cta Type",
+              "type": "string"
+            },
+            "estimated_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Estimated Time"
+            },
+            "instructions": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Instructions",
+              "type": "array"
+            },
+            "priority": {
+              "enum": [
+                "high",
+                "medium",
+                "low",
+                "info"
+              ],
+              "title": "Priority",
+              "type": "string"
+            },
+            "recommendation_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommendation Reason"
+            },
+            "recommended_action": {
+              "enum": [
+                "verify_business",
+                "choose_method",
+                "enter_code",
+                "wait_for_code",
+                "retry_verification",
+                "reconnect_google",
+                "contact_support",
+                "no_action_needed",
+                "check_business_access",
+                "review_business_details",
+                "unknown"
+              ],
+              "title": "Recommended Action",
+              "type": "string"
+            },
+            "recommended_method": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "postcard",
+                    "phone",
+                    "sms",
+                    "email",
+                    "live_call",
+                    "video",
+                    "vetted_partner",
+                    "address",
+                    "other",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommended Method"
+            },
+            "summary": {
+              "title": "Summary",
+              "type": "string"
+            },
+            "tips": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Tips",
+              "type": "array"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "troubleshooting": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Troubleshooting",
+              "type": "array"
+            },
+            "verification_state": {
+              "enum": [
+                "verified",
+                "unverified",
+                "pending",
+                "unknown",
+                "in_progress",
+                "completed",
+                "failed"
+              ],
+              "title": "Verification State",
+              "type": "string"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            }
+          },
+          "required": [
+            "verification_state",
+            "recommended_action",
+            "priority",
+            "title",
+            "summary",
+            "instructions",
+            "tips",
+            "warnings",
+            "troubleshooting",
+            "estimated_time",
+            "cta_label",
+            "cta_type",
+            "recommended_method",
+            "recommendation_reason"
+          ],
+          "title": "GoogleBusinessProfileVerificationGuidanceResponse",
+          "type": "object"
+        },
+        "GoogleBusinessProfileVerificationMethodOptionResponse": {
+          "properties": {
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "destination": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Destination"
+            },
+            "eligible": {
+              "title": "Eligible",
+              "type": "boolean"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            },
+            "method": {
+              "enum": [
+                "postcard",
+                "phone",
+                "sms",
+                "email",
+                "live_call",
+                "video",
+                "vetted_partner",
+                "address",
+                "other",
+                "unknown"
+              ],
+              "title": "Method",
+              "type": "string"
+            },
+            "option_id": {
+              "title": "Option Id",
+              "type": "string"
+            },
+            "provider_method": {
+              "title": "Provider Method",
+              "type": "string"
+            },
+            "requires_code": {
+              "title": "Requires Code",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "option_id",
+            "method",
+            "provider_method",
+            "label",
+            "description",
+            "destination",
+            "requires_code",
+            "eligible"
+          ],
+          "title": "GoogleBusinessProfileVerificationMethodOptionResponse",
+          "type": "object"
+        },
+        "GoogleBusinessProfileVerificationStatusCurrentResponse": {
+          "properties": {
+            "complete_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Complete Time"
+            },
+            "create_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Create Time"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At"
+            },
+            "method": {
+              "enum": [
+                "postcard",
+                "phone",
+                "sms",
+                "email",
+                "live_call",
+                "video",
+                "vetted_partner",
+                "address",
+                "other",
+                "unknown"
+              ],
+              "title": "Method",
+              "type": "string"
+            },
+            "provider_method": {
+              "title": "Provider Method",
+              "type": "string"
+            },
+            "provider_state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider State"
+            },
+            "verification_id": {
+              "title": "Verification Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verification_id",
+            "provider_state",
+            "method",
+            "provider_method",
+            "create_time",
+            "complete_time",
+            "expires_at"
+          ],
+          "title": "GoogleBusinessProfileVerificationStatusCurrentResponse",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "action_required": {
+          "enum": [
+            "none",
+            "choose_method",
+            "enter_code",
+            "wait",
+            "retry",
+            "reconnect_google",
+            "resolve_access"
+          ],
+          "title": "Action Required",
+          "type": "string"
+        },
+        "available_methods": {
+          "items": {
+            "$ref": "#/$defs/GoogleBusinessProfileVerificationMethodOptionResponse"
+          },
+          "title": "Available Methods",
+          "type": "array"
+        },
+        "current_verification": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GoogleBusinessProfileVerificationStatusCurrentResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "guidance": {
+          "$ref": "#/$defs/GoogleBusinessProfileVerificationGuidanceResponse"
+        },
+        "location_id": {
+          "title": "Location Id",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "reconnect_required": {
+          "title": "Reconnect Required",
+          "type": "boolean"
+        },
+        "verification_state": {
+          "enum": [
+            "unverified",
+            "pending",
+            "in_progress",
+            "completed",
+            "failed",
+            "unknown"
+          ],
+          "title": "Verification State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "location_id",
+        "verification_state",
+        "action_required",
+        "message",
+        "reconnect_required",
+        "guidance",
+        "current_verification",
+        "available_methods"
+      ],
+      "title": "GoogleBusinessProfileVerificationStatusResponse",
+      "type": "object"
+    },
+    "GoogleBusinessProfileVerificationWorkflowContractResponse": {
+      "$defs": {
+        "GoogleBusinessProfileVerificationGuidanceResponse": {
+          "properties": {
+            "cta_label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cta Label"
+            },
+            "cta_type": {
+              "enum": [
+                "start_verification",
+                "choose_method",
+                "submit_code",
+                "reconnect",
+                "retry",
+                "refresh_status",
+                "none"
+              ],
+              "title": "Cta Type",
+              "type": "string"
+            },
+            "estimated_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Estimated Time"
+            },
+            "instructions": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Instructions",
+              "type": "array"
+            },
+            "priority": {
+              "enum": [
+                "high",
+                "medium",
+                "low",
+                "info"
+              ],
+              "title": "Priority",
+              "type": "string"
+            },
+            "recommendation_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommendation Reason"
+            },
+            "recommended_action": {
+              "enum": [
+                "verify_business",
+                "choose_method",
+                "enter_code",
+                "wait_for_code",
+                "retry_verification",
+                "reconnect_google",
+                "contact_support",
+                "no_action_needed",
+                "check_business_access",
+                "review_business_details",
+                "unknown"
+              ],
+              "title": "Recommended Action",
+              "type": "string"
+            },
+            "recommended_method": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "postcard",
+                    "phone",
+                    "sms",
+                    "email",
+                    "live_call",
+                    "video",
+                    "vetted_partner",
+                    "address",
+                    "other",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommended Method"
+            },
+            "summary": {
+              "title": "Summary",
+              "type": "string"
+            },
+            "tips": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Tips",
+              "type": "array"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "troubleshooting": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Troubleshooting",
+              "type": "array"
+            },
+            "verification_state": {
+              "enum": [
+                "verified",
+                "unverified",
+                "pending",
+                "unknown",
+                "in_progress",
+                "completed",
+                "failed"
+              ],
+              "title": "Verification State",
+              "type": "string"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            }
+          },
+          "required": [
+            "verification_state",
+            "recommended_action",
+            "priority",
+            "title",
+            "summary",
+            "instructions",
+            "tips",
+            "warnings",
+            "troubleshooting",
+            "estimated_time",
+            "cta_label",
+            "cta_type",
+            "recommended_method",
+            "recommendation_reason"
+          ],
+          "title": "GoogleBusinessProfileVerificationGuidanceResponse",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "action_required": {
+          "enum": [
+            "none",
+            "choose_method",
+            "enter_code",
+            "wait",
+            "retry",
+            "reconnect_google",
+            "resolve_access"
+          ],
+          "title": "Action Required",
+          "type": "string"
+        },
+        "guidance": {
+          "$ref": "#/$defs/GoogleBusinessProfileVerificationGuidanceResponse"
+        },
+        "location_id": {
+          "title": "Location Id",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "reconnect_required": {
+          "title": "Reconnect Required",
+          "type": "boolean"
+        },
+        "verification_state": {
+          "enum": [
+            "unverified",
+            "pending",
+            "in_progress",
+            "completed",
+            "failed",
+            "unknown"
+          ],
+          "title": "Verification State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "location_id",
+        "verification_state",
+        "action_required",
+        "message",
+        "reconnect_required",
+        "guidance"
+      ],
+      "title": "GoogleBusinessProfileVerificationWorkflowContractResponse",
+      "type": "object"
+    }
+  },
+  "version": 1
+}

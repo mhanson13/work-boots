@@ -83,6 +83,9 @@ Observability note:
 
 Frontend contract note:
 - Operator UI is expected to render backend guidance contracts (`guidance` on success and normalized verification errors) rather than rebuilding guidance logic locally.
+- Verification contract drift is guarded by a checked-in backend-generated schema artifact:
+  - `docs/contracts/gbp-verification-contract.schema.json`
+  - guard command: `python scripts/gbp_verification_contract_guard.py --check`
 
 ## Testing Philosophy
 - Mock provider APIs in backend tests; do not depend on live Google services.
