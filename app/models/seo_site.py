@@ -37,6 +37,9 @@ class SEOSite(Base):
     service_areas_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_audit_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    last_audit_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_audit_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -8,6 +8,30 @@ export interface AuthPrincipal {
   is_active: boolean;
 }
 
+export interface Principal {
+  business_id: string;
+  id: string;
+  display_name: string;
+  created_by_principal_id: string | null;
+  updated_by_principal_id: string | null;
+  role: PrincipalRole;
+  is_active: boolean;
+  last_authenticated_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PrincipalListResponse {
+  items: Principal[];
+  total: number;
+}
+
+export interface PrincipalCreateRequest {
+  principal_id: string;
+  display_name?: string;
+  role: PrincipalRole;
+}
+
 export interface AuthExchangeResponse {
   access_token: string;
   refresh_token: string;
@@ -26,6 +50,9 @@ export interface SEOSite {
   normalized_domain: string;
   is_active: boolean;
   is_primary: boolean;
+  last_audit_run_id: string | null;
+  last_audit_status: string | null;
+  last_audit_completed_at: string | null;
 }
 
 export interface SEOSiteCreateRequest {

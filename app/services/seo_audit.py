@@ -166,6 +166,10 @@ class SEOAuditService:
             run.completed_at = utc_now()
             run.crawl_duration_ms = int((time.monotonic() - started_monotonic) * 1000)
             run.error_summary = None
+            site.last_audit_run_id = run.id
+            site.last_audit_status = run.status
+            site.last_audit_completed_at = run.completed_at
+            self.seo_site_repository.save(site)
             self.seo_audit_repository.save_run(run)
             self.session.commit()
             logger.info(

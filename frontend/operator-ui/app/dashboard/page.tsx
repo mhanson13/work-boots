@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useOperatorContext } from "../../components/useOperatorContext";
+import { useAuth } from "../../components/AuthProvider";
 
 export default function DashboardPage() {
   const context = useOperatorContext();
+  const { principal } = useAuth();
 
   if (context.loading) {
     return <section className="panel">Loading dashboard...</section>;
@@ -12,6 +14,12 @@ export default function DashboardPage() {
   if (context.error) {
     return <section className="panel">Error: {context.error}</section>;
   }
+
+  const hasSites = context.sites.length > 0;
+  const hasUnauditedSite = context.sites.some((site) => !site.last_audit_run_id);
+  const hasCompletedAudit = context.sites.some(
+    (site) => (site.last_audit_status || "").trim().toLowerCase() === "completed",
+  );
 
   return (
     <section className="stack">
@@ -23,11 +31,13 @@ export default function DashboardPage() {
         <p>
           Tracked SEO sites: <strong>{context.sites.length}</strong>
         </p>
-        {context.sites.length === 0 ? (
-          <p className="hint warning">No sites configured yet. Start by adding your first site.</p>
-        ) : (
-          <p className="hint muted">Open Sites to review status and trigger an audit run.</p>
-        )}
+        {!hasSites ? <p className="hint warning">No sites configured yet. Start by adding your first site.</p> : null}
+        {hasSites && hasUnauditedSite ? (
+          <p className="hint warning">At least one site has not been audited yet. Run your first audit from Sites.</p>
+        ) : null}
+        {hasCompletedAudit ? (
+          <p className="hint muted">Audit data is available. Next step: review recommendations.</p>
+        ) : null}
       </div>
 
       <div className="panel stack">
@@ -44,9 +54,13 @@ export default function DashboardPage() {
 
       <div className="panel stack">
         <h2>Users</h2>
-        <p className="hint muted">
-          User management is deferred to phase 7.9. Current access remains managed by existing principal records.
-        </p>
+        {principal?.role === "admin" ? (
+          <p className="hint muted">
+            Admin user management is available. Open <Link href="/users">Users</Link> to add or review principals.
+          </p>
+        ) : (
+          <p className="hint muted">User administration is restricted to admin principals.</p>
+        )}
       </div>
     </section>
   );

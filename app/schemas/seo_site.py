@@ -38,6 +38,9 @@ class SEOSiteRead(BaseModel):
     service_areas_json: list[str] | None
     is_active: bool
     is_primary: bool
+    last_audit_run_id: str | None
+    last_audit_status: str | None
+    last_audit_completed_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

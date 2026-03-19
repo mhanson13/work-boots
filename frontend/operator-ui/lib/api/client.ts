@@ -4,6 +4,9 @@ import type {
   SEOAuditRun,
   SEOAuditRunCreateRequest,
   SEOAuditRunListResponse,
+  Principal,
+  PrincipalCreateRequest,
+  PrincipalListResponse,
   SEOSite,
   SEOSiteCreateRequest,
   SEOSiteListResponse,
@@ -130,6 +133,22 @@ export async function createAuditRun(
   payload: SEOAuditRunCreateRequest = {},
 ): Promise<SEOAuditRun> {
   return apiRequest<SEOAuditRun>(`/api/businesses/${businessId}/seo/sites/${siteId}/audit-runs`, {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchPrincipals(token: string, businessId: string): Promise<PrincipalListResponse> {
+  return apiRequest<PrincipalListResponse>(`/api/businesses/${businessId}/principals`, { token });
+}
+
+export async function createPrincipal(
+  token: string,
+  businessId: string,
+  payload: PrincipalCreateRequest,
+): Promise<Principal> {
+  return apiRequest<Principal>(`/api/businesses/${businessId}/principals`, {
     method: "POST",
     token,
     body: JSON.stringify(payload),

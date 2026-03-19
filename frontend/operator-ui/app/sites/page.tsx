@@ -1,35 +1,32 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 
 import { useOperatorContext } from "../../components/useOperatorContext";
-import { createAuditRun, createSite, fetchAuditRuns } from "../../lib/api/client";
-import type { SEOAuditRun, SEOSite } from "../../lib/api/types";
+import { createAuditRun, createSite } from "../../lib/api/client";
+import type { SEOSite } from "../../lib/api/types";
 
 interface DerivedSiteStatus {
   label: string;
   badgeClass: string;
 }
 
-function deriveSiteStatus(site: SEOSite, latestRun: SEOAuditRun | null): DerivedSiteStatus {
+function deriveSiteStatus(site: SEOSite): DerivedSiteStatus {
   if (!site.is_active) {
     return { label: "inactive", badgeClass: "badge badge-muted" };
   }
-  if (!latestRun) {
+  if (!site.last_audit_run_id) {
     return { label: "not analyzed", badgeClass: "badge badge-muted" };
   }
 
-  const status = latestRun.status.trim().toLowerCase();
-  if (status === "queued" || status === "running") {
-    return { label: "analysis in progress", badgeClass: "badge badge-warn" };
-  }
+  const status = (site.last_audit_status || "").trim().toLowerCase();
   if (status === "completed") {
     return { label: "analysis complete", badgeClass: "badge badge-success" };
   }
   if (status === "failed") {
     return { label: "analysis failed", badgeClass: "badge badge-error" };
   }
-  return { label: latestRun.status, badgeClass: "badge badge-muted" };
+  return { label: site.last_audit_status || "created", badgeClass: "badge badge-warn" };
 }
 
 function parseBaseUrl(value: string): URL {
@@ -55,56 +52,16 @@ export default function SitesPage() {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
-  const [latestRunsBySite, setLatestRunsBySite] = useState<Record<string, SEOAuditRun | null>>({});
-  const [statusLoading, setStatusLoading] = useState(false);
-  const [statusError, setStatusError] = useState<string | null>(null);
   const [triggeringSiteId, setTriggeringSiteId] = useState<string | null>(null);
   const [triggerMessage, setTriggerMessage] = useState<string | null>(null);
   const [triggerError, setTriggerError] = useState<string | null>(null);
 
-  const loadLatestRuns = useCallback(
-    async (sites: SEOSite[]): Promise<void> => {
-      if (!context.token || !context.businessId) {
-        return;
-      }
-      if (sites.length === 0) {
-        setLatestRunsBySite({});
-        setStatusError(null);
-        return;
-      }
-
-      setStatusLoading(true);
-      setStatusError(null);
-      try {
-        const entries = await Promise.all(
-          sites.map(async (site) => {
-            const response = await fetchAuditRuns(context.token, context.businessId, site.id);
-            return [site.id, response.items[0] ?? null] as const;
-          }),
-        );
-        setLatestRunsBySite(Object.fromEntries(entries));
-      } catch (err) {
-        setStatusError(err instanceof Error ? err.message : "Failed to load site status.");
-      } finally {
-        setStatusLoading(false);
-      }
-    },
-    [context.businessId, context.token],
-  );
-
-  useEffect(() => {
-    if (context.loading || context.error) {
-      return;
-    }
-    void loadLatestRuns(context.sites);
-  }, [context.error, context.loading, context.sites, loadLatestRuns]);
-
   const statuses = useMemo(() => {
     return context.sites.reduce<Record<string, DerivedSiteStatus>>((acc, site) => {
-      acc[site.id] = deriveSiteStatus(site, latestRunsBySite[site.id] ?? null);
+      acc[site.id] = deriveSiteStatus(site);
       return acc;
     }, {});
-  }, [context.sites, latestRunsBySite]);
+  }, [context.sites]);
 
   const handleCreateSite = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -121,9 +78,8 @@ export default function SitesPage() {
         display_name: normalizedDisplayName,
         base_url: parsedBaseUrl.toString(),
       });
-      const updatedSites = await context.refreshSites();
+      await context.refreshSites();
       context.setSelectedSiteId(created.id);
-      await loadLatestRuns(updatedSites);
       setDisplayName("");
       setBaseUrl("");
       setSubmitSuccess(`Created site ${created.display_name}.`);
@@ -145,7 +101,7 @@ export default function SitesPage() {
         max_pages: 25,
         max_depth: 2,
       });
-      await loadLatestRuns(context.sites);
+      await context.refreshSites();
       setTriggerMessage(`Audit run ${run.id} finished with status ${run.status}.`);
     } catch (err) {
       setTriggerError(err instanceof Error ? err.message : "Failed to trigger site analysis.");
@@ -164,7 +120,9 @@ export default function SitesPage() {
   return (
     <section className="panel stack">
       <h1>SEO Sites</h1>
-      <p>Business: <code>{context.businessId}</code></p>
+      <p>
+        Business: <code>{context.businessId}</code>
+      </p>
 
       <form onSubmit={(event) => void handleCreateSite(event)} className="stack">
         <h2>Add Site</h2>
@@ -190,8 +148,6 @@ export default function SitesPage() {
 
       {submitSuccess ? <p className="hint">{submitSuccess}</p> : null}
       {submitError ? <p className="hint error">{submitError}</p> : null}
-      {statusLoading ? <p className="hint muted">Refreshing site status...</p> : null}
-      {statusError ? <p className="hint warning">{statusError}</p> : null}
       {triggerMessage ? <p className="hint">{triggerMessage}</p> : null}
       {triggerError ? <p className="hint error">{triggerError}</p> : null}
 
@@ -202,7 +158,7 @@ export default function SitesPage() {
             <th>Base URL</th>
             <th>Domain</th>
             <th>Status</th>
-            <th>Last Run</th>
+            <th>Last Audit</th>
             <th>Primary</th>
             <th>Active</th>
             <th>Action</th>
@@ -219,24 +175,20 @@ export default function SitesPage() {
                   {statuses[site.id]?.label || "unknown"}
                 </span>
               </td>
-              <td>{latestRunsBySite[site.id]?.completed_at || latestRunsBySite[site.id]?.started_at || "none"}</td>
+              <td>{site.last_audit_completed_at || "none"}</td>
               <td>{site.is_primary ? "yes" : "no"}</td>
               <td>{site.is_active ? "yes" : "no"}</td>
               <td>
                 <button
                   type="button"
-                  disabled={
-                    !!triggeringSiteId ||
-                    !site.is_active ||
-                    ["queued", "running"].includes((latestRunsBySite[site.id]?.status || "").toLowerCase())
-                  }
+                  disabled={!!triggeringSiteId || !site.is_active}
                   onClick={() => {
                     void handleTriggerAudit(site);
                   }}
                 >
                   {triggeringSiteId === site.id
                     ? "Running..."
-                    : latestRunsBySite[site.id]
+                    : site.last_audit_run_id
                       ? "Run Audit Again"
                       : "Run First Audit"}
                 </button>

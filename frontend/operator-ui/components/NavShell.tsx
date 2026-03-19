@@ -13,6 +13,7 @@ const links = [
   { href: "/recommendations", label: "Recommendations" },
   { href: "/automation", label: "Automation" },
   { href: "/business-profile", label: "Business Profile" },
+  { href: "/users", label: "Users", adminOnly: true },
 ];
 
 export function NavShell({ children }: { children: React.ReactNode }) {
@@ -39,11 +40,13 @@ export function NavShell({ children }: { children: React.ReactNode }) {
             <strong>Work Boots Operator</strong>
           </div>
           <nav className="topnav-links">
-            {links.map((link) => (
-              <Link key={link.href} href={link.href} style={{ opacity: pathname === link.href ? 1 : 0.75 }}>
-                {link.label}
-              </Link>
-            ))}
+            {links
+              .filter((link) => !link.adminOnly || principal?.role === "admin")
+              .map((link) => (
+                <Link key={link.href} href={link.href} style={{ opacity: pathname === link.href ? 1 : 0.75 }}>
+                  {link.label}
+                </Link>
+              ))}
           </nav>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
             {principal ? (

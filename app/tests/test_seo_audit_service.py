@@ -91,6 +91,10 @@ def test_audit_service_persists_pages_findings_and_run_status(db_session, seeded
     assert result.run.crawl_duration_ms is not None
     assert len(result.pages) >= 2
     assert len(result.findings) > 0
+    db_session.refresh(site)
+    assert site.last_audit_run_id == result.run.id
+    assert site.last_audit_status == "completed"
+    assert site.last_audit_completed_at is not None
 
     finding_types = {f.finding_type for f in result.findings}
     severities = {f.severity for f in result.findings}

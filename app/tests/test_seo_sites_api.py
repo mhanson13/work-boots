@@ -69,6 +69,9 @@ def test_seo_site_crud_and_business_scoping(db_session, seeded_business) -> None
     created = create_response.json()
     assert created["normalized_domain"] == "example.com"
     assert created["base_url"] == "https://example.com/"
+    assert created["last_audit_run_id"] is None
+    assert created["last_audit_status"] is None
+    assert created["last_audit_completed_at"] is None
 
     site_id = created["id"]
     list_response = client.get(f"/api/businesses/{seeded_business.id}/seo/sites")
