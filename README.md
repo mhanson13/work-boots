@@ -412,50 +412,11 @@ When using `twilio` or `smtp`, configure the corresponding credentials in `.env`
 - Legacy unpeppered hash verification is off by default and can be enabled temporarily with `ALLOW_LEGACY_TOKEN_HASH_FALLBACK=true`.
 - Legacy shared-token auth (`API_AUTH_TOKEN` / `API_AUTH_BUSINESS_ID`) is no longer part of runtime auth resolution.
 
-### First Admin Bootstrap (Internal Manual)
-- Purpose: one-time/manual creation or upsert of the first internal admin principal when no admin exists yet.
-- This is an internal CLI path only (no public bootstrap endpoint).
+### Default Business Configuration
 - `DEFAULT_BUSINESS_ID` anchors default tenant/business resolution to a real persisted `businesses.id`.
-- `DEFAULT_ADMIN_EMAIL` identifies the intended bootstrap admin Google account email target.
-
-Provisioning requirements:
-- Provide `DEFAULT_BUSINESS_ID` from the actual Business row for that environment. Do not invent or guess IDs.
-- Provide `DEFAULT_ADMIN_EMAIL` as the real environment-specific Google admin account email.
-- In production deploys, these values are injected from GitHub Actions repository secrets into Kubernetes Secret `mbsrn-api-auth`; they are not hardcoded in repo manifests.
-- These settings do not bypass OAuth verification, role checks, or authorization rules.
-
-Anti-patterns to avoid:
+- In production deploys, `DEFAULT_BUSINESS_ID` is injected from GitHub Actions repository secrets into Kubernetes Secret `mbsrn-api-auth`; it is not hardcoded in repo manifests.
 - Do not use fake identifiers (for example `0`) for `DEFAULT_BUSINESS_ID`.
-- Do not store either value directly in tracked manifest YAML.
-- Do not assume `DEFAULT_ADMIN_EMAIL` alone grants access without successful Google token verification and principal mapping.
-- Do not `kubectl exec` into live API deployments for bootstrap mutations.
-
-Production bootstrap via one-time Kubernetes Job:
-```bash
-NAMESPACE=mbsrn
-API_IMAGE="$(kubectl -n "${NAMESPACE}" get deployment mbsrn-api -o jsonpath='{.spec.template.spec.containers[?(@.name=="mbsrn-api")].image}')"
-
-kubectl -n "${NAMESPACE}" delete job mbsrn-bootstrap-admin --ignore-not-found
-sed "s|__API_IMAGE__|${API_IMAGE}|g" k8s/bootstrap-admin-job.yaml | kubectl apply -f -
-
-kubectl -n "${NAMESPACE}" wait --for=condition=complete job/mbsrn-bootstrap-admin --timeout=300s
-kubectl -n "${NAMESPACE}" logs job/mbsrn-bootstrap-admin
-
-kubectl -n "${NAMESPACE}" delete job mbsrn-bootstrap-admin
-```
-
-Notes:
-- This reuses the exact deployed API image tag and the same `mbsrn-api-auth` secret-backed config path.
-- The job defaults to `DEFAULT_ADMIN_EMAIL`; you can override by editing job args before apply if needed.
-
-Expected primary output:
-- `created principal <email> with role admin`
-- `updated principal <email> to role admin`
-- `principal already exists with correct role`
-
-Post-bootstrap validation:
-- Google login completes and `POST /api/auth/google/exchange` succeeds for the mapped principal.
-- The user receives app session tokens (`access_token` and `refresh_token`).
+- Do not store `DEFAULT_BUSINESS_ID` directly in tracked manifest YAML.
 
 ## API CORS And Security Headers
 - CORS is explicit and origin-scoped via `API_CORS_ALLOWED_ORIGINS` (comma-separated).

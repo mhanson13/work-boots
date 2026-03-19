@@ -41,11 +41,6 @@ spec:
                 secretKeyRef:
                   name: mbsrn-api-auth
                   key: DEFAULT_BUSINESS_ID
-            - name: DEFAULT_ADMIN_EMAIL
-              valueFrom:
-                secretKeyRef:
-                  name: mbsrn-api-auth
-                  key: DEFAULT_ADMIN_EMAIL
             - name: APP_SESSION_SECRET
               valueFrom:
                 secretKeyRef:

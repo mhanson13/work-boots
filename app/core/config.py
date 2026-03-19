@@ -13,7 +13,6 @@ class Settings:
     environment: str
     database_url: str
     default_business_id: str
-    default_admin_email: str | None
     db_auto_create_local: bool
     google_auth_enabled: bool
     google_oidc_client_id: str | None
@@ -85,18 +84,6 @@ def _env_csv(name: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in raw.split(",") if item.strip())
 
 
-def _env_optional_email(name: str) -> str | None:
-    raw = os.getenv(name)
-    if raw is None:
-        return None
-    normalized = raw.strip().lower()
-    if not normalized:
-        return None
-    if len(normalized) > 320 or "@" not in normalized or normalized.startswith("@") or normalized.endswith("@"):
-        raise RuntimeError(f"{name} must be a valid email address.")
-    return normalized
-
-
 def _env_json_object(name: str) -> dict[str, str]:
     raw = os.getenv(name, "").strip()
     if not raw:
@@ -127,7 +114,6 @@ def get_settings() -> Settings:
     app_env = os.getenv("APP_ENV", environment).strip().lower()
     google_auth_enabled = _env_bool("GOOGLE_AUTH_ENABLED", False)
     default_business_id = (os.getenv("DEFAULT_BUSINESS_ID") or "").strip()
-    default_admin_email = _env_optional_email("DEFAULT_ADMIN_EMAIL")
     google_oidc_client_id = os.getenv("GOOGLE_OIDC_CLIENT_ID")
     google_oauth_client_id = os.getenv("GOOGLE_OAUTH_CLIENT_ID") or google_oidc_client_id
     google_oauth_client_secret = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET") or os.getenv("GOOGLE_OIDC_CLIENT_SECRET")
@@ -193,7 +179,6 @@ def get_settings() -> Settings:
             "postgresql+psycopg://postgres:postgres@localhost:5432/work_boots_console",
         ),
         default_business_id=default_business_id,
-        default_admin_email=default_admin_email,
         db_auto_create_local=_env_bool(
             "DB_AUTO_CREATE_LOCAL",
             app_env in {"local", "development", "dev", "test"},

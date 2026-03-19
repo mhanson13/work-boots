@@ -57,7 +57,6 @@ jobs:
           GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           GCP_SERVICE_ACCOUNT_EMAIL: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
           DEFAULT_BUSINESS_ID: ${{ secrets.DEFAULT_BUSINESS_ID }}
-          DEFAULT_ADMIN_EMAIL: ${{ secrets.DEFAULT_ADMIN_EMAIL }}
           APP_SESSION_SECRET: ${{ secrets.APP_SESSION_SECRET }}
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
         run: |
@@ -94,7 +93,6 @@ jobs:
             GCP_WORKLOAD_IDENTITY_PROVIDER
             GCP_SERVICE_ACCOUNT_EMAIL
             DEFAULT_BUSINESS_ID
-            DEFAULT_ADMIN_EMAIL
             APP_SESSION_SECRET
             GOOGLE_OAUTH_CLIENT_SECRET
           )
@@ -248,7 +246,6 @@ jobs:
         shell: bash
         env:
           DEFAULT_BUSINESS_ID: ${{ secrets.DEFAULT_BUSINESS_ID }}
-          DEFAULT_ADMIN_EMAIL: ${{ secrets.DEFAULT_ADMIN_EMAIL }}
           APP_SESSION_SECRET: ${{ secrets.APP_SESSION_SECRET }}
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
         run: |
@@ -257,7 +254,6 @@ jobs:
           kubectl apply -f "${RENDER_DIR}/namespace.yaml"
           kubectl -n "${K8S_NAMESPACE}" create secret generic mbsrn-api-auth \
             --from-literal=DEFAULT_BUSINESS_ID="${DEFAULT_BUSINESS_ID}" \
-            --from-literal=DEFAULT_ADMIN_EMAIL="${DEFAULT_ADMIN_EMAIL}" \
             --from-literal=APP_SESSION_SECRET="${APP_SESSION_SECRET}" \
             --from-literal=GOOGLE_OAUTH_CLIENT_SECRET="${GOOGLE_OAUTH_CLIENT_SECRET}" \
             --dry-run=client -o yaml | kubectl apply -f -
