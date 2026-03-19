@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
@@ -74,6 +74,10 @@ class PrincipalIdentityRepository:
             .order_by(PrincipalIdentity.created_at.desc(), PrincipalIdentity.id.desc())
         )
         return list(self.session.scalars(stmt))
+
+    def count_all(self) -> int:
+        stmt = select(func.count()).select_from(PrincipalIdentity)
+        return int(self.session.scalar(stmt) or 0)
 
     def mark_last_authenticated(
         self,

@@ -36,11 +36,6 @@ spec:
               value: mbsrn-console
             - name: APP_SESSION_AUDIENCE
               value: mbsrn-api
-            - name: DEFAULT_BUSINESS_ID
-              valueFrom:
-                secretKeyRef:
-                  name: mbsrn-api-auth
-                  key: DEFAULT_BUSINESS_ID
             - name: APP_SESSION_SECRET
               valueFrom:
                 secretKeyRef:

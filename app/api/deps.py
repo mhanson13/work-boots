@@ -655,6 +655,7 @@ def get_principal_identity_service(
 
 def get_auth_identity_service(
     db: Session = Depends(get_db),
+    business_repository: BusinessRepository = Depends(get_business_repository),
     principal_repository: PrincipalRepository = Depends(get_principal_repository),
     principal_identity_repository: PrincipalIdentityRepository = Depends(get_principal_identity_repository),
     oidc_verifier: GoogleOIDCJWKSVerifier = Depends(get_google_oidc_verifier),
@@ -668,6 +669,7 @@ def get_auth_identity_service(
         )
     return AuthIdentityService(
         session=db,
+        business_repository=business_repository,
         principal_repository=principal_repository,
         principal_identity_repository=principal_identity_repository,
         oidc_verifier=oidc_verifier,
@@ -867,23 +869,10 @@ def get_tenant_context(
             detail="Unauthorized.",
         )
 
-    # Dev/test fallback only: keep local workflows operational without auth setup.
-    if settings.environment.strip().lower() not in {"development", "dev", "test"}:
-        _log_auth_failure(request=request, reason="missing_bearer_token", auth_kind="none")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized.",
-        )
-    if not settings.default_business_id:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="DEFAULT_BUSINESS_ID is not configured for development fallback auth.",
-        )
-
-    return TenantContext(
-        business_id=settings.default_business_id,
-        principal_id="dev-default-principal",
-        auth_source="default_business",
+    _log_auth_failure(request=request, reason="missing_bearer_token", auth_kind="none")
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Unauthorized.",
     )
 
 

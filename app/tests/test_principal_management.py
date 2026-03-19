@@ -28,9 +28,9 @@ def _clear_settings_cache() -> None:
     get_settings.cache_clear()
 
 
-def _set_production_auth_defaults(monkeypatch: pytest.MonkeyPatch, *, default_business_id: str) -> None:
+@pytest.fixture(autouse=True)
+def _set_production_auth_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("DEFAULT_BUSINESS_ID", default_business_id)
     monkeypatch.setenv("API_TOKEN_HASH_PEPPER", PROD_PEPPER)
     monkeypatch.setenv("ALLOW_LEGACY_TOKEN_HASH_FALLBACK", "false")
 
@@ -93,7 +93,6 @@ def test_admin_can_manage_principals_lifecycle(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     admin_token = _seed_credential(
         db_session,
         business_id=seeded_business.id,
@@ -171,7 +170,6 @@ def test_operator_cannot_manage_principals(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     operator_token = _seed_credential(
         db_session,
         business_id=seeded_business.id,
@@ -192,7 +190,6 @@ def test_inactive_principal_cannot_authenticate_even_with_active_credential(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     lead = Lead(
         id=str(uuid4()),
         business_id=seeded_business.id,
@@ -239,7 +236,6 @@ def test_successful_auth_updates_principal_last_authenticated_at(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     lead = Lead(
         id=str(uuid4()),
         business_id=seeded_business.id,
@@ -281,7 +277,6 @@ def test_cross_tenant_principal_management_is_blocked(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     admin_token = _seed_credential(
         db_session,
         business_id=seeded_business.id,
@@ -315,7 +310,6 @@ def test_cannot_deactivate_last_active_admin_principal(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     admin_token = _seed_credential(
         db_session,
         business_id=seeded_business.id,

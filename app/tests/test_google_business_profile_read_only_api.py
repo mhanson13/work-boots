@@ -116,10 +116,10 @@ def _clear_settings_cache() -> None:
     get_settings.cache_clear()
 
 
-def _set_auth_env(monkeypatch: pytest.MonkeyPatch, *, default_business_id: str) -> None:
+@pytest.fixture(autouse=True)
+def _set_auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "test")
     monkeypatch.setenv("APP_ENV", "test")
-    monkeypatch.setenv("DEFAULT_BUSINESS_ID", default_business_id)
     monkeypatch.setenv("API_TOKEN_HASH_PEPPER", "test-pepper")
     monkeypatch.setenv("GOOGLE_AUTH_ENABLED", "true")
     monkeypatch.setenv("GOOGLE_OIDC_CLIENT_ID", "google-client-id")
@@ -242,7 +242,6 @@ def test_google_business_profile_accounts_mapping_contract(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="gbp-admin")
     _seed_provider_connection(
         db_session,
@@ -335,7 +334,6 @@ def test_google_business_profile_accounts_and_locations_handle_empty_data(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="gbp-empty")
     _seed_provider_connection(
         db_session,
@@ -371,7 +369,6 @@ def test_google_business_profile_locations_handles_account_without_locations(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="gbp-no-locations")
     _seed_provider_connection(
         db_session,
@@ -404,7 +401,6 @@ def test_google_business_profile_accounts_permission_error_surfaces_403(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="gbp-permission")
     _seed_provider_connection(
         db_session,
@@ -440,7 +436,6 @@ def test_google_business_profile_accounts_refreshes_expired_token_before_api_cal
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="gbp-refresh")
     _seed_provider_connection(
         db_session,
@@ -485,7 +480,6 @@ def test_google_business_profile_accounts_reconnect_required_when_refresh_fails(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="gbp-refresh-fail")
     _seed_provider_connection(
         db_session,
@@ -519,7 +513,6 @@ def test_google_business_profile_accounts_are_tenant_scoped(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="tenant-a-admin")
     _seed_provider_connection(
         db_session,
@@ -587,7 +580,6 @@ def test_google_business_profile_location_verification_not_found(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="gbp-lookup")
     _seed_provider_connection(
         db_session,

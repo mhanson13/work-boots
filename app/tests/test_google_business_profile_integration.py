@@ -147,10 +147,10 @@ def _clear_settings_cache() -> None:
     get_settings.cache_clear()
 
 
-def _set_auth_env(monkeypatch: pytest.MonkeyPatch, *, default_business_id: str) -> None:
+@pytest.fixture(autouse=True)
+def _set_auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "test")
     monkeypatch.setenv("APP_ENV", "test")
-    monkeypatch.setenv("DEFAULT_BUSINESS_ID", default_business_id)
     monkeypatch.setenv("API_TOKEN_HASH_PEPPER", "test-pepper")
     monkeypatch.setenv("GOOGLE_AUTH_ENABLED", "true")
     monkeypatch.setenv("GOOGLE_OIDC_CLIENT_ID", "google-client-id")
@@ -371,7 +371,6 @@ def test_google_business_profile_connect_start_builds_expected_authorization_req
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-connect")
     oauth_client = _StubGoogleOAuthClient()
     client = _make_integrations_client(
@@ -422,7 +421,6 @@ def test_google_business_profile_callback_rejects_invalid_state(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-invalid-state")
     client = _make_integrations_client(
         db_session,
@@ -444,7 +442,6 @@ def test_google_business_profile_callback_denied_consent(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-denied")
     client = _make_integrations_client(
         db_session,
@@ -482,7 +479,6 @@ def test_google_business_profile_callback_success_persists_encrypted_tokens(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-success")
     oauth_client = _StubGoogleOAuthClient()
     oauth_client.exchange_map["valid-code"] = GoogleOAuthTokenResponse(
@@ -554,7 +550,6 @@ def test_google_business_profile_callback_fails_closed_when_pkce_verifier_missin
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-missing-verifier")
     oauth_client = _StubGoogleOAuthClient()
     client = _make_integrations_client(
@@ -588,7 +583,6 @@ def test_google_business_profile_connection_status_contract_is_stable(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-status")
     oauth_client = _StubGoogleOAuthClient()
     oauth_client.exchange_map["status-code"] = GoogleOAuthTokenResponse(
@@ -644,7 +638,6 @@ def test_google_business_profile_callback_requires_refresh_token_for_initial_con
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-no-refresh")
     oauth_client = _StubGoogleOAuthClient()
     oauth_client.exchange_map["code-no-refresh"] = GoogleOAuthTokenResponse(
@@ -681,7 +674,6 @@ def test_google_business_profile_callback_preserves_existing_refresh_token_when_
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-refresh-preserve")
     cipher = FernetTokenCipher(
         active_key_version="v1",
@@ -750,7 +742,6 @@ def test_google_business_profile_callback_state_is_single_use(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-replay")
     oauth_client = _StubGoogleOAuthClient()
     oauth_client.exchange_map["replay-code"] = GoogleOAuthTokenResponse(
@@ -790,7 +781,6 @@ def test_google_business_profile_disconnect_clears_tokens_and_revokes(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-disconnect")
     oauth_client = _StubGoogleOAuthClient()
     oauth_client.exchange_map["disconnect-code"] = GoogleOAuthTokenResponse(
@@ -839,7 +829,6 @@ def test_google_business_profile_disconnect_tombstones_even_if_revoke_not_confir
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-disconnect-no-revoke")
     oauth_client = _StubGoogleOAuthClient()
     oauth_client.revoke_result = False
@@ -884,7 +873,6 @@ def test_google_business_profile_connection_isolated_by_business_scope(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="tenant-a-admin")
     other_business = Business(
         id=str(uuid4()),
@@ -950,7 +938,6 @@ def test_google_business_profile_rewrap_tokens_with_active_key_version(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-rotate")
 
     legacy_cipher = FernetTokenCipher(active_key_version="v1", keyring={"v1": "legacy-key"})
@@ -1012,7 +999,6 @@ def test_google_business_profile_rewrap_all_tokens_with_active_key_version(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-rotate-all-a")
 
     other_business = Business(
@@ -1087,7 +1073,6 @@ def test_google_business_profile_get_access_token_for_use_unexpired_token_path(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-token-use")
     cipher = FernetTokenCipher(active_key_version="v1", keyring={"v1": "gbp-token-encryption-secret"})
     _seed_provider_connection(
@@ -1123,7 +1108,6 @@ def test_google_business_profile_get_access_token_for_use_refresh_success_path(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-refresh-success")
 
     legacy_cipher = FernetTokenCipher(active_key_version="v1", keyring={"v1": "legacy-key"})
@@ -1188,7 +1172,6 @@ def test_google_business_profile_get_access_token_for_use_refresh_failure_maps_t
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-refresh-fail")
     cipher = FernetTokenCipher(active_key_version="v1", keyring={"v1": "gbp-token-encryption-secret"})
     _seed_provider_connection(
@@ -1230,7 +1213,6 @@ def test_google_business_profile_get_access_token_for_use_reports_insufficient_s
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-scope-use")
     cipher = FernetTokenCipher(active_key_version="v1", keyring={"v1": "gbp-token-encryption-secret"})
     _seed_provider_connection(
@@ -1265,7 +1247,6 @@ def test_google_business_profile_ensure_connection_has_scopes_exact_match(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-scope-exact")
     service = _make_google_business_profile_service(
         db_session,
@@ -1292,7 +1273,6 @@ def test_google_business_profile_ensure_connection_has_scopes_superset(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-scope-superset")
     service = _make_google_business_profile_service(
         db_session,
@@ -1319,7 +1299,6 @@ def test_google_business_profile_ensure_connection_has_scopes_missing_scope(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-scope-missing")
     service = _make_google_business_profile_service(
         db_session,
@@ -1349,7 +1328,6 @@ def test_google_business_profile_ensure_connection_has_scopes_order_insensitive(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="admin-scope-order")
     service = _make_google_business_profile_service(
         db_session,
@@ -1376,7 +1354,6 @@ def test_google_oidc_exchange_still_works_after_gbp_integration_wiring(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="oidc-admin")
     _seed_google_identity_mapping(
         db_session,

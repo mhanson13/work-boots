@@ -168,10 +168,10 @@ def _assert_guidance_contract(guidance: dict[str, object]) -> None:
     assert isinstance(guidance.get("cta_type"), str)
 
 
-def _set_auth_env(monkeypatch: pytest.MonkeyPatch, *, default_business_id: str) -> None:
+@pytest.fixture(autouse=True)
+def _set_auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "test")
     monkeypatch.setenv("APP_ENV", "test")
-    monkeypatch.setenv("DEFAULT_BUSINESS_ID", default_business_id)
     monkeypatch.setenv("API_TOKEN_HASH_PEPPER", "test-pepper")
     monkeypatch.setenv("GOOGLE_AUTH_ENABLED", "true")
     monkeypatch.setenv("GOOGLE_OIDC_CLIENT_ID", "google-client-id")
@@ -304,7 +304,6 @@ def test_verification_options_returns_normalized_methods(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="verify-options-admin")
     _seed_provider_connection(
         db_session,
@@ -350,7 +349,6 @@ def test_verification_summary_response_includes_guidance_contract(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="verify-summary-admin")
     _seed_provider_connection(
         db_session,
@@ -388,7 +386,6 @@ def test_verification_status_response_includes_guidance_contract(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="verify-status-admin")
     _seed_provider_connection(
         db_session,
@@ -435,7 +432,6 @@ def test_verification_status_unknown_provider_state_increments_observability_cou
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="verify-unknown-state-admin")
     _seed_provider_connection(
         db_session,
@@ -482,7 +478,6 @@ def test_verification_observability_counters_export(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="verify-observability-admin")
     _seed_provider_connection(
         db_session,
@@ -534,7 +529,6 @@ def test_verification_observability_counters_require_admin_principal(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(
         db_session,
         business_id=seeded_business.id,
@@ -568,7 +562,6 @@ def test_start_verification_success_path(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="verify-start-admin")
     _seed_provider_connection(
         db_session,
@@ -620,7 +613,6 @@ def test_start_verification_with_option_id_uses_backend_revalidation(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="verify-start-option-admin")
     _seed_provider_connection(
         db_session,
@@ -672,7 +664,6 @@ def test_start_verification_invalid_option_id_is_rejected_and_logged(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="verify-start-invalid-option-admin")
     _seed_provider_connection(
         db_session,
@@ -716,7 +707,6 @@ def test_complete_verification_success_path(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="verify-complete-admin")
     _seed_provider_connection(
         db_session,
@@ -775,7 +765,6 @@ def test_complete_verification_invalid_code_maps_error(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="verify-invalid-code-admin")
     _seed_provider_connection(
         db_session,
@@ -829,7 +818,6 @@ def test_start_verification_method_not_available_maps_error(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="verify-method-admin")
     _seed_provider_connection(
         db_session,
@@ -869,7 +857,6 @@ def test_retry_verification_uses_existing_attempt_method_when_not_specified(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="verify-retry-admin")
     _seed_provider_connection(
         db_session,
@@ -924,7 +911,6 @@ def test_verification_routes_are_tenant_scoped(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="tenant-a-verify-admin")
     _seed_provider_connection(
         db_session,
@@ -997,7 +983,6 @@ def test_verification_start_fails_closed_when_refresh_fails(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="verify-refresh-fail-admin")
     _seed_provider_connection(
         db_session,
@@ -1040,7 +1025,6 @@ def test_verification_options_reports_insufficient_scope(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
     _seed_principal(db_session, business_id=seeded_business.id, principal_id="verify-scope-admin")
     _seed_provider_connection(
         db_session,

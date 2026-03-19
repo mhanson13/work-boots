@@ -27,9 +27,9 @@ def _clear_settings_cache() -> None:
     get_settings.cache_clear()
 
 
-def _set_production_auth_defaults(monkeypatch: pytest.MonkeyPatch, *, default_business_id: str) -> None:
+@pytest.fixture(autouse=True)
+def _set_production_auth_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("DEFAULT_BUSINESS_ID", default_business_id)
     monkeypatch.setenv("API_TOKEN_HASH_PEPPER", PROD_PEPPER)
     monkeypatch.setenv("ALLOW_LEGACY_TOKEN_HASH_FALLBACK", "false")
 
@@ -103,7 +103,6 @@ def test_principal_admin_actions_create_audit_events(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     admin_token = _seed_credential(
         db_session,
         business_id=seeded_business.id,
@@ -164,7 +163,6 @@ def test_credential_admin_actions_create_audit_events_without_secrets(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     admin_token = _seed_credential(
         db_session,
         business_id=seeded_business.id,
@@ -239,7 +237,6 @@ def test_audit_events_are_business_scoped_and_cross_tenant_access_is_blocked(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     other_business = Business(
         id=str(uuid4()),
         name="Other Tenant",
@@ -294,7 +291,6 @@ def test_operator_principal_cannot_access_admin_audit_view(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     operator_token = _seed_credential(
         db_session,
         business_id=seeded_business.id,

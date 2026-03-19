@@ -30,14 +30,12 @@ def _clear_settings_cache() -> None:
 def _set_env(
     monkeypatch: pytest.MonkeyPatch,
     *,
-    default_business_id: str,
     auth_limit: int,
     admin_limit: int,
     auth_window_seconds: int = 60,
     admin_window_seconds: int = 60,
 ) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("DEFAULT_BUSINESS_ID", default_business_id)
     monkeypatch.setenv("API_TOKEN_HASH_PEPPER", PROD_PEPPER)
     monkeypatch.setenv("ALLOW_LEGACY_TOKEN_HASH_FALLBACK", "false")
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
@@ -120,7 +118,6 @@ def _seed_lead(db_session, *, business_id: str) -> Lead:
 def test_auth_requests_are_rate_limited_by_client_ip(db_session, seeded_business, monkeypatch: pytest.MonkeyPatch) -> None:
     _set_env(
         monkeypatch,
-        default_business_id=seeded_business.id,
         auth_limit=2,
         admin_limit=10,
     )
@@ -146,7 +143,6 @@ def test_admin_routes_are_stricter_than_authenticated_lead_reads(
 ) -> None:
     _set_env(
         monkeypatch,
-        default_business_id=seeded_business.id,
         auth_limit=20,
         admin_limit=2,
     )
@@ -192,7 +188,6 @@ def test_admin_audit_read_endpoint_is_rate_limited(
 ) -> None:
     _set_env(
         monkeypatch,
-        default_business_id=seeded_business.id,
         auth_limit=20,
         admin_limit=1,
     )

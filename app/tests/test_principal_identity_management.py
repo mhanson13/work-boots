@@ -24,9 +24,9 @@ def _clear_settings_cache() -> None:
     get_settings.cache_clear()
 
 
-def _set_production_auth_defaults(monkeypatch: pytest.MonkeyPatch, *, default_business_id: str) -> None:
+@pytest.fixture(autouse=True)
+def _set_production_auth_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("DEFAULT_BUSINESS_ID", default_business_id)
     monkeypatch.setenv("API_TOKEN_HASH_PEPPER", PROD_PEPPER)
     monkeypatch.setenv("ALLOW_LEGACY_TOKEN_HASH_FALLBACK", "false")
     monkeypatch.delenv("GOOGLE_AUTH_ENABLED", raising=False)
@@ -87,7 +87,6 @@ def test_admin_can_manage_principal_identities(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     admin_token = _seed_credential(
         db_session,
         business_id=seeded_business.id,
@@ -159,7 +158,6 @@ def test_operator_cannot_manage_principal_identities(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     operator_token = _seed_credential(
         db_session,
         business_id=seeded_business.id,
@@ -179,7 +177,6 @@ def test_cross_tenant_principal_identity_access_is_blocked(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     admin_token = _seed_credential(
         db_session,
         business_id=seeded_business.id,

@@ -28,9 +28,9 @@ def _clear_settings_cache() -> None:
     get_settings.cache_clear()
 
 
-def _set_production_auth_defaults(monkeypatch: pytest.MonkeyPatch, *, default_business_id: str) -> None:
+@pytest.fixture(autouse=True)
+def _set_production_auth_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("DEFAULT_BUSINESS_ID", default_business_id)
     monkeypatch.setenv("API_TOKEN_HASH_PEPPER", PROD_PEPPER)
     monkeypatch.setenv("ALLOW_LEGACY_TOKEN_HASH_FALLBACK", "false")
     monkeypatch.delenv("API_AUTH_TOKEN", raising=False)
@@ -122,7 +122,6 @@ def test_create_credential_returns_token_and_authenticates(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     lead = _seed_lead(db_session, business_id=seeded_business.id)
     management_client = _make_management_client(db_session, business_id=seeded_business.id)
 
@@ -169,7 +168,6 @@ def test_disabled_credential_is_rejected_for_auth(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     lead = _seed_lead(db_session, business_id=seeded_business.id)
     management_client = _make_management_client(db_session, business_id=seeded_business.id)
 
@@ -200,7 +198,6 @@ def test_revoked_credential_is_rejected_for_auth(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     lead = _seed_lead(db_session, business_id=seeded_business.id)
     management_client = _make_management_client(db_session, business_id=seeded_business.id)
 
@@ -231,7 +228,6 @@ def test_rotate_credential_replaces_old_token_and_keeps_tenant_scope(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     lead = _seed_lead(db_session, business_id=seeded_business.id)
     management_client = _make_management_client(db_session, business_id=seeded_business.id)
 
@@ -309,7 +305,6 @@ def test_create_credential_can_set_principal_display_name(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     management_client = _make_management_client(db_session, business_id=seeded_business.id)
 
     create_response = management_client.post(
@@ -337,7 +332,6 @@ def test_list_credentials_exposes_allowed_metadata_only(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     management_client = _make_management_client(db_session, business_id=seeded_business.id)
 
     create_response = management_client.post(
@@ -369,7 +363,6 @@ def test_operator_principal_cannot_manage_credentials(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_production_auth_defaults(monkeypatch, default_business_id=seeded_business.id)
     management_client = _make_management_client(
         db_session,
         business_id=seeded_business.id,

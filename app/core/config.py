@@ -12,7 +12,6 @@ class Settings:
     app_env: str
     environment: str
     database_url: str
-    default_business_id: str
     db_auto_create_local: bool
     google_auth_enabled: bool
     google_oidc_client_id: str | None
@@ -113,7 +112,6 @@ def get_settings() -> Settings:
     env_normalized = environment.strip().lower()
     app_env = os.getenv("APP_ENV", environment).strip().lower()
     google_auth_enabled = _env_bool("GOOGLE_AUTH_ENABLED", False)
-    default_business_id = (os.getenv("DEFAULT_BUSINESS_ID") or "").strip()
     google_oidc_client_id = os.getenv("GOOGLE_OIDC_CLIENT_ID")
     google_oauth_client_id = os.getenv("GOOGLE_OAUTH_CLIENT_ID") or google_oidc_client_id
     google_oauth_client_secret = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET") or os.getenv("GOOGLE_OIDC_CLIENT_SECRET")
@@ -140,8 +138,6 @@ def get_settings() -> Settings:
 
     if env_normalized in {"production", "staging"} and "*" in cors_allowed_origins:
         raise RuntimeError("API_CORS_ALLOWED_ORIGINS cannot include '*' in production/staging environments.")
-    if env_normalized in {"production", "staging"} and not default_business_id:
-        raise RuntimeError("DEFAULT_BUSINESS_ID is required in production/staging environments.")
     if env_normalized == "production" and not api_token_hash_pepper:
         raise RuntimeError("API_TOKEN_HASH_PEPPER is required when ENVIRONMENT=production.")
     if env_normalized == "production" and google_auth_enabled:
@@ -178,7 +174,6 @@ def get_settings() -> Settings:
             "DATABASE_URL",
             "postgresql+psycopg://postgres:postgres@localhost:5432/work_boots_console",
         ),
-        default_business_id=default_business_id,
         db_auto_create_local=_env_bool(
             "DB_AUTO_CREATE_LOCAL",
             app_env in {"local", "development", "dev", "test"},

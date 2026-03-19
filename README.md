@@ -412,11 +412,13 @@ When using `twilio` or `smtp`, configure the corresponding credentials in `.env`
 - Legacy unpeppered hash verification is off by default and can be enabled temporarily with `ALLOW_LEGACY_TOKEN_HASH_FALLBACK=true`.
 - Legacy shared-token auth (`API_AUTH_TOKEN` / `API_AUTH_BUSINESS_ID`) is no longer part of runtime auth resolution.
 
-### Default Business Configuration
-- `DEFAULT_BUSINESS_ID` anchors default tenant/business resolution to a real persisted `businesses.id`.
-- In production deploys, `DEFAULT_BUSINESS_ID` is injected from GitHub Actions repository secrets into Kubernetes Secret `mbsrn-api-auth`; it is not hardcoded in repo manifests.
-- Do not use fake identifiers (for example `0`) for `DEFAULT_BUSINESS_ID`.
-- Do not store `DEFAULT_BUSINESS_ID` directly in tracked manifest YAML.
+### First Login Initialization
+- When the system is fully uninitialized (`businesses`, `principals`, and `principal_identities` all empty), the first successful verified Google login initializes:
+  - one `Business`
+  - one admin `Principal`
+  - one Google `PrincipalIdentity`
+- This bootstrap path is internal to the existing Google auth exchange flow (no public bootstrap endpoint).
+- After initialization, login follows normal persisted identity and role checks only.
 
 ## API CORS And Security Headers
 - CORS is explicit and origin-scoped via `API_CORS_ALLOWED_ORIGINS` (comma-separated).

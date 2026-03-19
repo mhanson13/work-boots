@@ -30,9 +30,9 @@ def _clear_settings_cache() -> None:
     get_settings.cache_clear()
 
 
-def _set_env_defaults(monkeypatch: pytest.MonkeyPatch, *, default_business_id: str) -> None:
+@pytest.fixture(autouse=True)
+def _set_env_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("DEFAULT_BUSINESS_ID", default_business_id)
     monkeypatch.setenv("API_TOKEN_HASH_PEPPER", PROD_PEPPER)
     monkeypatch.setenv("ALLOW_LEGACY_TOKEN_HASH_FALLBACK", "false")
     monkeypatch.setenv("RATE_LIMIT_BACKEND", "inmemory")
@@ -129,7 +129,6 @@ def test_db_credential_resolves_principal_and_tenant_scope(
     )
     db_session.commit()
 
-    _set_env_defaults(monkeypatch, default_business_id=other_business.id)
     client = _make_client(db_session)
     headers = {"Authorization": "Bearer db-tenant-a-token"}
 
@@ -169,7 +168,6 @@ def test_inactive_db_credential_is_rejected(
     )
     db_session.commit()
 
-    _set_env_defaults(monkeypatch, default_business_id=seeded_business.id)
     client = _make_client(db_session)
     response = client.get("/api/leads", headers={"Authorization": "Bearer inactive-token"})
     assert response.status_code == 401
@@ -193,7 +191,6 @@ def test_revoked_db_credential_is_rejected(
     )
     db_session.commit()
 
-    _set_env_defaults(monkeypatch, default_business_id=seeded_business.id)
     client = _make_client(db_session)
     response = client.get("/api/leads", headers={"Authorization": "Bearer revoked-token"})
     assert response.status_code == 401
@@ -252,7 +249,6 @@ def test_db_credential_auth_ignores_env_principal_json_configuration(
     )
     db_session.commit()
 
-    _set_env_defaults(monkeypatch, default_business_id=other_business.id)
     monkeypatch.setenv(
         "API_AUTH_PRINCIPALS_JSON",
         json.dumps(
@@ -295,7 +291,6 @@ def test_legacy_unpeppered_hash_is_rejected_by_default(
     )
     db_session.commit()
 
-    _set_env_defaults(monkeypatch, default_business_id=seeded_business.id)
     client = _make_client(db_session)
     response = client.get("/api/leads", headers={"Authorization": "Bearer legacy-hash-token"})
     assert response.status_code == 401
@@ -319,7 +314,6 @@ def test_legacy_unpeppered_hash_can_be_enabled_temporarily_for_migration(
     )
     db_session.commit()
 
-    _set_env_defaults(monkeypatch, default_business_id=seeded_business.id)
     monkeypatch.setenv("ALLOW_LEGACY_TOKEN_HASH_FALLBACK", "true")
     client = _make_client(db_session)
     response = client.get("/api/leads", headers={"Authorization": "Bearer legacy-hash-token"})
@@ -349,7 +343,6 @@ def test_inactive_principal_blocks_active_credential_auth(
     )
     db_session.commit()
 
-    _set_env_defaults(monkeypatch, default_business_id=seeded_business.id)
     client = _make_client(db_session)
     response = client.get("/api/leads", headers={"Authorization": "Bearer inactive-principal-token"})
     assert response.status_code == 401

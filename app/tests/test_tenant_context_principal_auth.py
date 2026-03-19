@@ -27,7 +27,6 @@ def _set_auth_env(
     *,
     principals: list[dict[str, str]] | None = None,
     environment: str,
-    default_business_id: str,
     api_token_hash_pepper: str | None = None,
 ) -> None:
     if principals is None:
@@ -44,7 +43,6 @@ def _set_auth_env(
     monkeypatch.delenv("API_AUTH_TOKEN", raising=False)
     monkeypatch.delenv("API_AUTH_BUSINESS_ID", raising=False)
     monkeypatch.setenv("ENVIRONMENT", environment)
-    monkeypatch.setenv("DEFAULT_BUSINESS_ID", default_business_id)
 
 
 def _make_client(db_session) -> TestClient:
@@ -89,7 +87,6 @@ def test_env_principal_json_is_ignored_in_test_environment(
             }
         ],
         environment="test",
-        default_business_id=seeded_business.id,
     )
 
     client = _make_client(db_session)
@@ -128,7 +125,6 @@ def test_env_principal_json_is_ignored_in_production_environment(
             }
         ],
         environment="production",
-        default_business_id=seeded_business.id,
         api_token_hash_pepper="prod-pepper",
     )
 
@@ -149,7 +145,6 @@ def test_no_auth_config_in_production_is_rejected(
         monkeypatch,
         principals=None,
         environment="production",
-        default_business_id=seeded_business.id,
         api_token_hash_pepper="prod-pepper",
     )
     client = _make_client(db_session)
@@ -157,7 +152,7 @@ def test_no_auth_config_in_production_is_rejected(
     assert response.status_code == 401
 
 
-def test_test_environment_default_business_fallback_still_works(
+def test_test_environment_without_token_is_rejected(
     db_session,
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
@@ -166,11 +161,10 @@ def test_test_environment_default_business_fallback_still_works(
         monkeypatch,
         principals=None,
         environment="test",
-        default_business_id=seeded_business.id,
     )
     client = _make_client(db_session)
     response = client.get("/api/leads")
-    assert response.status_code == 200
+    assert response.status_code == 401
 
 
 def test_production_requires_api_token_hash_pepper(
@@ -182,7 +176,6 @@ def test_production_requires_api_token_hash_pepper(
         monkeypatch,
         principals=None,
         environment="production",
-        default_business_id=seeded_business.id,
         api_token_hash_pepper=None,
     )
     client = _make_client(db_session)

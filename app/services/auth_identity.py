@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
+from uuid import uuid4
 
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.session_token import AppSessionTokenError, AppSessionTokenService, IssuedAppSessionTokens
@@ -10,10 +14,16 @@ from app.integrations.google_auth import (
     GoogleOIDCJWKSVerifier,
     GoogleOIDCVerificationError,
 )
+from app.models.business import Business
 from app.models.principal import Principal
+from app.models.principal import PrincipalRole
+from app.models.principal_identity import PrincipalIdentity
+from app.repositories.business_repository import BusinessRepository
 from app.repositories.principal_identity_repository import PrincipalIdentityRepository
 from app.repositories.principal_repository import PrincipalRepository
 from app.services.auth_audit import AuthAuditService
+
+logger = logging.getLogger(__name__)
 
 
 class AuthIdentityNotFoundError(ValueError):
@@ -37,6 +47,7 @@ class AuthExchangeResult:
 class AuthIdentityService:
     GOOGLE_PROVIDER = "google"
     AUTH_SOURCE = "google_oidc_session"
+    FIRST_BUSINESS_NAME = "Initial Business"
     TARGET_SESSION = "session"
     EVENT_REFRESH_REPLAY_DETECTED = "session_refresh_replay_detected"
     EVENT_LOGOUT = "session_logout"
@@ -45,6 +56,7 @@ class AuthIdentityService:
         self,
         *,
         session: Session,
+        business_repository: BusinessRepository,
         principal_repository: PrincipalRepository,
         principal_identity_repository: PrincipalIdentityRepository,
         oidc_verifier: GoogleOIDCJWKSVerifier,
@@ -52,6 +64,7 @@ class AuthIdentityService:
         auth_audit_service: AuthAuditService,
     ) -> None:
         self.session = session
+        self.business_repository = business_repository
         self.principal_repository = principal_repository
         self.principal_identity_repository = principal_identity_repository
         self.oidc_verifier = oidc_verifier
@@ -216,6 +229,96 @@ class AuthIdentityService:
             provider=claims.provider,
             provider_subject=claims.subject,
         )
-        if identity is None:
-            raise AuthIdentityNotFoundError("Identity mapping not found.")
+        if identity is not None:
+            return identity
+
+        identity = self._initialize_first_identity_if_uninitialized(claims)
+        if identity is not None:
+            return identity
+
+        raise AuthIdentityNotFoundError("Identity mapping not found.")
+
+    def _initialize_first_identity_if_uninitialized(self, claims: GoogleIdentityClaims) -> PrincipalIdentity | None:
+        normalized_email = self._normalize_verified_email(claims)
+        if normalized_email is None:
+            return None
+
+        self._acquire_initialization_lock()
+
+        existing_identity = self.principal_identity_repository.get_active_by_provider_subject(
+            provider=claims.provider,
+            provider_subject=claims.subject,
+        )
+        if existing_identity is not None:
+            return existing_identity
+
+        if not self._is_uninitialized_system():
+            return None
+
+        business_id = str(uuid4())
+        principal_id = str(uuid4())
+        display_name = (claims.display_name or normalized_email).strip() or normalized_email
+
+        business = Business(
+            id=business_id,
+            name=self.FIRST_BUSINESS_NAME,
+            notification_email=normalized_email,
+        )
+        principal = Principal(
+            business_id=business_id,
+            id=principal_id,
+            display_name=display_name,
+            role=PrincipalRole.ADMIN,
+            is_active=True,
+        )
+        identity = PrincipalIdentity(
+            id=str(uuid4()),
+            provider=claims.provider,
+            provider_subject=claims.subject,
+            business_id=business_id,
+            principal_id=principal_id,
+            email=normalized_email,
+            email_verified=True,
+            is_active=True,
+        )
+        try:
+            self.business_repository.save(business)
+            self.principal_repository.create(principal)
+            self.principal_identity_repository.create(identity)
+        except IntegrityError:
+            self.session.rollback()
+            return self.principal_identity_repository.get_active_by_provider_subject(
+                provider=claims.provider,
+                provider_subject=claims.subject,
+            )
+
+        logger.info(
+            "Initialized first tenant from verified Google login (business_id=%s principal_id=%s).",
+            business_id,
+            principal_id,
+        )
         return identity
+
+    def _normalize_verified_email(self, claims: GoogleIdentityClaims) -> str | None:
+        if not claims.email_verified:
+            return None
+        normalized = (claims.email or "").strip().lower()
+        if not normalized:
+            return None
+        return normalized
+
+    def _is_uninitialized_system(self) -> bool:
+        return (
+            self.business_repository.count_all() == 0
+            and self.principal_repository.count_all() == 0
+            and self.principal_identity_repository.count_all() == 0
+        )
+
+    def _acquire_initialization_lock(self) -> None:
+        bind = self.session.get_bind()
+        if bind is None:
+            return
+        if bind.dialect.name == "postgresql":
+            self.session.execute(
+                text("LOCK TABLE businesses, principals, principal_identities IN EXCLUSIVE MODE")
+            )

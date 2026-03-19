@@ -19,8 +19,7 @@ from app.api.routes import (
 )
 from app.core.config import get_settings
 from app.db.base import Base
-from app.db.session import SessionLocal, engine
-from app.repositories.business_repository import BusinessRepository
+from app.db.session import engine
 
 settings = get_settings()
 app = FastAPI(title=settings.app_name)
@@ -91,8 +90,6 @@ _configure_security_headers()
 @app.on_event("startup")
 def on_startup() -> None:
     if _should_auto_create_schema():
-        if not settings.default_business_id:
-            raise RuntimeError("DEFAULT_BUSINESS_ID is required when local schema auto-create is enabled.")
         logger.warning(
             "Local schema auto-create is enabled (app_env=%s, DB_AUTO_CREATE_LOCAL=%s). "
             "Alembic remains authoritative for non-local environments.",
@@ -100,17 +97,6 @@ def on_startup() -> None:
             settings.db_auto_create_local,
         )
         Base.metadata.create_all(bind=engine)
-        session = SessionLocal()
-        try:
-            BusinessRepository(session).get_or_create(
-                business_id=settings.default_business_id,
-                name="T&M Fire",
-                notification_phone="+13035550101",
-                notification_email="owner@tmfire.example",
-            )
-            session.commit()
-        finally:
-            session.close()
         return
 
     logger.info(

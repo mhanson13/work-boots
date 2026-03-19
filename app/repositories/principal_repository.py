@@ -39,6 +39,10 @@ class PrincipalRepository:
         )
         return list(self.session.scalars(stmt))
 
+    def count_all(self) -> int:
+        stmt = select(func.count()).select_from(Principal)
+        return int(self.session.scalar(stmt) or 0)
+
     def count_active_admins(self, business_id: str) -> int:
         stmt = (
             select(func.count())

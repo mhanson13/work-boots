@@ -41,9 +41,8 @@ def _clear_settings_cache() -> None:
     get_settings.cache_clear()
 
 
-def _set_auth_env(monkeypatch: pytest.MonkeyPatch, *, default_business_id: str) -> None:
+def _set_auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("DEFAULT_BUSINESS_ID", default_business_id)
     monkeypatch.setenv("API_TOKEN_HASH_PEPPER", "prod-pepper")
     monkeypatch.setenv("GOOGLE_AUTH_ENABLED", "true")
     monkeypatch.setenv("GOOGLE_OIDC_CLIENT_ID", "google-client-id")
@@ -106,7 +105,7 @@ def test_google_exchange_issues_session_token_and_preserves_tenant_scope(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
+    _set_auth_env(monkeypatch)
     identity = _seed_principal_identity(
         db_session,
         business_id=seeded_business.id,
@@ -222,12 +221,133 @@ def test_google_exchange_issues_session_token_and_preserves_tenant_scope(
     assert replay_events[-1].details_json.get("action") == "auth_refresh"
 
 
+def test_google_exchange_initializes_first_tenant_on_empty_system(
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_auth_env(monkeypatch)
+    verifier = _StubGoogleVerifier(
+        {
+            "bootstrap-id-token": GoogleIdentityClaims(
+                provider="google",
+                subject="google-sub-bootstrap",
+                email="bootstrap-admin@example.com",
+                email_verified=True,
+                issuer="https://accounts.google.com",
+                audience="google-client-id",
+                display_name="Bootstrap Admin",
+            )
+        }
+    )
+    client = _make_client(db_session, verifier=verifier)
+
+    exchange = client.post("/api/auth/google/exchange", json={"id_token": "bootstrap-id-token"})
+    assert exchange.status_code == 200
+
+    payload = exchange.json()
+    business_id = payload["principal"]["business_id"]
+    principal_id = payload["principal"]["principal_id"]
+    assert payload["principal"]["role"] == "admin"
+
+    business = db_session.get(Business, business_id)
+    assert business is not None
+    principal = db_session.get(Principal, (business_id, principal_id))
+    assert principal is not None
+    assert principal.role == PrincipalRole.ADMIN
+    assert principal.is_active is True
+    identity = (
+        db_session.query(PrincipalIdentity)
+        .filter(PrincipalIdentity.business_id == business_id)
+        .filter(PrincipalIdentity.principal_id == principal_id)
+        .filter(PrincipalIdentity.provider == "google")
+        .one_or_none()
+    )
+    assert identity is not None
+    assert identity.provider_subject == "google-sub-bootstrap"
+    assert identity.email == "bootstrap-admin@example.com"
+    assert identity.email_verified is True
+
+
+def test_google_exchange_bootstrap_is_single_use_and_does_not_reinitialize(
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_auth_env(monkeypatch)
+    verifier = _StubGoogleVerifier(
+        {
+            "bootstrap-id-token": GoogleIdentityClaims(
+                provider="google",
+                subject="google-sub-bootstrap",
+                email="bootstrap-admin@example.com",
+                email_verified=True,
+                issuer="https://accounts.google.com",
+                audience="google-client-id",
+                display_name="Bootstrap Admin",
+            ),
+            "second-user-token": GoogleIdentityClaims(
+                provider="google",
+                subject="google-sub-second",
+                email="second-user@example.com",
+                email_verified=True,
+                issuer="https://accounts.google.com",
+                audience="google-client-id",
+                display_name="Second User",
+            ),
+        }
+    )
+    client = _make_client(db_session, verifier=verifier)
+
+    first = client.post("/api/auth/google/exchange", json={"id_token": "bootstrap-id-token"})
+    assert first.status_code == 200
+    first_business_id = first.json()["principal"]["business_id"]
+
+    same_identity = client.post("/api/auth/google/exchange", json={"id_token": "bootstrap-id-token"})
+    assert same_identity.status_code == 200
+    assert same_identity.json()["principal"]["business_id"] == first_business_id
+
+    second_user = client.post("/api/auth/google/exchange", json={"id_token": "second-user-token"})
+    assert second_user.status_code == 403
+
+    assert db_session.query(Business).count() == 1
+    assert db_session.query(Principal).count() == 1
+    assert db_session.query(PrincipalIdentity).count() == 1
+
+
+def test_google_exchange_does_not_bootstrap_when_system_is_not_empty(
+    db_session,
+    seeded_business,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_auth_env(monkeypatch)
+    verifier = _StubGoogleVerifier(
+        {
+            "bootstrap-id-token": GoogleIdentityClaims(
+                provider="google",
+                subject="google-sub-bootstrap",
+                email="bootstrap-admin@example.com",
+                email_verified=True,
+                issuer="https://accounts.google.com",
+                audience="google-client-id",
+                display_name="Bootstrap Admin",
+            )
+        }
+    )
+    client = _make_client(db_session, verifier=verifier)
+
+    response = client.post("/api/auth/google/exchange", json={"id_token": "bootstrap-id-token"})
+    assert response.status_code == 403
+    assert db_session.query(Business).count() == 1
+    assert db_session.get(Business, seeded_business.id) is not None
+    assert db_session.query(Principal).count() == 0
+    assert db_session.query(PrincipalIdentity).count() == 0
+
+
 def test_google_exchange_rejects_unmapped_identity(
     db_session,
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
+    _set_auth_env(monkeypatch)
     verifier = _StubGoogleVerifier(
         {
             "id-token-unmapped": GoogleIdentityClaims(
@@ -251,7 +371,7 @@ def test_google_exchange_rejects_inactive_identity_mapping(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
+    _set_auth_env(monkeypatch)
     _seed_principal_identity(
         db_session,
         business_id=seeded_business.id,
@@ -282,7 +402,7 @@ def test_refresh_rejects_when_identity_is_deactivated_after_exchange(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
+    _set_auth_env(monkeypatch)
     identity = _seed_principal_identity(
         db_session,
         business_id=seeded_business.id,
@@ -320,7 +440,7 @@ def test_access_token_rejected_after_principal_deactivation(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
+    _set_auth_env(monkeypatch)
     _seed_principal_identity(
         db_session,
         business_id=seeded_business.id,
@@ -360,7 +480,7 @@ def test_logout_revokes_current_access_and_refresh_tokens(
     seeded_business,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_auth_env(monkeypatch, default_business_id=seeded_business.id)
+    _set_auth_env(monkeypatch)
     _seed_principal_identity(
         db_session,
         business_id=seeded_business.id,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.business import Business
@@ -40,6 +40,10 @@ class BusinessRepository:
     def list(self) -> list[Business]:
         stmt = select(Business).order_by(Business.name.asc())
         return list(self.session.scalars(stmt))
+
+    def count_all(self) -> int:
+        stmt = select(func.count()).select_from(Business)
+        return int(self.session.scalar(stmt) or 0)
 
     def save(self, business: Business) -> Business:
         self.session.add(business)
