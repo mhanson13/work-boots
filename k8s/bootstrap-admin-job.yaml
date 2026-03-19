@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mbsrn-bootstrap-admin
+  namespace: mbsrn
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 0
+  template:
+    spec:
+      serviceAccountName: mbsrn-api
+      restartPolicy: Never
+      containers:
+        - name: mbsrn-bootstrap-admin
+          image: __API_IMAGE__
+          command:
+            - python
+            - -m
+            - app.scripts.bootstrap_admin
+          args:
+            - --role
+            - admin
+          env:
+            - name: APP_ENV
+              value: production
+            - name: DB_AUTO_CREATE_LOCAL
+              value: "false"
+            - name: DEFAULT_BUSINESS_ID
+              valueFrom:
+                secretKeyRef:
+                  name: mbsrn-api-auth
+                  key: DEFAULT_BUSINESS_ID
+            - name: DEFAULT_ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: mbsrn-api-auth
+                  key: DEFAULT_ADMIN_EMAIL

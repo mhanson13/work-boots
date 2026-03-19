@@ -428,23 +428,25 @@ Anti-patterns to avoid:
 - Do not use fake identifiers (for example `0`) for `DEFAULT_BUSINESS_ID`.
 - Do not store either value directly in tracked manifest YAML.
 - Do not assume `DEFAULT_ADMIN_EMAIL` alone grants access without successful Google token verification and principal mapping.
+- Do not `kubectl exec` into live API deployments for bootstrap mutations.
 
-Local:
-```powershell
-python -m app.scripts.bootstrap_admin --email user@example.com --role admin
-```
-
-Production (GKE):
+Production bootstrap via one-time Kubernetes Job:
 ```bash
-kubectl -n mbsrn exec deploy/mbsrn-api -- \
-  python -m app.scripts.bootstrap_admin --email user@example.com --role admin
+NAMESPACE=mbsrn
+API_IMAGE="$(kubectl -n "${NAMESPACE}" get deployment mbsrn-api -o jsonpath='{.spec.template.spec.containers[?(@.name=="mbsrn-api")].image}')"
+
+kubectl -n "${NAMESPACE}" delete job mbsrn-bootstrap-admin --ignore-not-found
+sed "s|__API_IMAGE__|${API_IMAGE}|g" k8s/bootstrap-admin-job.yaml | kubectl apply -f -
+
+kubectl -n "${NAMESPACE}" wait --for=condition=complete job/mbsrn-bootstrap-admin --timeout=300s
+kubectl -n "${NAMESPACE}" logs job/mbsrn-bootstrap-admin
+
+kubectl -n "${NAMESPACE}" delete job mbsrn-bootstrap-admin
 ```
 
-Production (use configured default admin email from secret-backed env):
-```bash
-kubectl -n mbsrn exec deploy/mbsrn-api -- \
-  python -m app.scripts.bootstrap_admin --role admin
-```
+Notes:
+- This reuses the exact deployed API image tag and the same `mbsrn-api-auth` secret-backed config path.
+- The job defaults to `DEFAULT_ADMIN_EMAIL`; you can override by editing job args before apply if needed.
 
 Expected primary output:
 - `created principal <email> with role admin`
