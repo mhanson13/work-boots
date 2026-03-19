@@ -23,6 +23,13 @@ env:
   AR_REPOSITORY: ${{ vars.AR_REPOSITORY }}
   UI_IMAGE_NAME: ${{ vars.UI_IMAGE_NAME }}
   API_IMAGE_NAME: ${{ vars.API_IMAGE_NAME }}
+  NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+  NEXT_PUBLIC_API_BASE_URL: ${{ vars.NEXT_PUBLIC_API_BASE_URL }}
+  GOOGLE_OIDC_CLIENT_ID: ${{ vars.GOOGLE_OIDC_CLIENT_ID }}
+  GOOGLE_OAUTH_CLIENT_ID: ${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
+  GOOGLE_BUSINESS_PROFILE_REDIRECT_URI: ${{ vars.GOOGLE_BUSINESS_PROFILE_REDIRECT_URI }}
+  APP_SESSION_ISSUER: mbsrn-console
+  APP_SESSION_AUDIENCE: mbsrn-api
   UI_CPU_REQUEST: ${{ vars.UI_CPU_REQUEST }}
   UI_MEMORY_REQUEST: ${{ vars.UI_MEMORY_REQUEST }}
   UI_EPHEMERAL_STORAGE_REQUEST: ${{ vars.UI_EPHEMERAL_STORAGE_REQUEST }}
@@ -49,6 +56,8 @@ jobs:
         env:
           GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           GCP_SERVICE_ACCOUNT_EMAIL: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+          APP_SESSION_SECRET: ${{ secrets.APP_SESSION_SECRET }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
         run: |
           set -euo pipefail
 
@@ -61,6 +70,12 @@ jobs:
             AR_REPOSITORY
             UI_IMAGE_NAME
             API_IMAGE_NAME
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID
+            GOOGLE_OIDC_CLIENT_ID
+            GOOGLE_OAUTH_CLIENT_ID
+            GOOGLE_BUSINESS_PROFILE_REDIRECT_URI
+            APP_SESSION_ISSUER
+            APP_SESSION_AUDIENCE
             UI_CPU_REQUEST
             UI_MEMORY_REQUEST
             UI_EPHEMERAL_STORAGE_REQUEST
@@ -75,6 +90,8 @@ jobs:
             API_EPHEMERAL_STORAGE_LIMIT
             GCP_WORKLOAD_IDENTITY_PROVIDER
             GCP_SERVICE_ACCOUNT_EMAIL
+            APP_SESSION_SECRET
+            GOOGLE_OAUTH_CLIENT_SECRET
           )
 
           for name in "${required[@]}"; do
@@ -136,6 +153,7 @@ jobs:
 
           UI_IMAGE="${AR_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPOSITORY}/${UI_IMAGE_NAME}:${GITHUB_SHA}"
           API_IMAGE="${AR_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPOSITORY}/${API_IMAGE_NAME}:${GITHUB_SHA}"
+          UI_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-/api}"
 
           echo "UI_IMAGE=${UI_IMAGE}" >> "${GITHUB_ENV}"
           echo "API_IMAGE=${API_IMAGE}" >> "${GITHUB_ENV}"
@@ -151,7 +169,7 @@ jobs:
             --project "${GCP_PROJECT_ID}" \
             --gcs-source-staging-dir "gs://mbsrn-build-source/source" \
             --gcs-log-dir "${GCS_LOGS_BUCKET}" \
-            --pack image="${UI_IMAGE}" \
+            --pack "image=${UI_IMAGE},env=NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID},env=NEXT_PUBLIC_API_BASE_URL=${UI_API_BASE_URL}" \
             frontend/operator-ui
 
       - name: Get GKE credentials
@@ -190,6 +208,9 @@ jobs:
           grep -q "__API_CPU_LIMIT__" k8s/api-deployment.yaml
           grep -q "__API_MEMORY_LIMIT__" k8s/api-deployment.yaml
           grep -q "__API_EPHEMERAL_STORAGE_LIMIT__" k8s/api-deployment.yaml
+          grep -q "__GOOGLE_OIDC_CLIENT_ID__" k8s/api-deployment.yaml
+          grep -q "__GOOGLE_OAUTH_CLIENT_ID__" k8s/api-deployment.yaml
+          grep -q "__GOOGLE_BUSINESS_PROFILE_REDIRECT_URI__" k8s/api-deployment.yaml
 
           sed \
             -e "s|__UI_IMAGE__|${UI_IMAGE}|g" \
@@ -208,16 +229,26 @@ jobs:
             -e "s|__API_CPU_LIMIT__|${API_CPU_LIMIT}|g" \
             -e "s|__API_MEMORY_LIMIT__|${API_MEMORY_LIMIT}|g" \
             -e "s|__API_EPHEMERAL_STORAGE_LIMIT__|${API_EPHEMERAL_STORAGE_LIMIT}|g" \
+            -e "s|__GOOGLE_OIDC_CLIENT_ID__|${GOOGLE_OIDC_CLIENT_ID}|g" \
+            -e "s|__GOOGLE_OAUTH_CLIENT_ID__|${GOOGLE_OAUTH_CLIENT_ID}|g" \
+            -e "s|__GOOGLE_BUSINESS_PROFILE_REDIRECT_URI__|${GOOGLE_BUSINESS_PROFILE_REDIRECT_URI}|g" \
             k8s/api-deployment.yaml > "${render_dir}/api-deployment.yaml"
 
           echo "RENDER_DIR=${render_dir}" >> "${GITHUB_ENV}"
 
       - name: Apply workload manifests
         shell: bash
+        env:
+          APP_SESSION_SECRET: ${{ secrets.APP_SESSION_SECRET }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
         run: |
           set -euo pipefail
 
           kubectl apply -f "${RENDER_DIR}/namespace.yaml"
+          kubectl -n "${K8S_NAMESPACE}" create secret generic mbsrn-api-auth \
+            --from-literal=APP_SESSION_SECRET="${APP_SESSION_SECRET}" \
+            --from-literal=GOOGLE_OAUTH_CLIENT_SECRET="${GOOGLE_OAUTH_CLIENT_SECRET}" \
+            --dry-run=client -o yaml | kubectl apply -f -
           kubectl apply -n "${K8S_NAMESPACE}" -f "${RENDER_DIR}/ui-serviceaccount.yaml"
           kubectl apply -n "${K8S_NAMESPACE}" -f "${RENDER_DIR}/api-serviceaccount.yaml"
           kubectl apply -n "${K8S_NAMESPACE}" -f "${RENDER_DIR}/ui-deployment.yaml"

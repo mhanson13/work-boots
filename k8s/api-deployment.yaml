@@ -24,6 +24,28 @@ spec:
               value: production
             - name: DB_AUTO_CREATE_LOCAL
               value: "false"
+            - name: GOOGLE_AUTH_ENABLED
+              value: "true"
+            - name: GOOGLE_OIDC_CLIENT_ID
+              value: __GOOGLE_OIDC_CLIENT_ID__
+            - name: GOOGLE_OAUTH_CLIENT_ID
+              value: __GOOGLE_OAUTH_CLIENT_ID__
+            - name: GOOGLE_BUSINESS_PROFILE_REDIRECT_URI
+              value: __GOOGLE_BUSINESS_PROFILE_REDIRECT_URI__
+            - name: APP_SESSION_ISSUER
+              value: mbsrn-console
+            - name: APP_SESSION_AUDIENCE
+              value: mbsrn-api
+            - name: APP_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mbsrn-api-auth
+                  key: APP_SESSION_SECRET
+            - name: GOOGLE_OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mbsrn-api-auth
+                  key: GOOGLE_OAUTH_CLIENT_SECRET
           resources:
             requests:
               cpu: __API_CPU_REQUEST__
