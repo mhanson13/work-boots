@@ -3,7 +3,9 @@ import type {
   AuthExchangeResponse,
   SEOAuditRun,
   SEOAuditRunCreateRequest,
+  SEOAuditRunSummary,
   SEOAuditRunListResponse,
+  SEOAuditFindingListResponse,
   Principal,
   PrincipalCreateRequest,
   PrincipalListResponse,
@@ -137,6 +139,27 @@ export async function createAuditRun(
     token,
     body: JSON.stringify(payload),
   });
+}
+
+export async function fetchAuditRunSummary(
+  token: string,
+  businessId: string,
+  runId: string,
+): Promise<SEOAuditRunSummary> {
+  return apiRequest<SEOAuditRunSummary>(`/api/businesses/${businessId}/seo/audit-runs/${runId}/summary`, {
+    token,
+  });
+}
+
+export async function fetchAuditRunFindings(
+  token: string,
+  businessId: string,
+  runId: string,
+): Promise<SEOAuditFindingListResponse> {
+  return apiRequest<SEOAuditFindingListResponse>(
+    `/api/businesses/${businessId}/seo/audit-runs/${runId}/findings`,
+    { token },
+  );
 }
 
 export async function fetchPrincipals(token: string, businessId: string): Promise<PrincipalListResponse> {

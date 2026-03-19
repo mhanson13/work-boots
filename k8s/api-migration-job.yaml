@@ -27,7 +27,7 @@ spec:
       containers:
         - name: migrate
           image: __API_IMAGE__
-          args: ["migrate"]
+          command: ["/cnb/process/migrate"]
           env:
             - name: DATABASE_URL
               valueFrom:

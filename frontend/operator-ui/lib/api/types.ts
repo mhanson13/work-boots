@@ -87,6 +87,45 @@ export interface SEOAuditRunListResponse {
   total: number;
 }
 
+export interface SEOAuditRunSummary {
+  run_id: string;
+  business_id: string;
+  site_id: string;
+  status: string;
+  total_pages: number;
+  total_findings: number;
+  critical_findings: number;
+  warning_findings: number;
+  info_findings: number;
+  crawl_duration: number | null;
+  health_score: number;
+  by_category: Record<string, number>;
+  by_severity: Record<string, number>;
+}
+
+export interface SEOAuditFinding {
+  id: string;
+  business_id: string;
+  site_id: string;
+  audit_run_id: string;
+  page_id: string | null;
+  finding_type: string;
+  category: string;
+  severity: string;
+  title: string;
+  details: string | null;
+  rule_key: string;
+  suggested_fix: string | null;
+  created_at: string;
+}
+
+export interface SEOAuditFindingListResponse {
+  items: SEOAuditFinding[];
+  total: number;
+  by_category: Record<string, number>;
+  by_severity: Record<string, number>;
+}
+
 export interface CompetitorSet {
   id: string;
   business_id: string;
