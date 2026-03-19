@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "./AuthProvider";
@@ -15,6 +15,7 @@ interface OperatorContextResult {
   sites: SEOSite[];
   selectedSiteId: string | null;
   setSelectedSiteId: (siteId: string) => void;
+  refreshSites: () => Promise<SEOSite[]>;
 }
 
 export function useOperatorContext(): OperatorContextResult {
@@ -25,24 +26,12 @@ export function useOperatorContext(): OperatorContextResult {
   const [sites, setSites] = useState<SEOSite[]>([]);
   const [selectedSiteId, setSelectedSiteIdState] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!token || !principal) {
-      clearSession();
-      router.push("/");
-      return;
-    }
-    const businessId = principal.business_id;
-    const accessToken = token;
-
-    let cancelled = false;
-    async function loadSites() {
+  const loadSites = useCallback(
+    async (accessToken: string, businessId: string): Promise<SEOSite[]> => {
       setLoading(true);
       setError(null);
       try {
         const response = await fetchSites(accessToken, businessId);
-        if (cancelled) {
-          return;
-        }
         setSites(response.items);
         setSelectedSiteIdState((current) => {
           if (current && response.items.some((site) => site.id === current)) {
@@ -50,28 +39,51 @@ export function useOperatorContext(): OperatorContextResult {
           }
           return response.items.length > 0 ? response.items[0].id : null;
         });
+        return response.items;
       } catch (err) {
-        if (!cancelled) {
-          const message = err instanceof Error ? err.message : "Failed to load SEO sites.";
-          if (message.includes("Unauthorized") || message.includes("HTTP 401")) {
-            clearSession();
-            router.push("/");
-            return;
-          }
-          setError(message);
+        const message = err instanceof Error ? err.message : "Failed to load SEO sites.";
+        if (message.includes("Unauthorized") || message.includes("HTTP 401")) {
+          clearSession();
+          router.push("/");
+          return [];
         }
+        setError(message);
+        throw err;
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        setLoading(false);
+      }
+    },
+    [clearSession, router],
+  );
+
+  useEffect(() => {
+    if (!token || !principal) {
+      clearSession();
+      router.push("/");
+      return;
+    }
+    const accessToken = token;
+    const businessId = principal.business_id;
+
+    async function runLoad() {
+      try {
+        await loadSites(accessToken, businessId);
+      } catch {
+        // Error state is already managed in loadSites.
       }
     }
 
-    void loadSites();
-    return () => {
-      cancelled = true;
-    };
-  }, [clearSession, principal, router, token]);
+    void runLoad();
+  }, [clearSession, loadSites, principal, router, token]);
+
+  const refreshSites = useCallback(async (): Promise<SEOSite[]> => {
+    if (!token || !principal) {
+      clearSession();
+      router.push("/");
+      return [];
+    }
+    return loadSites(token, principal.business_id);
+  }, [clearSession, loadSites, principal, router, token]);
 
   return {
     loading,
@@ -81,5 +93,6 @@ export function useOperatorContext(): OperatorContextResult {
     sites,
     selectedSiteId,
     setSelectedSiteId: setSelectedSiteIdState,
+    refreshSites,
   };
 }

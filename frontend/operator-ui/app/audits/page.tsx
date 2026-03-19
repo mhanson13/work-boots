@@ -84,7 +84,7 @@ export default function AuditsPage() {
               <td>{run.status}</td>
               <td>{run.pages_crawled}</td>
               <td>{run.pages_skipped}</td>
-              <td>{run.crawl_errors_count}</td>
+              <td>{run.errors_encountered}</td>
             </tr>
           ))}
           {runs.length === 0 && !loadingRuns ? (

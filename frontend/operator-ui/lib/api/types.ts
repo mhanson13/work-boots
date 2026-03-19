@@ -28,9 +28,19 @@ export interface SEOSite {
   is_primary: boolean;
 }
 
+export interface SEOSiteCreateRequest {
+  display_name: string;
+  base_url: string;
+}
+
 export interface SEOSiteListResponse {
   items: SEOSite[];
   total: number;
+}
+
+export interface SEOAuditRunCreateRequest {
+  max_pages?: number;
+  max_depth?: number;
 }
 
 export interface SEOAuditRun {
@@ -42,7 +52,7 @@ export interface SEOAuditRun {
   completed_at: string | null;
   pages_crawled: number;
   pages_skipped: number;
-  crawl_errors_count: number;
+  errors_encountered: number;
 }
 
 export interface SEOAuditRunListResponse {

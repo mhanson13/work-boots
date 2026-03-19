@@ -1,7 +1,11 @@
 import { apiBaseUrl } from "../config";
 import type {
   AuthExchangeResponse,
+  SEOAuditRun,
+  SEOAuditRunCreateRequest,
   SEOAuditRunListResponse,
+  SEOSite,
+  SEOSiteCreateRequest,
   SEOSiteListResponse,
   CompetitorSetListResponse,
   RecommendationListResponse,
@@ -96,6 +100,18 @@ export async function fetchSites(token: string, businessId: string): Promise<SEO
   return apiRequest<SEOSiteListResponse>(`/api/businesses/${businessId}/seo/sites`, { token });
 }
 
+export async function createSite(
+  token: string,
+  businessId: string,
+  payload: SEOSiteCreateRequest,
+): Promise<SEOSite> {
+  return apiRequest<SEOSite>(`/api/businesses/${businessId}/seo/sites`, {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function fetchAuditRuns(
   token: string,
   businessId: string,
@@ -105,6 +121,19 @@ export async function fetchAuditRuns(
     `/api/businesses/${businessId}/seo/sites/${siteId}/audit-runs`,
     { token },
   );
+}
+
+export async function createAuditRun(
+  token: string,
+  businessId: string,
+  siteId: string,
+  payload: SEOAuditRunCreateRequest = {},
+): Promise<SEOAuditRun> {
+  return apiRequest<SEOAuditRun>(`/api/businesses/${businessId}/seo/sites/${siteId}/audit-runs`, {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function fetchCompetitorSets(

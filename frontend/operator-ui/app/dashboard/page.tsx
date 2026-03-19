@@ -23,6 +23,11 @@ export default function DashboardPage() {
         <p>
           Tracked SEO sites: <strong>{context.sites.length}</strong>
         </p>
+        {context.sites.length === 0 ? (
+          <p className="hint warning">No sites configured yet. Start by adding your first site.</p>
+        ) : (
+          <p className="hint muted">Open Sites to review status and trigger an audit run.</p>
+        )}
       </div>
 
       <div className="panel stack">
@@ -35,6 +40,13 @@ export default function DashboardPage() {
           <Link href="/automation">Automation Runs</Link>
           <Link href="/business-profile">Google Business Profile</Link>
         </div>
+      </div>
+
+      <div className="panel stack">
+        <h2>Users</h2>
+        <p className="hint muted">
+          User management is deferred to phase 7.9. Current access remains managed by existing principal records.
+        </p>
       </div>
     </section>
   );
