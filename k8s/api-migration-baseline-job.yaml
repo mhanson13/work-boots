@@ -20,6 +20,15 @@ spec:
                 secretKeyRef:
                   name: mbsrn-api-auth
                   key: DATABASE_URL
+          resources:
+            requests:
+              cpu: __DEPLOY_CPU_REQUEST__
+              memory: __DEPLOY_MEMORY_REQUEST__
+              ephemeral-storage: __DEPLOY_EPHEMERAL_STORAGE_REQUEST__
+            limits:
+              cpu: __DEPLOY_CPU_LIMIT__
+              memory: __DEPLOY_MEMORY_LIMIT__
+              ephemeral-storage: __DEPLOY_EPHEMERAL_STORAGE_LIMIT__
         - name: cloud-sql-proxy
           image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
           args:
@@ -32,3 +41,12 @@ spec:
                 secretKeyRef:
                   name: mbsrn-api-auth
                   key: CLOUD_SQL_INSTANCE_CONNECTION_NAME
+          resources:
+            requests:
+              cpu: __DEPLOY_PROXY_CPU_REQUEST__
+              memory: __DEPLOY_PROXY_MEMORY_REQUEST__
+              ephemeral-storage: __DEPLOY_PROXY_EPHEMERAL_STORAGE_REQUEST__
+            limits:
+              cpu: __DEPLOY_PROXY_CPU_LIMIT__
+              memory: __DEPLOY_PROXY_MEMORY_LIMIT__
+              ephemeral-storage: __DEPLOY_PROXY_EPHEMERAL_STORAGE_LIMIT__

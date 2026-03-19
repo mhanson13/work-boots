@@ -51,6 +51,18 @@ env:
   API_CPU_LIMIT: ${{ vars.API_CPU_LIMIT }}
   API_MEMORY_LIMIT: ${{ vars.API_MEMORY_LIMIT }}
   API_EPHEMERAL_STORAGE_LIMIT: ${{ vars.API_EPHEMERAL_STORAGE_LIMIT }}
+  DEPLOY_CPU_REQUEST: ${{ vars.DEPLOY_CPU_REQUEST }}
+  DEPLOY_CPU_LIMIT: ${{ vars.DEPLOY_CPU_LIMIT }}
+  DEPLOY_MEMORY_REQUEST: ${{ vars.DEPLOY_MEMORY_REQUEST }}
+  DEPLOY_MEMORY_LIMIT: ${{ vars.DEPLOY_MEMORY_LIMIT }}
+  DEPLOY_EPHEMERAL_STORAGE_REQUEST: ${{ vars.DEPLOY_EPHEMERAL_STORAGE_REQUEST }}
+  DEPLOY_EPHEMERAL_STORAGE_LIMIT: ${{ vars.DEPLOY_EPHEMERAL_STORAGE_LIMIT }}
+  DEPLOY_PROXY_CPU_REQUEST: ${{ vars.DEPLOY_PROXY_CPU_REQUEST }}
+  DEPLOY_PROXY_CPU_LIMIT: ${{ vars.DEPLOY_PROXY_CPU_LIMIT }}
+  DEPLOY_PROXY_MEMORY_REQUEST: ${{ vars.DEPLOY_PROXY_MEMORY_REQUEST }}
+  DEPLOY_PROXY_MEMORY_LIMIT: ${{ vars.DEPLOY_PROXY_MEMORY_LIMIT }}
+  DEPLOY_PROXY_EPHEMERAL_STORAGE_REQUEST: ${{ vars.DEPLOY_PROXY_EPHEMERAL_STORAGE_REQUEST }}
+  DEPLOY_PROXY_EPHEMERAL_STORAGE_LIMIT: ${{ vars.DEPLOY_PROXY_EPHEMERAL_STORAGE_LIMIT }}
   DB_ALIGNMENT_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.db_alignment_mode || 'normal' }}
 
 jobs:
@@ -101,6 +113,18 @@ jobs:
             API_CPU_LIMIT
             API_MEMORY_LIMIT
             API_EPHEMERAL_STORAGE_LIMIT
+            DEPLOY_CPU_REQUEST
+            DEPLOY_CPU_LIMIT
+            DEPLOY_MEMORY_REQUEST
+            DEPLOY_MEMORY_LIMIT
+            DEPLOY_EPHEMERAL_STORAGE_REQUEST
+            DEPLOY_EPHEMERAL_STORAGE_LIMIT
+            DEPLOY_PROXY_CPU_REQUEST
+            DEPLOY_PROXY_CPU_LIMIT
+            DEPLOY_PROXY_MEMORY_REQUEST
+            DEPLOY_PROXY_MEMORY_LIMIT
+            DEPLOY_PROXY_EPHEMERAL_STORAGE_REQUEST
+            DEPLOY_PROXY_EPHEMERAL_STORAGE_LIMIT
             GCP_WORKLOAD_IDENTITY_PROVIDER
             GCP_SERVICE_ACCOUNT_EMAIL
             CLOUD_SQL_INSTANCE_CONNECTION_NAME
@@ -240,7 +264,31 @@ jobs:
           grep -q "__GOOGLE_OAUTH_CLIENT_ID__" k8s/api-deployment.yaml
           grep -q "__GOOGLE_BUSINESS_PROFILE_REDIRECT_URI__" k8s/api-deployment.yaml
           grep -q "__API_IMAGE__" k8s/api-migration-job.yaml
+          grep -q "__DEPLOY_CPU_REQUEST__" k8s/api-migration-job.yaml
+          grep -q "__DEPLOY_MEMORY_REQUEST__" k8s/api-migration-job.yaml
+          grep -q "__DEPLOY_EPHEMERAL_STORAGE_REQUEST__" k8s/api-migration-job.yaml
+          grep -q "__DEPLOY_CPU_LIMIT__" k8s/api-migration-job.yaml
+          grep -q "__DEPLOY_MEMORY_LIMIT__" k8s/api-migration-job.yaml
+          grep -q "__DEPLOY_EPHEMERAL_STORAGE_LIMIT__" k8s/api-migration-job.yaml
+          grep -q "__DEPLOY_PROXY_CPU_REQUEST__" k8s/api-migration-job.yaml
+          grep -q "__DEPLOY_PROXY_MEMORY_REQUEST__" k8s/api-migration-job.yaml
+          grep -q "__DEPLOY_PROXY_EPHEMERAL_STORAGE_REQUEST__" k8s/api-migration-job.yaml
+          grep -q "__DEPLOY_PROXY_CPU_LIMIT__" k8s/api-migration-job.yaml
+          grep -q "__DEPLOY_PROXY_MEMORY_LIMIT__" k8s/api-migration-job.yaml
+          grep -q "__DEPLOY_PROXY_EPHEMERAL_STORAGE_LIMIT__" k8s/api-migration-job.yaml
           grep -q "__API_IMAGE__" k8s/api-migration-baseline-job.yaml
+          grep -q "__DEPLOY_CPU_REQUEST__" k8s/api-migration-baseline-job.yaml
+          grep -q "__DEPLOY_MEMORY_REQUEST__" k8s/api-migration-baseline-job.yaml
+          grep -q "__DEPLOY_EPHEMERAL_STORAGE_REQUEST__" k8s/api-migration-baseline-job.yaml
+          grep -q "__DEPLOY_CPU_LIMIT__" k8s/api-migration-baseline-job.yaml
+          grep -q "__DEPLOY_MEMORY_LIMIT__" k8s/api-migration-baseline-job.yaml
+          grep -q "__DEPLOY_EPHEMERAL_STORAGE_LIMIT__" k8s/api-migration-baseline-job.yaml
+          grep -q "__DEPLOY_PROXY_CPU_REQUEST__" k8s/api-migration-baseline-job.yaml
+          grep -q "__DEPLOY_PROXY_MEMORY_REQUEST__" k8s/api-migration-baseline-job.yaml
+          grep -q "__DEPLOY_PROXY_EPHEMERAL_STORAGE_REQUEST__" k8s/api-migration-baseline-job.yaml
+          grep -q "__DEPLOY_PROXY_CPU_LIMIT__" k8s/api-migration-baseline-job.yaml
+          grep -q "__DEPLOY_PROXY_MEMORY_LIMIT__" k8s/api-migration-baseline-job.yaml
+          grep -q "__DEPLOY_PROXY_EPHEMERAL_STORAGE_LIMIT__" k8s/api-migration-baseline-job.yaml
 
           sed \
             -e "s|__UI_IMAGE__|${UI_IMAGE}|g" \
@@ -265,9 +313,33 @@ jobs:
             k8s/api-deployment.yaml > "${render_dir}/api-deployment.yaml"
           sed \
             -e "s|__API_IMAGE__|${API_IMAGE}|g" \
+            -e "s|__DEPLOY_CPU_REQUEST__|${DEPLOY_CPU_REQUEST}|g" \
+            -e "s|__DEPLOY_MEMORY_REQUEST__|${DEPLOY_MEMORY_REQUEST}|g" \
+            -e "s|__DEPLOY_EPHEMERAL_STORAGE_REQUEST__|${DEPLOY_EPHEMERAL_STORAGE_REQUEST}|g" \
+            -e "s|__DEPLOY_CPU_LIMIT__|${DEPLOY_CPU_LIMIT}|g" \
+            -e "s|__DEPLOY_MEMORY_LIMIT__|${DEPLOY_MEMORY_LIMIT}|g" \
+            -e "s|__DEPLOY_EPHEMERAL_STORAGE_LIMIT__|${DEPLOY_EPHEMERAL_STORAGE_LIMIT}|g" \
+            -e "s|__DEPLOY_PROXY_CPU_REQUEST__|${DEPLOY_PROXY_CPU_REQUEST}|g" \
+            -e "s|__DEPLOY_PROXY_MEMORY_REQUEST__|${DEPLOY_PROXY_MEMORY_REQUEST}|g" \
+            -e "s|__DEPLOY_PROXY_EPHEMERAL_STORAGE_REQUEST__|${DEPLOY_PROXY_EPHEMERAL_STORAGE_REQUEST}|g" \
+            -e "s|__DEPLOY_PROXY_CPU_LIMIT__|${DEPLOY_PROXY_CPU_LIMIT}|g" \
+            -e "s|__DEPLOY_PROXY_MEMORY_LIMIT__|${DEPLOY_PROXY_MEMORY_LIMIT}|g" \
+            -e "s|__DEPLOY_PROXY_EPHEMERAL_STORAGE_LIMIT__|${DEPLOY_PROXY_EPHEMERAL_STORAGE_LIMIT}|g" \
             k8s/api-migration-job.yaml > "${render_dir}/api-migration-job.yaml"
           sed \
             -e "s|__API_IMAGE__|${API_IMAGE}|g" \
+            -e "s|__DEPLOY_CPU_REQUEST__|${DEPLOY_CPU_REQUEST}|g" \
+            -e "s|__DEPLOY_MEMORY_REQUEST__|${DEPLOY_MEMORY_REQUEST}|g" \
+            -e "s|__DEPLOY_EPHEMERAL_STORAGE_REQUEST__|${DEPLOY_EPHEMERAL_STORAGE_REQUEST}|g" \
+            -e "s|__DEPLOY_CPU_LIMIT__|${DEPLOY_CPU_LIMIT}|g" \
+            -e "s|__DEPLOY_MEMORY_LIMIT__|${DEPLOY_MEMORY_LIMIT}|g" \
+            -e "s|__DEPLOY_EPHEMERAL_STORAGE_LIMIT__|${DEPLOY_EPHEMERAL_STORAGE_LIMIT}|g" \
+            -e "s|__DEPLOY_PROXY_CPU_REQUEST__|${DEPLOY_PROXY_CPU_REQUEST}|g" \
+            -e "s|__DEPLOY_PROXY_MEMORY_REQUEST__|${DEPLOY_PROXY_MEMORY_REQUEST}|g" \
+            -e "s|__DEPLOY_PROXY_EPHEMERAL_STORAGE_REQUEST__|${DEPLOY_PROXY_EPHEMERAL_STORAGE_REQUEST}|g" \
+            -e "s|__DEPLOY_PROXY_CPU_LIMIT__|${DEPLOY_PROXY_CPU_LIMIT}|g" \
+            -e "s|__DEPLOY_PROXY_MEMORY_LIMIT__|${DEPLOY_PROXY_MEMORY_LIMIT}|g" \
+            -e "s|__DEPLOY_PROXY_EPHEMERAL_STORAGE_LIMIT__|${DEPLOY_PROXY_EPHEMERAL_STORAGE_LIMIT}|g" \
             k8s/api-migration-baseline-job.yaml > "${render_dir}/api-migration-baseline-job.yaml"
 
           for rendered in \
