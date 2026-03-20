@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { useOperatorContext } from "../../components/useOperatorContext";
 import { ApiRequestError, fetchAuditRuns } from "../../lib/api/client";
@@ -50,6 +51,7 @@ function safeAuditErrorMessage(error: unknown): string {
 }
 
 export default function AuditsPage() {
+  const router = useRouter();
   const context = useOperatorContext();
   const [runs, setRuns] = useState<SEOAuditRun[]>([]);
   const [loadingRuns, setLoadingRuns] = useState(false);
@@ -138,7 +140,19 @@ export default function AuditsPage() {
         </thead>
         <tbody>
           {runs.map((run) => (
-            <tr key={run.id}>
+            <tr
+              key={run.id}
+              role="link"
+              tabIndex={0}
+              style={{ cursor: "pointer" }}
+              onClick={() => router.push(`/audits/${run.id}`)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  router.push(`/audits/${run.id}`);
+                }
+              }}
+            >
               <td>{run.id}</td>
               <td>{run.business_id}</td>
               <td>{run.site_id}</td>

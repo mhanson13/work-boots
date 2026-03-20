@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { useOperatorContext } from "../../components/useOperatorContext";
 import { ApiRequestError, fetchRecommendations } from "../../lib/api/client";
@@ -35,6 +36,7 @@ function safeRecommendationsErrorMessage(error: unknown): string {
 }
 
 export default function RecommendationsPage() {
+  const router = useRouter();
   const context = useOperatorContext();
   const [items, setItems] = useState<Recommendation[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
@@ -124,7 +126,19 @@ export default function RecommendationsPage() {
         </thead>
         <tbody>
           {items.map((item) => (
-            <tr key={item.id}>
+            <tr
+              key={item.id}
+              role="link"
+              tabIndex={0}
+              style={{ cursor: "pointer" }}
+              onClick={() => router.push(`/recommendations/${item.id}?site_id=${encodeURIComponent(item.site_id)}`)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  router.push(`/recommendations/${item.id}?site_id=${encodeURIComponent(item.site_id)}`);
+                }
+              }}
+            >
               <td>{item.title}</td>
               <td>{item.rationale}</td>
               <td>{item.status}</td>

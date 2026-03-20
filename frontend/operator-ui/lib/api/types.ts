@@ -75,7 +75,11 @@ export interface SEOAuditRun {
   business_id: string;
   site_id: string;
   status: string;
+  max_pages: number;
+  max_depth: number;
+  pages_discovered: number;
   created_at: string;
+  updated_at: string;
   started_at: string | null;
   completed_at: string | null;
   crawl_duration_ms: number | null;
@@ -83,6 +87,7 @@ export interface SEOAuditRun {
   created_by_principal_id: string | null;
   pages_crawled: number;
   pages_skipped: number;
+  duplicate_urls_skipped: number;
   errors_encountered: number;
 }
 

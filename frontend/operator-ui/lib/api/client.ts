@@ -14,6 +14,7 @@ import type {
   SEOSiteListResponse,
   CompetitorDomainListResponse,
   CompetitorSetListResponse,
+  Recommendation,
   RecommendationListResponse,
   AutomationRunListResponse,
   GoogleBusinessProfileAccountsResponse,
@@ -129,6 +130,14 @@ export async function fetchAuditRuns(
   );
 }
 
+export async function fetchAuditRun(
+  token: string,
+  businessId: string,
+  runId: string,
+): Promise<SEOAuditRun> {
+  return apiRequest<SEOAuditRun>(`/api/businesses/${businessId}/seo/audit-runs/${runId}`, { token });
+}
+
 export async function createAuditRun(
   token: string,
   businessId: string,
@@ -208,6 +217,18 @@ export async function fetchRecommendations(
 ): Promise<RecommendationListResponse> {
   return apiRequest<RecommendationListResponse>(
     `/api/businesses/${businessId}/seo/sites/${siteId}/recommendations`,
+    { token },
+  );
+}
+
+export async function fetchRecommendation(
+  token: string,
+  businessId: string,
+  siteId: string,
+  recommendationId: string,
+): Promise<Recommendation> {
+  return apiRequest<Recommendation>(
+    `/api/businesses/${businessId}/seo/sites/${siteId}/recommendations/${recommendationId}`,
     { token },
   );
 }
