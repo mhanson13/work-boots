@@ -2,10 +2,14 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
+import { useAuth } from "../../components/AuthProvider";
 import { useOperatorContext } from "../../components/useOperatorContext";
 import {
+  activateSite,
+  ApiRequestError,
   createAuditRun,
   createSite,
+  deactivateSite,
   fetchAuditRunFindings,
   fetchAuditRunSummary,
   fetchAuditRuns,
@@ -103,7 +107,26 @@ function parseBaseUrl(value: string): URL {
   return parsed;
 }
 
+function safeSiteActionErrorMessage(error: unknown): string {
+  if (error instanceof ApiRequestError) {
+    if (error.status === 401) {
+      return "Session expired. Sign in again.";
+    }
+    if (error.status === 403) {
+      return "Only admin principals can update site activation.";
+    }
+    if (error.status === 404) {
+      return "Site not found in this business scope.";
+    }
+    if (error.status === 422) {
+      return "Unable to update site activation state.";
+    }
+  }
+  return "Failed to update site activation state.";
+}
+
 export default function SitesPage() {
+  const { principal } = useAuth();
   const context = useOperatorContext();
   const [displayName, setDisplayName] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
@@ -121,6 +144,11 @@ export default function SitesPage() {
   const [previousSummary, setPreviousSummary] = useState<SEOAuditRunSummary | null>(null);
   const [topFindings, setTopFindings] = useState<SEOAuditFinding[]>([]);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [siteActionSiteId, setSiteActionSiteId] = useState<string | null>(null);
+  const [siteActionError, setSiteActionError] = useState<string | null>(null);
+  const [siteActionSuccess, setSiteActionSuccess] = useState<string | null>(null);
+
+  const isAdmin = principal?.role === "admin";
 
   const statuses = useMemo(() => {
     return context.sites.reduce<Record<string, DerivedSiteStatus>>((acc, site) => {
@@ -300,6 +328,36 @@ export default function SitesPage() {
     }
   };
 
+  const handleToggleSiteActive = async (site: SEOSite) => {
+    const activating = !site.is_active;
+    const actionLabel = activating ? "reactivate" : "deactivate";
+    const confirmed = window.confirm(
+      `Confirm ${actionLabel} for site "${site.display_name}" (${site.normalized_domain})?`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setSiteActionError(null);
+    setSiteActionSuccess(null);
+    setSiteActionSiteId(site.id);
+    try {
+      if (activating) {
+        await activateSite(context.token, context.businessId, site.id);
+      } else {
+        await deactivateSite(context.token, context.businessId, site.id);
+      }
+      await context.refreshSites();
+      setSiteActionSuccess(
+        activating ? `Site ${site.display_name} reactivated.` : `Site ${site.display_name} deactivated.`,
+      );
+    } catch (err) {
+      setSiteActionError(safeSiteActionErrorMessage(err));
+    } finally {
+      setSiteActionSiteId(null);
+    }
+  };
+
   if (context.loading) {
     return <section className="panel">Loading sites...</section>;
   }
@@ -340,6 +398,8 @@ export default function SitesPage() {
       {submitError ? <p className="hint error">{submitError}</p> : null}
       {triggerMessage ? <p className="hint">{triggerMessage}</p> : null}
       {triggerError ? <p className="hint error">{triggerError}</p> : null}
+      {siteActionSuccess ? <p className="hint">{siteActionSuccess}</p> : null}
+      {siteActionError ? <p className="hint error">{siteActionError}</p> : null}
 
       <table className="table">
         <thead>
@@ -352,6 +412,7 @@ export default function SitesPage() {
             <th>Primary</th>
             <th>Active</th>
             <th>Action</th>
+            {isAdmin ? <th>Admin Action</th> : null}
           </tr>
         </thead>
         <tbody>
@@ -383,11 +444,30 @@ export default function SitesPage() {
                       : "Run First Audit"}
                 </button>
               </td>
+              {isAdmin ? (
+                <td>
+                  <button
+                    type="button"
+                    disabled={!!siteActionSiteId}
+                    onClick={() => {
+                      void handleToggleSiteActive(site);
+                    }}
+                  >
+                    {siteActionSiteId === site.id
+                      ? site.is_active
+                        ? "Deactivating..."
+                        : "Reactivating..."
+                      : site.is_active
+                        ? "Deactivate Site"
+                        : "Reactivate Site"}
+                  </button>
+                </td>
+              ) : null}
             </tr>
           ))}
           {context.sites.length === 0 ? (
             <tr>
-              <td colSpan={8}>No sites configured for this business.</td>
+              <td colSpan={isAdmin ? 9 : 8}>No sites configured for this business.</td>
             </tr>
           ) : null}
         </tbody>

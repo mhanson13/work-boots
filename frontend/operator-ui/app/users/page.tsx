@@ -5,8 +5,10 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../components/AuthProvider";
 import { useOperatorContext } from "../../components/useOperatorContext";
 import {
+  activatePrincipal,
   ApiRequestError,
   createPrincipal,
+  deactivatePrincipal,
   fetchPrincipalIdentities,
   fetchPrincipals,
 } from "../../lib/api/client";
@@ -48,6 +50,24 @@ function safeCreateUserErrorMessage(error: unknown): string {
   return "Failed to create user.";
 }
 
+function safePrincipalActionErrorMessage(error: unknown): string {
+  if (error instanceof ApiRequestError) {
+    if (error.status === 401) {
+      return "Session expired. Sign in again.";
+    }
+    if (error.status === 403) {
+      return "You are not authorized to update users.";
+    }
+    if (error.status === 404) {
+      return "User record not found in this business scope.";
+    }
+    if (error.status === 422) {
+      return "Unable to update this user state. Ensure at least one active admin remains.";
+    }
+  }
+  return "Failed to update user state.";
+}
+
 export default function UsersPage() {
   const context = useOperatorContext();
   const { principal } = useAuth();
@@ -59,6 +79,9 @@ export default function UsersPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [actingPrincipalId, setActingPrincipalId] = useState<string | null>(null);
   const [principalId, setPrincipalId] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<PrincipalRole>("operator");
@@ -149,6 +172,8 @@ export default function UsersPage() {
     setSubmitting(true);
     setSubmitError(null);
     setSubmitSuccess(null);
+    setActionError(null);
+    setActionSuccess(null);
 
     try {
       await createPrincipal(context.token, context.businessId, {
@@ -168,6 +193,41 @@ export default function UsersPage() {
       setSubmitError(safeCreateUserErrorMessage(err));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleToggleUserActive = async (user: Principal) => {
+    const activating = !user.is_active;
+    const actionLabel = activating ? "reactivate" : "deactivate";
+    const confirmed = window.confirm(
+      `Confirm ${actionLabel} for user "${user.id}"? This updates business access immediately.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setActionError(null);
+    setActionSuccess(null);
+    setActingPrincipalId(user.id);
+    setSubmitError(null);
+    setSubmitSuccess(null);
+    try {
+      if (activating) {
+        await activatePrincipal(context.token, context.businessId, user.id);
+      } else {
+        await deactivatePrincipal(context.token, context.businessId, user.id);
+      }
+      const refreshed = await loadUsersData();
+      setUsers(refreshed.users);
+      setIdentities(refreshed.identities);
+      setIdentityWarning(refreshed.identityWarning);
+      setActionSuccess(
+        activating ? `User ${user.id} reactivated.` : `User ${user.id} deactivated.`,
+      );
+    } catch (err) {
+      setActionError(safePrincipalActionErrorMessage(err));
+    } finally {
+      setActingPrincipalId(null);
     }
   };
 
@@ -231,6 +291,8 @@ export default function UsersPage() {
 
       {submitSuccess ? <p className="hint">{submitSuccess}</p> : null}
       {submitError ? <p className="hint error">{submitError}</p> : null}
+      {actionSuccess ? <p className="hint">{actionSuccess}</p> : null}
+      {actionError ? <p className="hint error">{actionError}</p> : null}
       {loadingUsers ? <p className="hint muted">Loading users...</p> : null}
       {usersError ? <p className="hint error">{usersError}</p> : null}
       {identityWarning ? <p className="hint warning">{identityWarning}</p> : null}
@@ -249,6 +311,7 @@ export default function UsersPage() {
             <th>Active</th>
             <th>Last Auth</th>
             <th>Sign-In Identities</th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -267,11 +330,28 @@ export default function UsersPage() {
                   })
                   .join(", ") || "none"}
               </td>
+              <td>
+                <button
+                  type="button"
+                  disabled={!!actingPrincipalId}
+                  onClick={() => {
+                    void handleToggleUserActive(user);
+                  }}
+                >
+                  {actingPrincipalId === user.id
+                    ? user.is_active
+                      ? "Deactivating..."
+                      : "Reactivating..."
+                    : user.is_active
+                      ? "Deactivate"
+                      : "Reactivate"}
+                </button>
+              </td>
             </tr>
           ))}
           {!loadingUsers && users.length === 0 ? (
             <tr>
-              <td colSpan={6}>No users found for this business.</td>
+              <td colSpan={7}>No users found for this business.</td>
             </tr>
           ) : null}
         </tbody>

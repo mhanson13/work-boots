@@ -133,6 +133,20 @@ export async function createSite(
   });
 }
 
+export async function deactivateSite(token: string, businessId: string, siteId: string): Promise<SEOSite> {
+  return apiRequest<SEOSite>(`/api/businesses/${businessId}/seo/sites/${siteId}/deactivate`, {
+    method: "POST",
+    token,
+  });
+}
+
+export async function activateSite(token: string, businessId: string, siteId: string): Promise<SEOSite> {
+  return apiRequest<SEOSite>(`/api/businesses/${businessId}/seo/sites/${siteId}/activate`, {
+    method: "POST",
+    token,
+  });
+}
+
 export async function fetchAuditRuns(
   token: string,
   businessId: string,
@@ -206,6 +220,28 @@ export async function createPrincipal(
     method: "POST",
     token,
     body: JSON.stringify(payload),
+  });
+}
+
+export async function deactivatePrincipal(
+  token: string,
+  businessId: string,
+  principalId: string,
+): Promise<Principal> {
+  return apiRequest<Principal>(`/api/businesses/${businessId}/principals/${principalId}/deactivate`, {
+    method: "POST",
+    token,
+  });
+}
+
+export async function activatePrincipal(
+  token: string,
+  businessId: string,
+  principalId: string,
+): Promise<Principal> {
+  return apiRequest<Principal>(`/api/businesses/${businessId}/principals/${principalId}/activate`, {
+    method: "POST",
+    token,
   });
 }
 

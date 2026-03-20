@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import UsersPage from "./page";
 import type { PrincipalIdentityListResponse, PrincipalListResponse } from "../../lib/api/types";
@@ -15,6 +15,8 @@ const mockUseAuth = jest.fn();
 const mockFetchPrincipals = jest.fn<Promise<PrincipalListResponse>, unknown[]>();
 const mockFetchPrincipalIdentities = jest.fn<Promise<PrincipalIdentityListResponse>, unknown[]>();
 const mockCreatePrincipal = jest.fn<Promise<unknown>, unknown[]>();
+const mockDeactivatePrincipal = jest.fn<Promise<unknown>, unknown[]>();
+const mockActivatePrincipal = jest.fn<Promise<unknown>, unknown[]>();
 
 jest.mock("../../components/useOperatorContext", () => ({
   useOperatorContext: () => mockUseOperatorContext(),
@@ -31,6 +33,8 @@ jest.mock("../../lib/api/client", () => {
     fetchPrincipals: (...args: unknown[]) => mockFetchPrincipals(...args),
     fetchPrincipalIdentities: (...args: unknown[]) => mockFetchPrincipalIdentities(...args),
     createPrincipal: (...args: unknown[]) => mockCreatePrincipal(...args),
+    deactivatePrincipal: (...args: unknown[]) => mockDeactivatePrincipal(...args),
+    activatePrincipal: (...args: unknown[]) => mockActivatePrincipal(...args),
   };
 });
 
@@ -57,6 +61,72 @@ beforeEach(() => {
     },
   });
 });
+
+function principalsResponse(isOperatorActive: boolean): PrincipalListResponse {
+  return {
+    items: [
+      {
+        business_id: "biz-1",
+        id: "admin-1",
+        display_name: "Admin One",
+        created_by_principal_id: null,
+        updated_by_principal_id: null,
+        role: "admin",
+        is_active: true,
+        last_authenticated_at: "2026-03-20T00:00:00Z",
+        created_at: "2026-03-20T00:00:00Z",
+        updated_at: "2026-03-20T00:00:00Z",
+      },
+      {
+        business_id: "biz-1",
+        id: "operator-1",
+        display_name: "Operator One",
+        created_by_principal_id: "admin-1",
+        updated_by_principal_id: "admin-1",
+        role: "operator",
+        is_active: isOperatorActive,
+        last_authenticated_at: null,
+        created_at: "2026-03-20T00:00:00Z",
+        updated_at: "2026-03-20T00:00:00Z",
+      },
+    ],
+    total: 2,
+  };
+}
+
+function identitiesResponse(): PrincipalIdentityListResponse {
+  return {
+    items: [
+      {
+        id: "identity-1",
+        provider: "google",
+        provider_subject: "sub-1",
+        business_id: "biz-1",
+        principal_id: "admin-1",
+        email: "admin@example.com",
+        email_verified: true,
+        is_active: true,
+        last_authenticated_at: "2026-03-20T00:00:00Z",
+        created_at: "2026-03-20T00:00:00Z",
+        updated_at: "2026-03-20T00:00:00Z",
+      },
+      {
+        id: "identity-2",
+        provider: "google",
+        provider_subject: "sub-2",
+        business_id: "biz-1",
+        principal_id: "operator-1",
+        email: "operator@example.com",
+        email_verified: true,
+        is_active: true,
+        last_authenticated_at: null,
+        created_at: "2026-03-20T00:00:00Z",
+        updated_at: "2026-03-20T00:00:00Z",
+      },
+    ],
+    total: 2,
+  };
+}
 
 describe("users page completeness", () => {
   it("renders all principals and identity completeness details", async () => {
@@ -169,5 +239,60 @@ describe("users page completeness", () => {
     await screen.findByText("admin-1");
     expect(screen.getByText("Sign-in identity details are temporarily unavailable.")).toBeInTheDocument();
     expect(screen.getByText("Principals: 1")).toBeInTheDocument();
+  });
+
+  it("requires confirmation before deactivating a user", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    const confirmSpy = jest.spyOn(window, "confirm").mockReturnValue(false);
+
+    render(<UsersPage />);
+
+    await screen.findByText("operator-1");
+    fireEvent.click(screen.getAllByRole("button", { name: "Deactivate" })[1]);
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(mockDeactivatePrincipal).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it("deactivates a user and refreshes list state", async () => {
+    mockFetchPrincipals
+      .mockResolvedValueOnce(principalsResponse(true))
+      .mockResolvedValueOnce(principalsResponse(false));
+    mockFetchPrincipalIdentities
+      .mockResolvedValueOnce(identitiesResponse())
+      .mockResolvedValueOnce(identitiesResponse());
+    mockDeactivatePrincipal.mockResolvedValueOnce({
+      ...principalsResponse(false).items[1],
+    });
+    const confirmSpy = jest.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<UsersPage />);
+
+    await screen.findByText("operator-1");
+    fireEvent.click(screen.getAllByRole("button", { name: "Deactivate" })[1]);
+
+    await waitFor(() => expect(mockDeactivatePrincipal).toHaveBeenCalledWith("token-1", "biz-1", "operator-1"));
+    await screen.findByText("User operator-1 deactivated.");
+    expect(screen.getByRole("button", { name: "Reactivate" })).toBeInTheDocument();
+    confirmSpy.mockRestore();
+  });
+
+  it("hides user management controls for non-admin principals", () => {
+    mockUseAuth.mockReturnValue({
+      principal: {
+        business_id: "biz-1",
+        principal_id: "operator-2",
+        display_name: "Operator Two",
+        role: "operator",
+        is_active: true,
+      },
+    });
+
+    render(<UsersPage />);
+
+    expect(screen.getByText("User administration is available to admin principals only.")).toBeInTheDocument();
+    expect(screen.queryByText("Create User")).not.toBeInTheDocument();
   });
 });
