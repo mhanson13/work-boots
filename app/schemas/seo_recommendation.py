@@ -374,6 +374,8 @@ class SEORecommendationListQuery(BaseModel):
     recommendation_run_id: str | None = None
     sort_by: SEORecommendationSortBy = "priority_score"
     sort_order: SortOrder = "desc"
+    page: int = Field(default=1, ge=1, le=10_000)
+    page_size: int = Field(default=25, ge=1, le=100)
 
     @field_validator("assigned_principal_id", mode="before")
     @classmethod

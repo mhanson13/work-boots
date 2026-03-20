@@ -311,6 +311,7 @@ function RecommendationsPageContent() {
   const searchParams = useSearchParams();
   const context = useOperatorContext();
   const [items, setItems] = useState<Recommendation[]>([]);
+  const [totalRecommendations, setTotalRecommendations] = useState<number | null>(null);
   const [loadingItems, setLoadingItems] = useState(false);
   const [itemsError, setItemsError] = useState<string | null>(null);
   const [selectedRecommendationIds, setSelectedRecommendationIds] = useState<string[]>([]);
@@ -340,25 +341,31 @@ function RecommendationsPageContent() {
     return matchedPreset ? matchedPreset.key : "__custom__";
   }, [filters, sort]);
 
-  const totalRecommendations = items.length;
-  const totalPages = useMemo<number>(() => totalPagesFor(totalRecommendations, pageSize), [totalRecommendations, pageSize]);
-  const activePage = useMemo<number>(() => Math.min(currentPage, totalPages), [currentPage, totalPages]);
-  const pageStartIndex = useMemo<number>(() => (activePage - DEFAULT_PAGE) * pageSize, [activePage, pageSize]);
-  const visibleItems = useMemo<Recommendation[]>(
-    () => items.slice(pageStartIndex, pageStartIndex + pageSize),
-    [items, pageStartIndex, pageSize],
-  );
-  const firstVisiblePosition = totalRecommendations === 0 ? 0 : pageStartIndex + 1;
-  const lastVisiblePosition = totalRecommendations === 0 ? 0 : pageStartIndex + visibleItems.length;
+  const resolvedTotalRecommendations = totalRecommendations ?? 0;
+  const totalPages = useMemo<number>(() => {
+    if (totalRecommendations === null) {
+      return currentPage;
+    }
+    return totalPagesFor(totalRecommendations, pageSize);
+  }, [currentPage, pageSize, totalRecommendations]);
+  const activePage = useMemo<number>(() => {
+    if (totalRecommendations === null) {
+      return currentPage;
+    }
+    return Math.min(currentPage, totalPages);
+  }, [currentPage, totalPages, totalRecommendations]);
+  const hasVisibleRows = resolvedTotalRecommendations > 0 && items.length > 0;
+  const firstVisiblePosition = hasVisibleRows ? (activePage - DEFAULT_PAGE) * pageSize + 1 : 0;
+  const lastVisiblePosition = hasVisibleRows ? firstVisiblePosition + items.length - 1 : 0;
 
   const hasActiveFilters = Boolean(filters.status || filters.priorityBand || filters.category);
-  const displayedRecommendationIds = useMemo(() => visibleItems.map((item) => item.id), [visibleItems]);
+  const displayedRecommendationIds = useMemo(() => items.map((item) => item.id), [items]);
   const displayedRecommendationIdSet = useMemo(() => new Set(displayedRecommendationIds), [displayedRecommendationIds]);
   const selectedCount = selectedRecommendationIds.length;
   const allDisplayedSelected =
     displayedRecommendationIds.length > 0 &&
     displayedRecommendationIds.every((id) => selectedRecommendationIds.includes(id));
-  const queueSummary = useMemo(() => summarizeQueue(visibleItems), [visibleItems]);
+  const queueSummary = useMemo(() => summarizeQueue(items), [items]);
 
   function updateQueueParams(nextFilters: FilterState, nextSort: SortState) {
     const params = new URLSearchParams(searchParams.toString());
@@ -478,7 +485,7 @@ function RecommendationsPageContent() {
       return;
     }
 
-    const selectedItems = visibleItems.filter((item) => selectedRecommendationIds.includes(item.id));
+    const selectedItems = items.filter((item) => selectedRecommendationIds.includes(item.id));
     if (selectedItems.length === 0) {
       return;
     }
@@ -520,7 +527,7 @@ function RecommendationsPageContent() {
   }
 
   useEffect(() => {
-    if (currentPage === activePage) {
+    if (totalRecommendations === null || currentPage === activePage) {
       return;
     }
     const params = new URLSearchParams(searchParams.toString());
@@ -536,7 +543,7 @@ function RecommendationsPageContent() {
     }
     const query = params.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  }, [activePage, currentPage, pageSize, pathname, router, searchParams]);
+  }, [activePage, currentPage, pageSize, pathname, router, searchParams, totalRecommendations]);
 
   useEffect(() => {
     setSelectedRecommendationIds((current) => current.filter((id) => displayedRecommendationIdSet.has(id)));
@@ -545,6 +552,7 @@ function RecommendationsPageContent() {
   useEffect(() => {
     if (context.loading || context.error || !context.selectedSiteId) {
       setItems([]);
+      setTotalRecommendations(null);
       setItemsError(null);
       setLoadingItems(false);
       setSelectedRecommendationIds([]);
@@ -573,9 +581,12 @@ function RecommendationsPageContent() {
         const sortConfig = mapSortToApi(sort);
         activeFilters.sort_by = sortConfig.sort_by;
         activeFilters.sort_order = sortConfig.sort_order;
+        activeFilters.page = currentPage;
+        activeFilters.page_size = pageSize;
         const response = await fetchRecommendations(context.token, context.businessId, selectedSiteId, activeFilters);
         if (!cancelled) {
           setItems(response.items);
+          setTotalRecommendations(response.total);
         }
       } catch (err) {
         if (!cancelled) {
@@ -601,6 +612,8 @@ function RecommendationsPageContent() {
     filters.priorityBand,
     filters.category,
     sort,
+    currentPage,
+    pageSize,
     bulkRefreshNonce,
   ]);
 
@@ -807,7 +820,7 @@ function RecommendationsPageContent() {
           </button>
         </div>
         <span className="hint muted" style={{ marginLeft: "auto" }}>
-          Showing {firstVisiblePosition}-{lastVisiblePosition} of {totalRecommendations}
+          Showing {firstVisiblePosition}-{lastVisiblePosition} of {resolvedTotalRecommendations}
         </span>
       </div>
 
@@ -848,7 +861,7 @@ function RecommendationsPageContent() {
                 aria-label="Select all displayed recommendations"
                 checked={allDisplayedSelected}
                 onChange={(event) => toggleSelectAllDisplayed(event.target.checked)}
-                disabled={visibleItems.length === 0 || bulkActionInFlight !== null}
+                disabled={items.length === 0 || bulkActionInFlight !== null}
               />
             </th>
             <th>Title</th>
@@ -863,7 +876,7 @@ function RecommendationsPageContent() {
           </tr>
         </thead>
         <tbody>
-          {visibleItems.map((item) => (
+          {items.map((item) => (
             <tr
               key={item.id}
               role="link"
@@ -901,7 +914,7 @@ function RecommendationsPageContent() {
               <td>{item.site_id}</td>
             </tr>
           ))}
-          {visibleItems.length === 0 && !loadingItems ? (
+          {items.length === 0 && !loadingItems ? (
             <tr>
               <td colSpan={10}>
                 {hasActiveFilters

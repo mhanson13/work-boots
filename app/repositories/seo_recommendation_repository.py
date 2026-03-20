@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Select, and_, asc, case, desc, or_, select
+from sqlalchemy import Select, and_, asc, case, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.seo_audit_run import SEOAuditRun
@@ -130,6 +130,84 @@ class SEORecommendationRepository:
         sort_by: str = "priority_score",
         sort_order: str = "desc",
     ) -> list[SEORecommendation]:
+        stmt = self._build_site_recommendations_base_stmt(
+            business_id=business_id,
+            site_id=site_id,
+            status=status,
+            status_in=status_in,
+            category=category,
+            severity=severity,
+            effort_bucket=effort_bucket,
+            priority_band=priority_band,
+            assigned_principal_id=assigned_principal_id,
+            source_type=source_type,
+            recommendation_run_id=recommendation_run_id,
+        )
+        stmt = self._apply_site_recommendation_ordering(
+            stmt=stmt,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+        return list(self.session.scalars(stmt))
+
+    def list_recommendations_page_for_business_site(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+        page: int,
+        page_size: int,
+        status: str | None = None,
+        status_in: list[str] | None = None,
+        category: str | None = None,
+        severity: str | None = None,
+        effort_bucket: str | None = None,
+        priority_band: str | None = None,
+        assigned_principal_id: str | None = None,
+        source_type: str | None = None,
+        recommendation_run_id: str | None = None,
+        sort_by: str = "priority_score",
+        sort_order: str = "desc",
+    ) -> tuple[list[SEORecommendation], int]:
+        base_stmt = self._build_site_recommendations_base_stmt(
+            business_id=business_id,
+            site_id=site_id,
+            status=status,
+            status_in=status_in,
+            category=category,
+            severity=severity,
+            effort_bucket=effort_bucket,
+            priority_band=priority_band,
+            assigned_principal_id=assigned_principal_id,
+            source_type=source_type,
+            recommendation_run_id=recommendation_run_id,
+        )
+        count_stmt = select(func.count()).select_from(base_stmt.subquery())
+        total = int(self.session.scalar(count_stmt) or 0)
+
+        offset = (page - 1) * page_size
+        items_stmt = self._apply_site_recommendation_ordering(
+            stmt=base_stmt,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        ).offset(offset).limit(page_size)
+        return list(self.session.scalars(items_stmt)), total
+
+    def _build_site_recommendations_base_stmt(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+        status: str | None = None,
+        status_in: list[str] | None = None,
+        category: str | None = None,
+        severity: str | None = None,
+        effort_bucket: str | None = None,
+        priority_band: str | None = None,
+        assigned_principal_id: str | None = None,
+        source_type: str | None = None,
+        recommendation_run_id: str | None = None,
+    ) -> Select[tuple[SEORecommendation]]:
         stmt: Select[tuple[SEORecommendation]] = (
             select(SEORecommendation)
             .where(SEORecommendation.business_id == business_id)
@@ -165,16 +243,23 @@ class SEORecommendationRepository:
             stmt = stmt.where(SEORecommendation.audit_run_id.is_not(None)).where(
                 SEORecommendation.comparison_run_id.is_not(None)
             )
+        return stmt
 
+    def _apply_site_recommendation_ordering(
+        self,
+        *,
+        stmt: Select[tuple[SEORecommendation]],
+        sort_by: str,
+        sort_order: str,
+    ) -> Select[tuple[SEORecommendation]]:
         order_column = self._resolve_sort_column(sort_by)
         order_fn = asc if sort_order.lower() == "asc" else desc
-        stmt = stmt.order_by(
+        return stmt.order_by(
             order_fn(order_column),
             desc(SEORecommendation.priority_score),
             asc(SEORecommendation.created_at),
             asc(SEORecommendation.id),
         )
-        return list(self.session.scalars(stmt))
 
     def list_actionable_recommendations_for_business_site(
         self,

@@ -703,6 +703,98 @@ def test_phase3b_recommendation_filters_and_scope_guards(db_session, seeded_busi
     assert cross_business.status_code == 404
 
 
+def test_phase3b_recommendation_list_backend_pagination(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id, domain="paged-site.example")
+
+    for _ in range(3):
+        audit_run_id = _seed_completed_audit_run(
+            db_session,
+            business_id=seeded_business.id,
+            site_id=site_id,
+        )
+        create_run = client.post(
+            f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+            json={"audit_run_id": audit_run_id},
+        )
+        assert create_run.status_code == 201
+
+    full_list = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations",
+        params={"sort_by": "created_at", "sort_order": "asc", "page": 1, "page_size": 100},
+    )
+    assert full_list.status_code == 200
+    full_payload = full_list.json()
+    full_ids = [item["id"] for item in full_payload["items"]]
+    assert full_payload["total"] == len(full_ids)
+    assert full_payload["total"] >= 6
+
+    first_page = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations",
+        params={"sort_by": "created_at", "sort_order": "asc", "page": 1, "page_size": 2},
+    )
+    assert first_page.status_code == 200
+    first_payload = first_page.json()
+    assert first_payload["total"] == full_payload["total"]
+    assert len(first_payload["items"]) == 2
+    assert [item["id"] for item in first_payload["items"]] == full_ids[:2]
+
+    second_page = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations",
+        params={"sort_by": "created_at", "sort_order": "asc", "page": 2, "page_size": 2},
+    )
+    assert second_page.status_code == 200
+    second_payload = second_page.json()
+    assert second_payload["total"] == full_payload["total"]
+    assert len(second_payload["items"]) == 2
+    assert [item["id"] for item in second_payload["items"]] == full_ids[2:4]
+
+    recommendation_id = full_ids[0]
+    resolve_recommendation = client.patch(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/{recommendation_id}",
+        json={"decision": "resolve"},
+    )
+    assert resolve_recommendation.status_code == 200
+
+    resolved_page = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations",
+        params={"status": "resolved", "sort_by": "created_at", "sort_order": "asc", "page": 1, "page_size": 1},
+    )
+    assert resolved_page.status_code == 200
+    resolved_payload = resolved_page.json()
+    assert resolved_payload["total"] == 1
+    assert len(resolved_payload["items"]) == 1
+    assert resolved_payload["items"][0]["id"] == recommendation_id
+
+
+def test_phase3b_recommendation_list_pagination_bounds_validation(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id, domain="bounds-site.example")
+
+    audit_run_id = _seed_completed_audit_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+    )
+    create_run = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+        json={"audit_run_id": audit_run_id},
+    )
+    assert create_run.status_code == 201
+
+    invalid_page = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations",
+        params={"page": 0},
+    )
+    assert invalid_page.status_code == 422
+
+    invalid_page_size = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations",
+        params={"page_size": 101},
+    )
+    assert invalid_page_size.status_code == 422
+
+
 def test_phase3b_v1_recommendation_workflow_routes(db_session, seeded_business) -> None:
     client = _make_client(db_session, business_id=seeded_business.id)
     site_id = _create_site(client, seeded_business.id)

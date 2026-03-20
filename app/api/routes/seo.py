@@ -584,7 +584,7 @@ def list_seo_recommendations(
     )
     try:
         seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
-        items = recommendation_service.list_site_recommendations(
+        items, total_count = recommendation_service.list_site_recommendations(
             business_id=scoped_business_id,
             site_id=site_id,
             query=query,
@@ -600,7 +600,7 @@ def list_seo_recommendations(
     )
     return SEORecommendationListResponse(
         items=serialized_items,
-        total=len(serialized_items),
+        total=total_count,
         by_status=by_status,
         by_category=by_category,
         by_severity=by_severity,

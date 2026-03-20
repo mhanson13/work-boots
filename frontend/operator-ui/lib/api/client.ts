@@ -235,6 +235,12 @@ export async function fetchRecommendations(
   if (filters.sort_order) {
     params.set("sort_order", filters.sort_order);
   }
+  if (typeof filters.page === "number" && Number.isFinite(filters.page)) {
+    params.set("page", String(Math.trunc(filters.page)));
+  }
+  if (typeof filters.page_size === "number" && Number.isFinite(filters.page_size)) {
+    params.set("page_size", String(Math.trunc(filters.page_size)));
+  }
   const query = params.toString();
 
   return apiRequest<RecommendationListResponse>(

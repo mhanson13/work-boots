@@ -204,6 +204,8 @@ export interface RecommendationListFilters {
   category?: "SEO" | "CONTENT" | "STRUCTURE" | "TECHNICAL";
   sort_by?: "priority_score" | "created_at";
   sort_order?: "asc" | "desc";
+  page?: number;
+  page_size?: number;
 }
 
 export interface RecommendationListResponse {

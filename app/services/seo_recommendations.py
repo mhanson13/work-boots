@@ -284,12 +284,14 @@ class SEORecommendationService:
         business_id: str,
         site_id: str,
         query: SEORecommendationListQuery,
-    ) -> list[SEORecommendation]:
+    ) -> tuple[list[SEORecommendation], int]:
         self._require_business(business_id)
         self._require_site(business_id=business_id, site_id=site_id)
-        return self.seo_recommendation_repository.list_recommendations_for_business_site(
+        return self.seo_recommendation_repository.list_recommendations_page_for_business_site(
             business_id=business_id,
             site_id=site_id,
+            page=query.page,
+            page_size=query.page_size,
             status=query.status,
             category=query.category,
             severity=query.severity,
