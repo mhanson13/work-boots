@@ -76,6 +76,24 @@ export default function RecommendationDetailPage() {
   const requestedSiteId = (searchParams.get("site_id") || "").trim();
   const context = useOperatorContext();
 
+  const backToRecommendationsHref = useMemo(() => {
+    const nextParams = new URLSearchParams();
+    const status = (searchParams.get("status") || "").trim().toLowerCase();
+    if (["open", "in_progress", "accepted", "dismissed", "snoozed", "resolved"].includes(status)) {
+      nextParams.set("status", status);
+    }
+    const priority = (searchParams.get("priority") || searchParams.get("priority_band") || "").trim().toLowerCase();
+    if (["low", "medium", "high", "critical"].includes(priority)) {
+      nextParams.set("priority", priority);
+    }
+    const category = (searchParams.get("category") || "").trim().toUpperCase();
+    if (["SEO", "CONTENT", "STRUCTURE", "TECHNICAL"].includes(category)) {
+      nextParams.set("category", category);
+    }
+    const query = nextParams.toString();
+    return query ? `/recommendations?${query}` : "/recommendations";
+  }, [searchParams]);
+
   const candidateSiteIds = useMemo(() => {
     const candidates = [
       requestedSiteId,
@@ -267,7 +285,7 @@ export default function RecommendationDetailPage() {
         <h1>Recommendation Detail</h1>
         <p className="hint warning">Recommendation identifier is missing.</p>
         <p>
-          <Link href="/recommendations">Back to Recommendations</Link>
+          <Link href={backToRecommendationsHref}>Back to Recommendations</Link>
         </p>
       </section>
     );
@@ -277,7 +295,7 @@ export default function RecommendationDetailPage() {
     <section className="stack">
       <div className="panel stack">
         <p>
-          <Link href="/recommendations">Back to Recommendations</Link>
+          <Link href={backToRecommendationsHref}>Back to Recommendations</Link>
         </p>
         <h1>Recommendation Detail</h1>
         <p>

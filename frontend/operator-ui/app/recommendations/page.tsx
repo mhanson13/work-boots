@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useOperatorContext } from "../../components/useOperatorContext";
 import { ApiRequestError, fetchRecommendations } from "../../lib/api/client";
@@ -45,6 +45,42 @@ const CATEGORY_FILTER_OPTIONS: Array<{ label: string; value: FilterState["catego
   { label: "Technical", value: "TECHNICAL" },
 ];
 
+function parseStatusFilter(value: string | null): FilterState["status"] {
+  if (!value) {
+    return "";
+  }
+  const normalized = value.trim().toLowerCase();
+  const allowedValues = new Set(STATUS_FILTER_OPTIONS.map((option) => option.value));
+  if (!allowedValues.has(normalized as FilterState["status"])) {
+    return "";
+  }
+  return normalized as FilterState["status"];
+}
+
+function parsePriorityFilter(value: string | null): FilterState["priorityBand"] {
+  if (!value) {
+    return "";
+  }
+  const normalized = value.trim().toLowerCase();
+  const allowedValues = new Set(PRIORITY_FILTER_OPTIONS.map((option) => option.value));
+  if (!allowedValues.has(normalized as FilterState["priorityBand"])) {
+    return "";
+  }
+  return normalized as FilterState["priorityBand"];
+}
+
+function parseCategoryFilter(value: string | null): FilterState["category"] {
+  if (!value) {
+    return "";
+  }
+  const normalized = value.trim().toUpperCase();
+  const allowedValues = new Set(CATEGORY_FILTER_OPTIONS.map((option) => option.value));
+  if (!allowedValues.has(normalized as FilterState["category"])) {
+    return "";
+  }
+  return normalized as FilterState["category"];
+}
+
 function deriveSourceType(item: Recommendation): string {
   if (item.audit_run_id && item.comparison_run_id) {
     return "mixed";
@@ -73,15 +109,61 @@ function safeRecommendationsErrorMessage(error: unknown): string {
   return "Unable to load recommendations right now. Please try again.";
 }
 
-export default function RecommendationsPage() {
+function RecommendationsPageContent() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const context = useOperatorContext();
   const [items, setItems] = useState<Recommendation[]>([]);
-  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [loadingItems, setLoadingItems] = useState(false);
   const [itemsError, setItemsError] = useState<string | null>(null);
 
+  const filters = useMemo<FilterState>(() => {
+    return {
+      status: parseStatusFilter(searchParams.get("status")),
+      priorityBand: parsePriorityFilter(searchParams.get("priority") || searchParams.get("priority_band")),
+      category: parseCategoryFilter(searchParams.get("category")),
+    };
+  }, [searchParams]);
+
   const hasActiveFilters = Boolean(filters.status || filters.priorityBand || filters.category);
+
+  function updateFilterParams(nextFilters: FilterState) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextFilters.status) {
+      params.set("status", nextFilters.status);
+    } else {
+      params.delete("status");
+    }
+    if (nextFilters.priorityBand) {
+      params.set("priority", nextFilters.priorityBand);
+    } else {
+      params.delete("priority");
+    }
+    params.delete("priority_band");
+    if (nextFilters.category) {
+      params.set("category", nextFilters.category);
+    } else {
+      params.delete("category");
+    }
+    const query = params.toString();
+    router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }
+
+  function buildRecommendationDetailHref(item: Recommendation): string {
+    const params = new URLSearchParams();
+    params.set("site_id", item.site_id);
+    if (filters.status) {
+      params.set("status", filters.status);
+    }
+    if (filters.priorityBand) {
+      params.set("priority", filters.priorityBand);
+    }
+    if (filters.category) {
+      params.set("category", filters.category);
+    }
+    return `/recommendations/${item.id}?${params.toString()}`;
+  }
 
   useEffect(() => {
     if (context.loading || context.error || !context.selectedSiteId) {
@@ -180,10 +262,10 @@ export default function RecommendationsPage() {
             id="recommendation-filter-status"
             value={filters.status}
             onChange={(event) =>
-              setFilters((current) => ({
-                ...current,
+              updateFilterParams({
+                ...filters,
                 status: event.target.value as FilterState["status"],
-              }))
+              })
             }
           >
             {STATUS_FILTER_OPTIONS.map((option) => (
@@ -199,10 +281,10 @@ export default function RecommendationsPage() {
             id="recommendation-filter-priority"
             value={filters.priorityBand}
             onChange={(event) =>
-              setFilters((current) => ({
-                ...current,
+              updateFilterParams({
+                ...filters,
                 priorityBand: event.target.value as FilterState["priorityBand"],
-              }))
+              })
             }
           >
             {PRIORITY_FILTER_OPTIONS.map((option) => (
@@ -218,10 +300,10 @@ export default function RecommendationsPage() {
             id="recommendation-filter-category"
             value={filters.category}
             onChange={(event) =>
-              setFilters((current) => ({
-                ...current,
+              updateFilterParams({
+                ...filters,
                 category: event.target.value as FilterState["category"],
-              }))
+              })
             }
           >
             {CATEGORY_FILTER_OPTIONS.map((option) => (
@@ -233,7 +315,7 @@ export default function RecommendationsPage() {
         </div>
         <button
           type="button"
-          onClick={() => setFilters(DEFAULT_FILTERS)}
+          onClick={() => updateFilterParams(DEFAULT_FILTERS)}
           disabled={loadingItems || !hasActiveFilters}
         >
           Clear Filters
@@ -264,11 +346,11 @@ export default function RecommendationsPage() {
               role="link"
               tabIndex={0}
               style={{ cursor: "pointer" }}
-              onClick={() => router.push(`/recommendations/${item.id}?site_id=${encodeURIComponent(item.site_id)}`)}
+              onClick={() => router.push(buildRecommendationDetailHref(item))}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
-                  router.push(`/recommendations/${item.id}?site_id=${encodeURIComponent(item.site_id)}`);
+                  router.push(buildRecommendationDetailHref(item));
                 }
               }}
             >
@@ -297,5 +379,13 @@ export default function RecommendationsPage() {
         </tbody>
       </table>
     </section>
+  );
+}
+
+export default function RecommendationsPage() {
+  return (
+    <Suspense fallback={<section className="panel">Loading recommendations...</section>}>
+      <RecommendationsPageContent />
+    </Suspense>
   );
 }
