@@ -16,6 +16,7 @@ import type {
   CompetitorSetListResponse,
   Recommendation,
   RecommendationActionStatus,
+  RecommendationWorkflowUpdatePayload,
   RecommendationListResponse,
   AutomationRunListResponse,
   GoogleBusinessProfileAccountsResponse,
@@ -239,14 +240,21 @@ export async function updateRecommendationStatus(
   businessId: string,
   siteId: string,
   recommendationId: string,
-  status: RecommendationActionStatus,
+  payload: RecommendationWorkflowUpdatePayload,
 ): Promise<Recommendation> {
+  const body: Record<string, unknown> = {};
+  if (payload.status) {
+    body.status = payload.status;
+  }
+  if ("note" in payload) {
+    body.note = payload.note ?? null;
+  }
   return apiRequest<Recommendation>(
     `/api/businesses/${businessId}/seo/sites/${siteId}/recommendations/${recommendationId}`,
     {
       method: "PATCH",
       token,
-      body: JSON.stringify({ status }),
+      body: JSON.stringify(body),
     },
   );
 }

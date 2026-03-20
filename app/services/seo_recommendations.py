@@ -321,6 +321,12 @@ class SEORecommendationService:
         if not updates:
             return recommendation
 
+        if "note" in updates:
+            note_value = updates.get("note")
+            if "decision_reason" in updates and updates.get("decision_reason") != note_value:
+                raise SEORecommendationValidationError("note and decision_reason must match")
+            updates["decision_reason"] = note_value
+
         now = utc_now()
         status, decision = self._resolve_status_and_decision(
             current_status=recommendation.status,

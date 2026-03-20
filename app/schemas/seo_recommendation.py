@@ -253,6 +253,7 @@ class SEORecommendationWorkflowUpdateRequest(BaseModel):
     status: SEORecommendationStatus | None = None
     decision: SEORecommendationDecision | None = None
     decision_reason: str | None = Field(default=None, max_length=2000)
+    note: str | None = Field(default=None, max_length=2000)
     assigned_principal_id: str | None = Field(default=None, max_length=64)
     due_at: datetime | None = None
     snoozed_until: datetime | None = None
@@ -271,6 +272,13 @@ class SEORecommendationWorkflowUpdateRequest(BaseModel):
             return None
         return _strip_or_none(str(value))
 
+    @field_validator("note", mode="before")
+    @classmethod
+    def normalize_note(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        return _strip_or_none(str(value))
+
     @field_validator("status", mode="before")
     @classmethod
     def normalize_status_input(cls, value: Any) -> SEORecommendationStatus | None:
@@ -282,6 +290,13 @@ class SEORecommendationWorkflowUpdateRequest(BaseModel):
     @classmethod
     def normalize_decision_input(cls, value: Any) -> SEORecommendationDecision | None:
         return _normalize_decision(value)
+
+    @model_validator(mode="after")
+    def validate_note_alias_consistency(self) -> "SEORecommendationWorkflowUpdateRequest":
+        if "note" in self.model_fields_set and "decision_reason" in self.model_fields_set:
+            if self.note != self.decision_reason:
+                raise ValueError("note and decision_reason must match when both are provided")
+        return self
 
     @model_validator(mode="after")
     def require_update_field(self) -> "SEORecommendationWorkflowUpdateRequest":

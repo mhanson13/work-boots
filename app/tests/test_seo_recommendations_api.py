@@ -560,6 +560,73 @@ def test_recommendation_workflow_patch_backlog_and_prioritized_report(db_session
     assert payload["backlog"]["total"] == payload["backlog_total"]
 
 
+def test_recommendation_workflow_patch_accepts_note_alias(db_session, seeded_business) -> None:
+    other_business = _seed_other_business(db_session)
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id)
+    other_site_id = _create_site(client, seeded_business.id, domain="other-site.example")
+    audit_run_id = _seed_completed_audit_run(db_session, business_id=seeded_business.id, site_id=site_id)
+
+    create_run = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+        json={"audit_run_id": audit_run_id},
+    )
+    assert create_run.status_code == 201
+    run_id = create_run.json()["id"]
+
+    recommendation_id = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/recommendations"
+    ).json()["items"][0]["id"]
+
+    patch_with_note_alias = client.patch(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/{recommendation_id}",
+        json={
+            "status": "accepted",
+            "note": "Looks valid for Q2 rollout",
+        },
+    )
+    assert patch_with_note_alias.status_code == 200
+    patched_payload = patch_with_note_alias.json()
+    assert patched_payload["status"] == "accepted"
+    assert patched_payload["decision_reason"] == "Looks valid for Q2 rollout"
+
+    patch_note_only = client.patch(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/{recommendation_id}",
+        json={
+            "note": "Reviewed with operator notes only",
+        },
+    )
+    assert patch_note_only.status_code == 200
+    patch_note_only_payload = patch_note_only.json()
+    assert patch_note_only_payload["status"] == "accepted"
+    assert patch_note_only_payload["decision_reason"] == "Reviewed with operator notes only"
+
+    wrong_site_patch = client.patch(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{other_site_id}/recommendations/{recommendation_id}",
+        json={
+            "note": "attempt from wrong site scope",
+        },
+    )
+    assert wrong_site_patch.status_code == 404
+
+    cross_business_patch = client.patch(
+        f"/api/businesses/{other_business.id}/seo/sites/{site_id}/recommendations/{recommendation_id}",
+        json={
+            "note": "attempt from wrong business scope",
+        },
+    )
+    assert cross_business_patch.status_code == 404
+
+    patch_mismatch = client.patch(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/{recommendation_id}",
+        json={
+            "note": "foo",
+            "decision_reason": "bar",
+        },
+    )
+    assert patch_mismatch.status_code == 422
+
+
 def test_recommendation_workflow_rejects_invalid_transitions_and_assignments(db_session, seeded_business) -> None:
     client = _make_client(db_session, business_id=seeded_business.id)
     site_id = _create_site(client, seeded_business.id)

@@ -63,10 +63,10 @@ function safeRecommendationActionErrorMessage(error: unknown): string {
       return "Recommendation not found in your tenant scope.";
     }
     if (error.status === 422) {
-      return "Recommendation status update is not allowed in the current state.";
+      return "Recommendation update is not allowed in the current state.";
     }
   }
-  return "Unable to update recommendation status right now. Please try again.";
+  return "Unable to update recommendation right now. Please try again.";
 }
 
 export default function RecommendationDetailPage() {
@@ -94,6 +94,7 @@ export default function RecommendationDetailPage() {
   const [actionTarget, setActionTarget] = useState<"accepted" | "dismissed" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
 
   useEffect(() => {
     if (context.loading || context.error || !recommendationId) {
@@ -106,6 +107,7 @@ export default function RecommendationDetailPage() {
       setActionTarget(null);
       setActionError(null);
       setActionSuccess(null);
+      setNoteDraft("");
       return;
     }
 
@@ -119,6 +121,7 @@ export default function RecommendationDetailPage() {
       setActionTarget(null);
       setActionError(null);
       setActionSuccess(null);
+      setNoteDraft("");
       return;
     }
 
@@ -134,6 +137,7 @@ export default function RecommendationDetailPage() {
       setActionTarget(null);
       setActionError(null);
       setActionSuccess(null);
+      setNoteDraft("");
 
       try {
         for (const siteId of candidateSiteIds) {
@@ -149,6 +153,7 @@ export default function RecommendationDetailPage() {
             }
             setRecommendation(result);
             setResolvedSiteId(siteId);
+            setNoteDraft(result.decision_reason || "");
             return;
           } catch (err) {
             if (err instanceof ApiRequestError && err.status === 404) {
@@ -197,16 +202,56 @@ export default function RecommendationDetailPage() {
         context.businessId,
         recommendation.site_id,
         recommendation.id,
-        status,
+        {
+          status,
+          note: noteDraft.trim() || null,
+        },
       );
       setRecommendation(updated);
       setResolvedSiteId(updated.site_id);
       setActionSuccess(`Recommendation marked as ${updated.status}.`);
+      setNoteDraft(updated.decision_reason || "");
     } catch (err) {
       setActionError(safeRecommendationActionErrorMessage(err));
     } finally {
       setActionLoading(false);
       setActionTarget(null);
+    }
+  }
+
+  async function handleSaveNote() {
+    if (!recommendation || actionLoading) {
+      return;
+    }
+    const normalizedNote = noteDraft.trim() || null;
+    if ((recommendation.decision_reason || null) === normalizedNote) {
+      setActionSuccess("Note is already up to date.");
+      setActionError(null);
+      return;
+    }
+
+    setActionLoading(true);
+    setActionTarget(null);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      const updated = await updateRecommendationStatus(
+        context.token,
+        context.businessId,
+        recommendation.site_id,
+        recommendation.id,
+        {
+          note: normalizedNote,
+        },
+      );
+      setRecommendation(updated);
+      setResolvedSiteId(updated.site_id);
+      setNoteDraft(updated.decision_reason || "");
+      setActionSuccess("Recommendation note saved.");
+    } catch (err) {
+      setActionError(safeRecommendationActionErrorMessage(err));
+    } finally {
+      setActionLoading(false);
     }
   }
 
@@ -292,8 +337,35 @@ export default function RecommendationDetailPage() {
                 {actionLoading && actionTarget === "dismissed" ? "Saving..." : "Dismiss"}
               </button>
             </div>
+            <label htmlFor="recommendation-note">Operator Note</label>
+            <textarea
+              id="recommendation-note"
+              value={noteDraft}
+              onChange={(event) => setNoteDraft(event.target.value)}
+              rows={4}
+              placeholder="Add an operator note for this recommendation..."
+              maxLength={2000}
+              disabled={actionLoading}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem" }}>
+              <small className="hint muted">{noteDraft.length}/2000 characters</small>
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => {
+                  void handleSaveNote();
+                }}
+              >
+                {actionLoading && actionTarget === null ? "Saving..." : "Save Note"}
+              </button>
+            </div>
             {actionSuccess ? <p className="hint">{actionSuccess}</p> : null}
             {actionError ? <p className="hint error">{actionError}</p> : null}
+          </div>
+
+          <div className="panel stack">
+            <h2>Saved Note</h2>
+            <p>{recommendation.decision_reason || "No operator note saved yet."}</p>
           </div>
 
           <div className="panel stack">

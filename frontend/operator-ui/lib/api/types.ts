@@ -186,11 +186,17 @@ export interface Recommendation {
   effort_bucket: string;
   title: string;
   rationale: string;
+  decision_reason: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export type RecommendationActionStatus = "accepted" | "dismissed";
+
+export interface RecommendationWorkflowUpdatePayload {
+  status?: RecommendationActionStatus;
+  note?: string | null;
+}
 
 export interface RecommendationListResponse {
   items: Recommendation[];
