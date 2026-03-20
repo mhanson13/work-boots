@@ -203,6 +203,40 @@ function deriveSourceType(item: Recommendation): string {
   return "unknown";
 }
 
+function summarizeQueue(items: Recommendation[]): {
+  total: number;
+  open: number;
+  accepted: number;
+  dismissed: number;
+  highPriority: number;
+} {
+  return items.reduce(
+    (summary, item) => {
+      summary.total += 1;
+      if (item.status === "open") {
+        summary.open += 1;
+      }
+      if (item.status === "accepted") {
+        summary.accepted += 1;
+      }
+      if (item.status === "dismissed") {
+        summary.dismissed += 1;
+      }
+      if (item.priority_band === "high" || item.priority_band === "critical") {
+        summary.highPriority += 1;
+      }
+      return summary;
+    },
+    {
+      total: 0,
+      open: 0,
+      accepted: 0,
+      dismissed: 0,
+      highPriority: 0,
+    },
+  );
+}
+
 function safeRecommendationsErrorMessage(error: unknown): string {
   if (error instanceof ApiRequestError) {
     if (error.status === 401) {
@@ -276,6 +310,7 @@ function RecommendationsPageContent() {
   const allDisplayedSelected =
     displayedRecommendationIds.length > 0 &&
     displayedRecommendationIds.every((id) => selectedRecommendationIds.includes(id));
+  const queueSummary = useMemo(() => summarizeQueue(items), [items]);
 
   function updateQueueParams(nextFilters: FilterState, nextSort: SortState) {
     const params = new URLSearchParams(searchParams.toString());
@@ -606,6 +641,35 @@ function RecommendationsPageContent() {
         >
           Clear Filters
         </button>
+      </div>
+
+      <div
+        className="stack"
+        style={{
+          gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+          gap: "0.5rem",
+        }}
+      >
+        <div className="panel stack" style={{ padding: "0.6rem", gap: "0.2rem" }}>
+          <span className="hint muted">Total Shown</span>
+          <strong>{queueSummary.total}</strong>
+        </div>
+        <div className="panel stack" style={{ padding: "0.6rem", gap: "0.2rem" }}>
+          <span className="hint muted">Open</span>
+          <strong>{queueSummary.open}</strong>
+        </div>
+        <div className="panel stack" style={{ padding: "0.6rem", gap: "0.2rem" }}>
+          <span className="hint muted">Accepted</span>
+          <strong>{queueSummary.accepted}</strong>
+        </div>
+        <div className="panel stack" style={{ padding: "0.6rem", gap: "0.2rem" }}>
+          <span className="hint muted">Dismissed</span>
+          <strong>{queueSummary.dismissed}</strong>
+        </div>
+        <div className="panel stack" style={{ padding: "0.6rem", gap: "0.2rem" }}>
+          <span className="hint muted">High Priority</span>
+          <strong>{queueSummary.highPriority}</strong>
+        </div>
       </div>
 
       {loadingItems ? <p className="hint muted">Loading recommendations...</p> : null}
