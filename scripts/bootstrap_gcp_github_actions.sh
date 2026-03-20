@@ -4,7 +4,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Bootstrap Google Cloud for Work Boots GitHub Actions deploys (WIF + GAR + IAM).
+Bootstrap Google Cloud for mbsrn GitHub Actions deploys (WIF + GAR + IAM).
 
 Usage:
   scripts/bootstrap_gcp_github_actions.sh --gcp-project-id <GCP_PROJECT_ID> --container-registry-region <REGION> --container-registry-repository <NAME> [options]
@@ -310,7 +310,7 @@ if ! gcloud artifacts repositories describe "${CONTAINER_REGISTRY_REPOSITORY}" \
   gcloud artifacts repositories create "${CONTAINER_REGISTRY_REPOSITORY}" \
     --repository-format docker \
     --location "${CONTAINER_REGISTRY_REGION}" \
-    --description "Work Boots API/UI container images" \
+    --description "mbsrn API/UI container images" \
     --project "${GCP_PROJECT_ID}" >/dev/null
   echo "Created Artifact Registry repository: ${CONTAINER_REGISTRY_REPOSITORY}"
 else
@@ -364,8 +364,8 @@ fi
 echo "==> Ensuring deploy service account exists"
 if ! gcloud iam service-accounts describe "${SERVICE_ACCOUNT_EMAIL}" --project "${GCP_PROJECT_ID}" >/dev/null 2>&1; then
   gcloud iam service-accounts create "${SERVICE_ACCOUNT_ID}" \
-    --display-name "Work Boots GitHub Deployer" \
-    --description "Deploys Work Boots from GitHub Actions via WIF" \
+    --display-name "mbsrn GitHub Deployer" \
+    --description "Deploys mbsrn from GitHub Actions via WIF" \
     --project "${GCP_PROJECT_ID}" >/dev/null
   echo "Created service account: ${SERVICE_ACCOUNT_EMAIL}"
 else

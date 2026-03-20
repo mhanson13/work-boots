@@ -3,10 +3,10 @@
 Audience: operators and admins using the UI.
 
 ## Verification Guidance
-- Work Boots now provides deterministic, plain-language guidance from normalized verification state.
+- mbsrn now provides deterministic, plain-language guidance from normalized verification state.
 - Guidance includes a title, short summary, concrete next steps, and a primary CTA.
 - Guidance is rule-based today; no live AI service is required for this feature.
-- If Google returns an unexpected status or method, Work Boots falls back to safe guidance and may ask you to refresh or reconnect.
+- If Google returns an unexpected status or method, mbsrn falls back to safe guidance and may ask you to refresh or reconnect.
 - Verification workflow errors also include normalized guidance so the UI can show the same style of next steps in failure states.
 
 ## Connection Status Meanings
@@ -14,7 +14,7 @@ Audience: operators and admins using the UI.
 ### Connected
 Meaning:
 - this business has an active Google Business Profile connection
-- Work Boots can use stored provider credentials server-side for read-only GBP calls
+- mbsrn can use stored provider credentials server-side for read-only GBP calls
 
 Operator action:
 - review location status and next-action hints
@@ -22,7 +22,7 @@ Operator action:
 
 ### Needs reconnect
 Meaning:
-- Work Boots cannot safely use current provider credentials
+- mbsrn cannot safely use current provider credentials
 
 Common causes:
 - refresh token missing or revoked
@@ -75,7 +75,7 @@ Meaning:
 - Google accepted a verification attempt and additional provider-side processing is underway
 
 Action:
-- monitor status in Work Boots
+- monitor status in mbsrn
 - complete code entry only if prompted by status
 
 ### Failed
@@ -88,7 +88,7 @@ Action:
 
 ### Access issue
 Meaning:
-- Work Boots could not read verification details due to permission/access conditions
+- mbsrn could not read verification details due to permission/access conditions
 
 Action:
 - confirm the connected Google account has access to the GBP location/account
@@ -112,7 +112,7 @@ Action:
 Current behavior note:
 - reconnect is usually shown as connection state (`Needs reconnect`) rather than a location-level next-action value
 
-## What Work Boots Can Do Today
+## What mbsrn Can Do Today
 - show GBP connection status per business
 - list GBP accounts and locations
 - show normalized verification state and next-action hints

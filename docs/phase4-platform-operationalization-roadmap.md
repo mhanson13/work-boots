@@ -1,7 +1,7 @@
 # Phase 4 Platform Operationalization Roadmap
 
 ## Purpose And Scope
-Phase 4 operationalizes the existing Work Boots CRM + SEO.ai platform for pilot use. This roadmap captures:
+Phase 4 operationalizes the existing mbsrn CRM + SEO.ai platform for pilot use. This roadmap captures:
 - what is already implemented
 - what still needs hardening before pilot
 - what is explicitly out of scope for this phase

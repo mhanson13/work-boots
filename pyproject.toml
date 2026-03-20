@@ -1,7 +1,7 @@
 [project]
 name = "work-boots-console-lead-intake"
 version = "0.1.0"
-description = "Lead Intake Engine MVP for Work Boots Console"
+description = "Lead Intake Engine MVP for mbsrn"
 requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.116.0,<0.117.0",

@@ -1,7 +1,7 @@
 # Architecture
 
 ## System Overview
-Work Boots is a multi-tenant platform with a FastAPI monolith and a standalone Next.js operator UI.
+mbsrn is a multi-tenant platform with a FastAPI monolith and a standalone Next.js operator UI.
 
 Primary runtime components:
 - Backend API: `app/`
@@ -15,7 +15,7 @@ Primary runtime components:
 - Provider credentials and token operations are backend-only.
 
 ## Service Layering
-Work Boots follows a layered backend structure:
+mbsrn follows a layered backend structure:
 
 ```text
 routes (HTTP contracts, error mapping)

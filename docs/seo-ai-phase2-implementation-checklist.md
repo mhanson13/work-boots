@@ -1,7 +1,7 @@
 # SEO.ai Phase 2 Implementation Checklist
 
 Status: Draft  
-Owner: Work Boots  
+Owner: mbsrn  
 Scope: Phase 2 only (Competitor Intelligence)
 
 ---

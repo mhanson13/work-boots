@@ -86,7 +86,7 @@ class NotificationDispatchService:
             f"Hi {lead.customer_name or 'there'}, we received your request for "
             f"{lead.service_type or 'service'}. {business.name or 'your contractor'} will follow up soon."
         )
-        subject = f"{business.name or 'Work Boots Console'}: we received your request"
+        subject = f"{business.name or 'mbsrn'}: we received your request"
         channels = self._customer_channels(lead=lead, business=business)
         return self._dispatch(
             lead=lead,
@@ -138,7 +138,7 @@ class NotificationDispatchService:
         return self._dispatch(
             lead=lead,
             kind="contractor_alert",
-            subject="Work Boots Console: New lead received",
+            subject="mbsrn: New lead received",
             message=summary,
             channels=channels,
             idempotency_key=idempotency_key,
@@ -193,7 +193,7 @@ class NotificationDispatchService:
         return self._dispatch(
             lead=lead,
             kind="owner_reminder",
-            subject=f"Work Boots Console: Lead reminder ({threshold_minutes}m)",
+            subject=f"mbsrn: Lead reminder ({threshold_minutes}m)",
             message=summary,
             channels=channels,
             idempotency_key=idempotency_key,

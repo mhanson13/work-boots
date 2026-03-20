@@ -6,7 +6,7 @@
 Purpose:
 - authenticate operator identity
 - map Google subject to internal principal
-- issue Work Boots app session tokens
+- issue mbsrn app session tokens
 
 Primary endpoint:
 - `POST /api/auth/google/exchange`
@@ -39,7 +39,7 @@ Current implemented routes:
 Behavior notes:
 - all actions are business-scoped and token-guarded server-side
 - provider availability still controls which methods/actions are usable per location
-- Work Boots guidance is deterministic and generated from normalized state (no live LLM dependency)
+- mbsrn guidance is deterministic and generated from normalized state (no live LLM dependency)
 - `retry` is an app-level convenience over provider-supported start semantics, not a guaranteed provider-native primitive
 
 ## Required Scope
@@ -140,6 +140,6 @@ Fix:
 
 ### Verification action not available for this location
 Current behavior:
-- Work Boots can surface start/complete/retry endpoints, but Google may still reject an action for location state/method constraints
+- mbsrn can surface start/complete/retry endpoints, but Google may still reject an action for location state/method constraints
 - refresh status, use available methods, and follow reconnect/access guidance when returned
 - unknown/unmapped provider values degrade to safe normalized fallbacks and are surfaced through structured warning logs for mapping updates

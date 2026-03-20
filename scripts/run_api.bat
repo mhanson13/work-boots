@@ -13,7 +13,7 @@ for %%A in (%*) do (
   if /I "%%~A"=="--upgrade-pip" set "UPGRADE_PIP=1"
 )
 
-echo [Work Boots Console] API Launcher
+echo [mbsrn] API Launcher
 if "%USE_POSTGRES%"=="1" (
   echo Mode: postgres ^(using DATABASE_URL from .env^)
 ) else (

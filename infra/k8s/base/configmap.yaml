@@ -5,7 +5,7 @@ metadata:
 data:
   ENVIRONMENT: "production"
   APP_ENV: "production"
-  APP_NAME: "Work Boots Console"
+  APP_NAME: "mbsrn"
   DATABASE_URL: "postgresql+psycopg://postgres:postgres@postgres:5432/work_boots_console"
   DB_AUTO_CREATE_LOCAL: "false"
   GOOGLE_AUTH_ENABLED: "true"

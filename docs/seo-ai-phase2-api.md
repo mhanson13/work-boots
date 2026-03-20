@@ -1,7 +1,7 @@
 # SEO.ai Phase 2 API (Competitor Intelligence)
 
 Status: Implemented on `main`  
-Owner: Work Boots  
+Owner: mbsrn  
 Scope: Current runtime API surface for Phase 2
 
 ---

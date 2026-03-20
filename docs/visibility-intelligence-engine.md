@@ -1,7 +1,7 @@
 # Visibility Intelligence Engine
 
 ## Purpose
-This document defines the visibility-intelligence scope for Work Boots Console.
+This document defines the visibility-intelligence scope for mbsrn.
 
 ## Status
 Placeholder for future implementation details.  

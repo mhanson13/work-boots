@@ -18,7 +18,7 @@
 > - `KUBERNETES_CLUSTER_LOCATION_TYPE` (`region` or `zone`)
 
 ## 1) Purpose And Scope
-This guide is a prerequisite/setup runbook for deploying Work Boots to GKE from GitHub Actions.
+This guide is a prerequisite/setup runbook for deploying mbsrn to GKE from GitHub Actions.
 
 What this guide does:
 - shows exactly what to create in Google Cloud and GitHub
@@ -192,7 +192,7 @@ Google Cloud Console -> IAM & Admin -> Service Accounts -> `Create Service Accou
 **Steps:**
 1. Click `Create Service Account`.
 2. Name: `work-boots-github-deployer` (example).
-3. Description: `Deploys Work Boots from GitHub Actions to GKE`.
+3. Description: `Deploys mbsrn from GitHub Actions to GKE`.
 4. Click `Create and Continue`.
 5. Grant required roles (minimum set in Section 5.4).
 6. Click `Done`.

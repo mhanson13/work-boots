@@ -1,6 +1,6 @@
 # SEO.ai Phase 1 Audit Hardening
 
-This document captures the current Phase 1 crawl/audit hardening behavior implemented in Work Boots Console.
+This document captures the current Phase 1 crawl/audit hardening behavior implemented in mbsrn.
 
 ## Workflow
 

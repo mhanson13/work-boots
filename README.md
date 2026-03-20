@@ -1,9 +1,9 @@
-# Work Boots Console
+# My Business Sucks Right Now (mbsrn)
 
 Monolithic FastAPI service for contractor lead intake and follow-up operations.
 
 ## Overview
-Work Boots Console is an MVP backend for small contractor businesses.  
+mbsrn is an MVP backend for small contractor businesses.  
 It supports:
 - manual lead intake
 - GoDaddy email intake
@@ -14,7 +14,7 @@ It supports:
 
 ## Repository Layout
 ```text
-work-boots/
+mbsrn/
   app/
   alembic/
   docs/
@@ -285,7 +285,7 @@ When using `twilio` or `smtp`, configure the corresponding credentials in `.env`
 - Runtime auth supports two bearer-token paths:
   - DB API credentials (`api_credentials`) for service-to-service and operator-issued keys.
   - Google OIDC exchange -> internal signed JWT access/refresh app session tokens for human operator UI sessions.
-- Google sign-in remains identity-only for Work Boots access control; authorization is enforced by internal principal/business/role mappings.
+- Google sign-in remains identity-only for mbsrn access control; authorization is enforced by internal principal/business/role mappings.
 - Google API authorization for Business Profile is a separate, explicit integration flow with its own consent/scope.
 - Google auth endpoints:
   - `POST /api/auth/google/exchange` (exchange Google ID token for app bearer token)

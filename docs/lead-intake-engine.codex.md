@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Use this prompt to scaffold the **Lead Intake Engine** for **Work Boots Console**.
+Use this prompt to scaffold the **Lead Intake Engine** for **mbsrn**.
 
 The goal is to build a lightweight, contractor-friendly intake system that captures leads, acknowledges customers immediately, notifies the contractor, and tracks lead progress with minimal friction.
 
@@ -11,10 +11,10 @@ The goal is to build a lightweight, contractor-friendly intake system that captu
 ## Prompt
 
 ```text
-You are helping me design and scaffold the Lead Intake Engine for an MVP product called "Work Boots Console."
+You are helping me design and scaffold the Lead Intake Engine for an MVP product called "mbsrn."
 
 Context:
-- Work Boots Console is for very small contractor businesses like T&M Fire and Lars Construction.
+- mbsrn is for very small contractor businesses like T&M Fire and Lars Construction.
 - These businesses are owner-operators doing physical labor during the day and following up on leads later.
 - Their websites are on GoDaddy Airo / Websites + Marketing.
 - New website leads may arrive through GoDaddy contact form notification emails.

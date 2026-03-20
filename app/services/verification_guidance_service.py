@@ -128,7 +128,7 @@ class VerificationGuidanceService:
                 recommended_action="reconnect_google",
                 priority="high",
                 title="Google access needs to be updated",
-                summary="Reconnect your Google account so Work Boots can continue verification checks.",
+                summary="Reconnect your Google account so mbsrn can continue verification checks.",
                 instructions=(
                     "Open Google Business Profile connection settings.",
                     "Reconnect the same Google account you use for this business.",
@@ -192,7 +192,7 @@ class VerificationGuidanceService:
                     summary="Google is sending a postcard code to your business address.",
                     instructions=(
                         "Check your business mailbox regularly.",
-                        "When the postcard arrives, enter the code in Work Boots.",
+                        "When the postcard arrives, enter the code in mbsrn.",
                         "Avoid starting another request unless Google says to retry.",
                     ),
                     tips=("Keep your business name and address consistent while waiting for the code.",),
@@ -283,7 +283,7 @@ class VerificationGuidanceService:
                 summary="No retry method is available right now.",
                 instructions=(
                     "Check business profile details in Google.",
-                    "Refresh status in Work Boots.",
+                    "Refresh status in mbsrn.",
                     "Reconnect Google if access looks out of date.",
                 ),
                 tips=(),
@@ -343,7 +343,7 @@ class VerificationGuidanceService:
             recommended_action="unknown",
             priority="info",
             title="Verification status needs review",
-            summary="Work Boots cannot determine the next safe step yet.",
+            summary="mbsrn cannot determine the next safe step yet.",
             instructions=(
                 "Refresh status.",
                 "If this keeps happening, reconnect Google and try again.",

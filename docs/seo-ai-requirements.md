@@ -1,17 +1,17 @@
 # SEO.ai Requirements
 
 Status: Draft  
-Owner: Work Boots  
+Owner: mbsrn  
 Scope: Contractor SEO audit, competitor analysis, content recommendation, and AI-assisted content generation  
-Target repo: Work Boots Console
+Target repo: mbsrn
 
 ---
 
 ## 1. Purpose
 
-SEO.ai is a new business-scoped capability inside Work Boots that helps contractor businesses improve local search visibility through a combination of deterministic website analysis, competitor gap detection, AI-assisted recommendations, and AI-generated draft content.
+SEO.ai is a new business-scoped capability inside mbsrn that helps contractor businesses improve local search visibility through a combination of deterministic website analysis, competitor gap detection, AI-assisted recommendations, and AI-generated draft content.
 
-SEO.ai extends the existing Work Boots product rather than living as a separate system. Work Boots already supports business-scoped operations, persisted principals, credential lifecycle, and project documentation under `docs/`, which makes it a suitable foundation for this module. The current repo is a monolithic FastAPI service for contractor lead intake and follow-up operations, so SEO.ai should fit that architecture and documentation pattern.
+SEO.ai extends the existing mbsrn product rather than living as a separate system. mbsrn already supports business-scoped operations, persisted principals, credential lifecycle, and project documentation under `docs/`, which makes it a suitable foundation for this module. The current repo is a monolithic FastAPI service for contractor lead intake and follow-up operations, so SEO.ai should fit that architecture and documentation pattern.
 
 ---
 
@@ -31,7 +31,7 @@ SEO.ai extends the existing Work Boots product rather than living as a separate 
 - Build a reusable workflow that can scale across many contractor clients
 - Reduce manual SEO agency effort through automation
 - Keep AI outputs reviewable, versioned, and auditable
-- Fit cleanly into the existing Work Boots auth, business scoping, and API patterns
+- Fit cleanly into the existing mbsrn auth, business scoping, and API patterns
 
 ### 2.3 Non-goals for MVP
 - Full publishing to external CMS platforms
@@ -80,7 +80,7 @@ The module should be deliverable in phases so implementation can proceed increme
 ## 4. Primary Users
 
 ### 4.1 Internal agency/operator user
-A Work Boots operator or admin running SEO workflows on behalf of a contractor client.
+A mbsrn operator or admin running SEO workflows on behalf of a contractor client.
 
 ### 4.2 Contractor business owner
 A business user reviewing findings, reports, and generated recommendations.
@@ -496,7 +496,7 @@ The system must support recurring site scans and change detection.
 
 ## 8. API Requirements
 
-The exact route design may evolve, but the MVP should support endpoints in the style already used by Work Boots business-scoped APIs. The current repo already uses business-scoped endpoints for principal and credential management, so SEO.ai should follow the same approach.
+The exact route design may evolve, but the MVP should support endpoints in the style already used by mbsrn business-scoped APIs. The current repo already uses business-scoped endpoints for principal and credential management, so SEO.ai should follow the same approach.
 
 ### Suggested endpoint families
 
@@ -672,7 +672,7 @@ This section describes the minimum conceptual fields expected.
 
 ### Requirements
 - SEO.ai data must be isolated by `business_id`
-- Access must follow the same business-scoped principles as existing Work Boots modules
+- Access must follow the same business-scoped principles as existing mbsrn modules
 - Admin-only actions may be required later for destructive operations
 - All reads and writes must verify the actor can access the target business
 - Cross-business access must be rejected
@@ -837,7 +837,7 @@ The following items are explicitly out of scope for the first implementation unl
 These should be resolved before deeper implementation begins:
 1. Should automated competitor discovery be in MVP or post-MVP?
 2. Should crawl execution be synchronous first, or queue-backed from day one?
-3. Which AI provider abstraction should be used in Work Boots?
+3. Which AI provider abstraction should be used in mbsrn?
 4. Should generated assets live in the DB only, or also as exportable files later?
 5. Should service-area page generation be included in MVP or Phase 3+?
 6. What approval workflow is required before generated content is considered client-ready?

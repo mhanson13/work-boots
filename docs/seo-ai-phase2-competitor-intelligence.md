@@ -1,7 +1,7 @@
 # SEO.ai Phase 2: Competitor Intelligence
 
 Status: Implemented on `main`  
-Owner: Work Boots  
+Owner: mbsrn  
 Depends on: Phase 1 + Phase 1.5  
 Scope: manual competitor management, snapshot runs, deterministic comparison runs, manual-trigger comparison summaries
 

@@ -1,7 +1,7 @@
 # SEO.ai Phase 1 Implementation Checklist
 
 Status: Draft  
-Owner: Work Boots  
+Owner: mbsrn  
 Depends on: `docs/seo-ai-requirements.md`  
 Scope: Phase 1 only (baseline audit + AI summary)
 

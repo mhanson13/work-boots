@@ -1,5 +1,5 @@
 param(
-    [string]$Repo = "mhanson13/work-boots",
+    [string]$Repo = "mhanson13/mbsrn",
     [switch]$DryRun
 )
 

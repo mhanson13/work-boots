@@ -1,7 +1,7 @@
 # Security
 
 ## Security Model Summary
-Work Boots treats security controls as fail-closed by default for production posture.
+mbsrn treats security controls as fail-closed by default for production posture.
 
 Key principles:
 - authorization is internal (principal/business scoped)
@@ -89,7 +89,7 @@ Internal connection usability includes:
   - `insufficient_scope`
 
 ## Fail-Closed Philosophy
-Work Boots explicitly fails closed for:
+mbsrn explicitly fails closed for:
 - missing/unusable key versions
 - invalid/expired OAuth state
 - missing required scopes

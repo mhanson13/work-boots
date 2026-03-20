@@ -1,6 +1,6 @@
-Work Boots Console Source-Available License (Non-Commercial)
+mbsrn Source-Available License (Non-Commercial)
 
-Copyright (c) 2026 Work Boots Console contributors
+Copyright (c) 2026 mbsrn contributors
 
 Permission is granted to use, copy, modify, and distribute this Software for
 non-commercial purposes only, subject to the conditions below.

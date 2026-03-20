@@ -3,7 +3,7 @@ setlocal EnableExtensions
 
 cd /d "%~dp0\.."
 
-echo [Work Boots Console] Test Runner
+echo [mbsrn] Test Runner
 echo.
 
 if not exist "requirements-dev.txt" (

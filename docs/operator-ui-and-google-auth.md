@@ -10,5 +10,5 @@ Canonical docs for current behavior:
 - [GBP Read API](api.md)
 
 Key boundary reminder:
-- Google OIDC login is identity/session authentication for Work Boots.
+- Google OIDC login is identity/session authentication for mbsrn.
 - Google Business Profile OAuth connection is a separate business-scoped authorization flow.

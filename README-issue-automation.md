@@ -1,6 +1,6 @@
 # GitHub Issue Automation Setup v2
 
-This package contains a corrected issue automation setup for `work-boots`.
+This package contains a corrected issue automation setup for `mbsrn`.
 
 ## Fixes in v2
 

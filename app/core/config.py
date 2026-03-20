@@ -167,7 +167,7 @@ def get_settings() -> Settings:
             )
 
     return Settings(
-        app_name=os.getenv("APP_NAME", "Work Boots Console Lead Intake"),
+        app_name=os.getenv("APP_NAME", "mbsrn Lead Intake"),
         app_env=app_env,
         environment=environment,
         database_url=os.getenv(

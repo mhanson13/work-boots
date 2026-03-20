@@ -35,7 +35,7 @@ class MockEmailProvider:
 class DevEmailProvider:
     provider_name = "dev_email"
 
-    def __init__(self, from_address: str = "noreply@workboots.local") -> None:
+    def __init__(self, from_address: str = "noreply@mbsrn.local") -> None:
         self.from_address = from_address
 
     def send_email(self, *, to_address: str, subject: str, body: str) -> EmailDispatchResult:

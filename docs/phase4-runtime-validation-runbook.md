@@ -1,7 +1,7 @@
 # Phase 4 Runtime Validation Runbook
 
 ## 1) Purpose And Scope
-This runbook is the final Phase 4 runtime signoff procedure for Work Boots pilot deployments on GKE.
+This runbook is the final Phase 4 runtime signoff procedure for mbsrn pilot deployments on GKE.
 
 It validates deployed behavior for:
 - CI/CD rollout and migration gates

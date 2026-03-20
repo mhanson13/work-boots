@@ -4,8 +4,8 @@ import { AuthProvider } from "../components/AuthProvider";
 import { NavShell } from "../components/NavShell";
 
 export const metadata: Metadata = {
-  title: "Work Boots Operator Console",
-  description: "Operator UI for Work Boots Console",
+  title: "mbsrn Operator Console",
+  description: "Operator UI for mbsrn",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

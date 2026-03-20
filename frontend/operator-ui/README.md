@@ -1,6 +1,6 @@
-# Work Boots Operator UI
+# mbsrn Operator UI
 
-Standalone Next.js operator surface for Work Boots Console.
+Standalone Next.js operator surface for mbsrn.
 
 ## Local development
 

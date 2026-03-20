@@ -1,7 +1,7 @@
 # SEO.ai Phase 2 Data Model
 
 Status: Implemented on `main`  
-Owner: Work Boots  
+Owner: mbsrn  
 Scope: Runtime competitor-intelligence storage used by current Phase 2 APIs
 
 ---
