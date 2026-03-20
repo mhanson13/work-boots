@@ -17,6 +17,8 @@ const mockFetchPrincipalIdentities = jest.fn<Promise<PrincipalIdentityListRespon
 const mockCreatePrincipal = jest.fn<Promise<unknown>, unknown[]>();
 const mockDeactivatePrincipal = jest.fn<Promise<unknown>, unknown[]>();
 const mockActivatePrincipal = jest.fn<Promise<unknown>, unknown[]>();
+const mockDeactivatePrincipalIdentity = jest.fn<Promise<unknown>, unknown[]>();
+const mockActivatePrincipalIdentity = jest.fn<Promise<unknown>, unknown[]>();
 
 jest.mock("../../components/useOperatorContext", () => ({
   useOperatorContext: () => mockUseOperatorContext(),
@@ -35,6 +37,8 @@ jest.mock("../../lib/api/client", () => {
     createPrincipal: (...args: unknown[]) => mockCreatePrincipal(...args),
     deactivatePrincipal: (...args: unknown[]) => mockDeactivatePrincipal(...args),
     activatePrincipal: (...args: unknown[]) => mockActivatePrincipal(...args),
+    deactivatePrincipalIdentity: (...args: unknown[]) => mockDeactivatePrincipalIdentity(...args),
+    activatePrincipalIdentity: (...args: unknown[]) => mockActivatePrincipalIdentity(...args),
   };
 });
 
@@ -94,7 +98,7 @@ function principalsResponse(isOperatorActive: boolean): PrincipalListResponse {
   };
 }
 
-function identitiesResponse(): PrincipalIdentityListResponse {
+function identitiesResponse(isOperatorIdentityActive: boolean = true): PrincipalIdentityListResponse {
   return {
     items: [
       {
@@ -118,7 +122,7 @@ function identitiesResponse(): PrincipalIdentityListResponse {
         principal_id: "operator-1",
         email: "operator@example.com",
         email_verified: true,
-        is_active: true,
+        is_active: isOperatorIdentityActive,
         last_authenticated_at: null,
         created_at: "2026-03-20T00:00:00Z",
         updated_at: "2026-03-20T00:00:00Z",
@@ -210,8 +214,8 @@ describe("users page completeness", () => {
     expect(screen.getByText("Principals: 3")).toBeInTheDocument();
     expect(screen.getByText("Sign-In Identities: 2")).toBeInTheDocument();
     expect(screen.getByText("Principals Without Identity: 1")).toBeInTheDocument();
-    expect(screen.getByText("admin@example.com")).toBeInTheDocument();
-    expect(screen.getByText("operator@example.com")).toBeInTheDocument();
+    expect(screen.getByText(/admin@example\.com/)).toBeInTheDocument();
+    expect(screen.getByText(/operator@example\.com/)).toBeInTheDocument();
   });
 
   it("still renders principal rows when identity fetch fails", async () => {
@@ -274,8 +278,48 @@ describe("users page completeness", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Deactivate" })[1]);
 
     await waitFor(() => expect(mockDeactivatePrincipal).toHaveBeenCalledWith("token-1", "biz-1", "operator-1"));
-    await screen.findByText("User operator-1 deactivated.");
+    await screen.findByText("Principal action: User operator-1 deactivated.");
     expect(screen.getByRole("button", { name: "Reactivate" })).toBeInTheDocument();
+    confirmSpy.mockRestore();
+  });
+
+  it("requires confirmation before deactivating an identity", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    const confirmSpy = jest.spyOn(window, "confirm").mockReturnValue(false);
+
+    render(<UsersPage />);
+
+    await screen.findByText("operator-1");
+    fireEvent.click(screen.getAllByRole("button", { name: "Deactivate Identity" })[1]);
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(mockDeactivatePrincipalIdentity).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it("deactivates an identity and refreshes list state", async () => {
+    mockFetchPrincipals
+      .mockResolvedValueOnce(principalsResponse(true))
+      .mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities
+      .mockResolvedValueOnce(identitiesResponse(true))
+      .mockResolvedValueOnce(identitiesResponse(false));
+    mockDeactivatePrincipalIdentity.mockResolvedValueOnce({
+      ...identitiesResponse(false).items[1],
+    });
+    const confirmSpy = jest.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<UsersPage />);
+
+    await screen.findByText("operator-1");
+    fireEvent.click(screen.getAllByRole("button", { name: "Deactivate Identity" })[1]);
+
+    await waitFor(() =>
+      expect(mockDeactivatePrincipalIdentity).toHaveBeenCalledWith("token-1", "biz-1", "identity-2"),
+    );
+    await screen.findByText("Identity action: Identity operator@example.com deactivated.");
+    expect(screen.getByText("operator@example.com (inactive)")).toBeInTheDocument();
     confirmSpy.mockRestore();
   });
 
@@ -294,5 +338,6 @@ describe("users page completeness", () => {
 
     expect(screen.getByText("User administration is available to admin principals only.")).toBeInTheDocument();
     expect(screen.queryByText("Create User")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Deactivate Identity" })).not.toBeInTheDocument();
   });
 });

@@ -8,6 +8,7 @@ import type {
   SEOAuditFindingListResponse,
   Principal,
   PrincipalCreateRequest,
+  PrincipalIdentity,
   PrincipalIdentityListResponse,
   PrincipalListResponse,
   SEOSite,
@@ -243,6 +244,34 @@ export async function activatePrincipal(
     method: "POST",
     token,
   });
+}
+
+export async function deactivatePrincipalIdentity(
+  token: string,
+  businessId: string,
+  identityId: string,
+): Promise<PrincipalIdentity> {
+  return apiRequest<PrincipalIdentity>(
+    `/api/businesses/${businessId}/principal-identities/${identityId}/deactivate`,
+    {
+      method: "POST",
+      token,
+    },
+  );
+}
+
+export async function activatePrincipalIdentity(
+  token: string,
+  businessId: string,
+  identityId: string,
+): Promise<PrincipalIdentity> {
+  return apiRequest<PrincipalIdentity>(
+    `/api/businesses/${businessId}/principal-identities/${identityId}/activate`,
+    {
+      method: "POST",
+      token,
+    },
+  );
 }
 
 export async function fetchCompetitorSets(

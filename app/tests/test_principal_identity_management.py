@@ -172,6 +172,57 @@ def test_operator_cannot_manage_principal_identities(
     assert response.status_code == 403
 
 
+def test_operator_cannot_deactivate_principal_identity(
+    db_session,
+    seeded_business,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    admin_token = _seed_credential(
+        db_session,
+        business_id=seeded_business.id,
+        principal_id="identity-admin-action",
+        role=PrincipalRole.ADMIN,
+    )
+    operator_token = _seed_credential(
+        db_session,
+        business_id=seeded_business.id,
+        principal_id="identity-operator-action",
+        role=PrincipalRole.OPERATOR,
+    )
+    db_session.add(
+        Principal(
+            business_id=seeded_business.id,
+            id="managed-operator",
+            display_name="Managed Operator",
+            role=PrincipalRole.OPERATOR,
+            is_active=True,
+        )
+    )
+    db_session.commit()
+
+    client = _make_client(db_session)
+    create_response = client.post(
+        f"/api/businesses/{seeded_business.id}/principal-identities",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "provider": "google",
+            "provider_subject": "google-sub-deactivate-test",
+            "principal_id": "managed-operator",
+            "email": "managed@example.com",
+            "email_verified": True,
+            "is_active": True,
+        },
+    )
+    assert create_response.status_code == 201
+    identity_id = create_response.json()["id"]
+
+    deactivate_response = client.post(
+        f"/api/businesses/{seeded_business.id}/principal-identities/{identity_id}/deactivate",
+        headers={"Authorization": f"Bearer {operator_token}"},
+    )
+    assert deactivate_response.status_code == 403
+
+
 def test_cross_tenant_principal_identity_access_is_blocked(
     db_session,
     seeded_business,

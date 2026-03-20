@@ -5,9 +5,11 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../components/AuthProvider";
 import { useOperatorContext } from "../../components/useOperatorContext";
 import {
+  activatePrincipalIdentity,
   activatePrincipal,
   ApiRequestError,
   createPrincipal,
+  deactivatePrincipalIdentity,
   deactivatePrincipal,
   fetchPrincipalIdentities,
   fetchPrincipals,
@@ -68,6 +70,28 @@ function safePrincipalActionErrorMessage(error: unknown): string {
   return "Failed to update user state.";
 }
 
+function safeIdentityActionErrorMessage(error: unknown): string {
+  if (error instanceof ApiRequestError) {
+    if (error.status === 401) {
+      return "Session expired. Sign in again.";
+    }
+    if (error.status === 403) {
+      return "You are not authorized to update sign-in identities.";
+    }
+    if (error.status === 404) {
+      return "Sign-in identity not found in this business scope.";
+    }
+    if (error.status === 422) {
+      return "Unable to update sign-in identity state.";
+    }
+  }
+  return "Failed to update sign-in identity state.";
+}
+
+function formatIdentityLabel(identity: PrincipalIdentity): string {
+  return identity.email || `${identity.provider}:${identity.provider_subject}`;
+}
+
 export default function UsersPage() {
   const context = useOperatorContext();
   const { principal } = useAuth();
@@ -82,6 +106,9 @@ export default function UsersPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actingPrincipalId, setActingPrincipalId] = useState<string | null>(null);
+  const [identityActionError, setIdentityActionError] = useState<string | null>(null);
+  const [identityActionSuccess, setIdentityActionSuccess] = useState<string | null>(null);
+  const [actingIdentityId, setActingIdentityId] = useState<string | null>(null);
   const [principalId, setPrincipalId] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<PrincipalRole>("operator");
@@ -174,6 +201,8 @@ export default function UsersPage() {
     setSubmitSuccess(null);
     setActionError(null);
     setActionSuccess(null);
+    setIdentityActionError(null);
+    setIdentityActionSuccess(null);
 
     try {
       await createPrincipal(context.token, context.businessId, {
@@ -209,6 +238,8 @@ export default function UsersPage() {
     setActionError(null);
     setActionSuccess(null);
     setActingPrincipalId(user.id);
+    setIdentityActionError(null);
+    setIdentityActionSuccess(null);
     setSubmitError(null);
     setSubmitSuccess(null);
     try {
@@ -228,6 +259,46 @@ export default function UsersPage() {
       setActionError(safePrincipalActionErrorMessage(err));
     } finally {
       setActingPrincipalId(null);
+    }
+  };
+
+  const handleToggleIdentityActive = async (identity: PrincipalIdentity) => {
+    const activating = !identity.is_active;
+    const actionLabel = activating ? "reactivate" : "deactivate";
+    const identityLabel = formatIdentityLabel(identity);
+    const confirmed = window.confirm(
+      `Confirm ${actionLabel} sign-in identity "${identityLabel}" for principal "${identity.principal_id}"?`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setIdentityActionError(null);
+    setIdentityActionSuccess(null);
+    setActingIdentityId(identity.id);
+    setActionError(null);
+    setActionSuccess(null);
+    setSubmitError(null);
+    setSubmitSuccess(null);
+    try {
+      if (activating) {
+        await activatePrincipalIdentity(context.token, context.businessId, identity.id);
+      } else {
+        await deactivatePrincipalIdentity(context.token, context.businessId, identity.id);
+      }
+      const refreshed = await loadUsersData();
+      setUsers(refreshed.users);
+      setIdentities(refreshed.identities);
+      setIdentityWarning(refreshed.identityWarning);
+      setIdentityActionSuccess(
+        activating
+          ? `Identity ${identityLabel} reactivated.`
+          : `Identity ${identityLabel} deactivated.`,
+      );
+    } catch (err) {
+      setIdentityActionError(safeIdentityActionErrorMessage(err));
+    } finally {
+      setActingIdentityId(null);
     }
   };
 
@@ -291,8 +362,10 @@ export default function UsersPage() {
 
       {submitSuccess ? <p className="hint">{submitSuccess}</p> : null}
       {submitError ? <p className="hint error">{submitError}</p> : null}
-      {actionSuccess ? <p className="hint">{actionSuccess}</p> : null}
-      {actionError ? <p className="hint error">{actionError}</p> : null}
+      {actionSuccess ? <p className="hint">Principal action: {actionSuccess}</p> : null}
+      {actionError ? <p className="hint error">Principal action: {actionError}</p> : null}
+      {identityActionSuccess ? <p className="hint">Identity action: {identityActionSuccess}</p> : null}
+      {identityActionError ? <p className="hint error">Identity action: {identityActionError}</p> : null}
       {loadingUsers ? <p className="hint muted">Loading users...</p> : null}
       {usersError ? <p className="hint error">{usersError}</p> : null}
       {identityWarning ? <p className="hint warning">{identityWarning}</p> : null}
@@ -311,47 +384,82 @@ export default function UsersPage() {
             <th>Active</th>
             <th>Last Auth</th>
             <th>Sign-In Identities</th>
-            <th>Action</th>
+            <th>Identity Actions</th>
+            <th>Principal Action</th>
           </tr>
         </thead>
         <tbody>
-          {users.map((user) => (
-            <tr key={`${user.business_id}:${user.id}`}>
-              <td>{user.id}</td>
-              <td>{user.display_name}</td>
-              <td>{user.role}</td>
-              <td>{user.is_active ? "yes" : "no"}</td>
-              <td>{user.last_authenticated_at || "never"}</td>
-              <td>
-                {(identitiesByPrincipalId.get(user.id) || [])
-                  .map((identity) => {
-                    const label = identity.email || `${identity.provider}:${identity.provider_subject}`;
-                    return identity.is_active ? label : `${label} (inactive)`;
-                  })
-                  .join(", ") || "none"}
-              </td>
-              <td>
-                <button
-                  type="button"
-                  disabled={!!actingPrincipalId}
-                  onClick={() => {
-                    void handleToggleUserActive(user);
-                  }}
-                >
-                  {actingPrincipalId === user.id
-                    ? user.is_active
-                      ? "Deactivating..."
-                      : "Reactivating..."
-                    : user.is_active
-                      ? "Deactivate"
-                      : "Reactivate"}
-                </button>
-              </td>
-            </tr>
-          ))}
+          {users.map((user) => {
+            const userIdentities = identitiesByPrincipalId.get(user.id) || [];
+            return (
+              <tr key={`${user.business_id}:${user.id}`}>
+                <td>{user.id}</td>
+                <td>{user.display_name}</td>
+                <td>{user.role}</td>
+                <td>{user.is_active ? "yes" : "no"}</td>
+                <td>{user.last_authenticated_at || "never"}</td>
+                <td>
+                  {userIdentities.length === 0 ? (
+                    "none"
+                  ) : (
+                    <ul style={{ margin: 0, paddingInlineStart: "1.25rem" }}>
+                      {userIdentities.map((identity) => (
+                        <li key={identity.id}>
+                          {formatIdentityLabel(identity)} ({identity.is_active ? "active" : "inactive"})
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </td>
+                <td>
+                  {userIdentities.length === 0 ? (
+                    "none"
+                  ) : (
+                    <div style={{ display: "grid", gap: "0.4rem" }}>
+                      {userIdentities.map((identity) => (
+                        <button
+                          key={identity.id}
+                          type="button"
+                          disabled={!!actingIdentityId || !!actingPrincipalId}
+                          onClick={() => {
+                            void handleToggleIdentityActive(identity);
+                          }}
+                        >
+                          {actingIdentityId === identity.id
+                            ? identity.is_active
+                              ? "Deactivating Identity..."
+                              : "Reactivating Identity..."
+                            : identity.is_active
+                              ? "Deactivate Identity"
+                              : "Reactivate Identity"}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    disabled={!!actingPrincipalId || !!actingIdentityId}
+                    onClick={() => {
+                      void handleToggleUserActive(user);
+                    }}
+                  >
+                    {actingPrincipalId === user.id
+                      ? user.is_active
+                        ? "Deactivating..."
+                        : "Reactivating..."
+                      : user.is_active
+                        ? "Deactivate"
+                        : "Reactivate"}
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
           {!loadingUsers && users.length === 0 ? (
             <tr>
-              <td colSpan={7}>No users found for this business.</td>
+              <td colSpan={8}>No users found for this business.</td>
             </tr>
           ) : null}
         </tbody>
