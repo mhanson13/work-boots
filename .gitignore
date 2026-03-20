@@ -21,6 +21,8 @@ __pycache__/
 node_modules/
 dist/
 coverage/
+frontend/operator-ui/playwright-report/
+frontend/operator-ui/test-results/
 
 # OS files
 .DS_Store
