@@ -22,6 +22,8 @@ type FilterState = {
 };
 
 type SortState = "priority_desc" | "priority_asc" | "newest" | "oldest";
+type QueuePresetKey = "all_recommendations" | "open_high_priority" | "accepted" | "dismissed";
+type QueuePresetSelection = QueuePresetKey | "__custom__";
 
 const DEFAULT_FILTERS: FilterState = {
   status: "",
@@ -62,6 +64,50 @@ const CATEGORY_FILTER_OPTIONS: Array<{ label: string; value: FilterState["catego
   { label: "Content", value: "CONTENT" },
   { label: "Structure", value: "STRUCTURE" },
   { label: "Technical", value: "TECHNICAL" },
+];
+
+const QUEUE_PRESETS: Array<{
+  key: QueuePresetKey;
+  label: string;
+  filters: FilterState;
+  sort: SortState;
+}> = [
+  {
+    key: "all_recommendations",
+    label: "All Recommendations",
+    filters: DEFAULT_FILTERS,
+    sort: DEFAULT_SORT,
+  },
+  {
+    key: "open_high_priority",
+    label: "Open High Priority",
+    filters: {
+      status: "open",
+      priorityBand: "high",
+      category: "",
+    },
+    sort: "priority_desc",
+  },
+  {
+    key: "accepted",
+    label: "Accepted",
+    filters: {
+      status: "accepted",
+      priorityBand: "",
+      category: "",
+    },
+    sort: "newest",
+  },
+  {
+    key: "dismissed",
+    label: "Dismissed",
+    filters: {
+      status: "dismissed",
+      priorityBand: "",
+      category: "",
+    },
+    sort: "newest",
+  },
 ];
 
 function parseStatusFilter(value: string | null): FilterState["status"] {
@@ -133,6 +179,15 @@ function mapSortToApi(sort: SortState): Pick<RecommendationListFilters, "sort_by
     return { sort_by: "priority_score", sort_order: "asc" };
   }
   return { sort_by: "priority_score", sort_order: "desc" };
+}
+
+function matchesPresetState(filters: FilterState, sort: SortState, preset: (typeof QUEUE_PRESETS)[number]): boolean {
+  return (
+    preset.sort === sort &&
+    preset.filters.status === filters.status &&
+    preset.filters.priorityBand === filters.priorityBand &&
+    preset.filters.category === filters.category
+  );
 }
 
 function deriveSourceType(item: Recommendation): string {
@@ -209,6 +264,10 @@ function RecommendationsPageContent() {
       searchParams.get("sort_order"),
     );
   }, [searchParams]);
+  const activePreset = useMemo<QueuePresetSelection>(() => {
+    const matchedPreset = QUEUE_PRESETS.find((preset) => matchesPresetState(filters, sort, preset));
+    return matchedPreset ? matchedPreset.key : "__custom__";
+  }, [filters, sort]);
 
   const hasActiveFilters = Boolean(filters.status || filters.priorityBand || filters.category);
   const displayedRecommendationIds = useMemo(() => items.map((item) => item.id), [items]);
@@ -218,7 +277,7 @@ function RecommendationsPageContent() {
     displayedRecommendationIds.length > 0 &&
     displayedRecommendationIds.every((id) => selectedRecommendationIds.includes(id));
 
-  function updateFilterParams(nextFilters: FilterState) {
+  function updateQueueParams(nextFilters: FilterState, nextSort: SortState) {
     const params = new URLSearchParams(searchParams.toString());
     if (nextFilters.status) {
       params.set("status", nextFilters.status);
@@ -236,23 +295,32 @@ function RecommendationsPageContent() {
     } else {
       params.delete("category");
     }
+    if (nextSort === DEFAULT_SORT) {
+      params.delete("sort");
+    } else {
+      params.set("sort", nextSort);
+    }
+    params.delete("preset");
     params.delete("sort_by");
     params.delete("sort_order");
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
   }
 
+  function updateFilterParams(nextFilters: FilterState) {
+    updateQueueParams(nextFilters, sort);
+  }
+
   function updateSortParam(nextSort: SortState) {
-    const params = new URLSearchParams(searchParams.toString());
-    if (nextSort === DEFAULT_SORT) {
-      params.delete("sort");
-    } else {
-      params.set("sort", nextSort);
+    updateQueueParams(filters, nextSort);
+  }
+
+  function applyPreset(presetKey: QueuePresetKey) {
+    const preset = QUEUE_PRESETS.find((item) => item.key === presetKey);
+    if (!preset) {
+      return;
     }
-    params.delete("sort_by");
-    params.delete("sort_order");
-    const query = params.toString();
-    router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    updateQueueParams(preset.filters, preset.sort);
   }
 
   function buildRecommendationDetailHref(item: Recommendation): string {
@@ -440,6 +508,26 @@ function RecommendationsPageContent() {
           alignItems: "end",
         }}
       >
+        <div className="stack" style={{ gap: "0.35rem" }}>
+          <label htmlFor="recommendation-preset">Preset</label>
+          <select
+            id="recommendation-preset"
+            value={activePreset}
+            onChange={(event) => {
+              const selectedValue = event.target.value as QueuePresetSelection;
+              if (selectedValue !== "__custom__") {
+                applyPreset(selectedValue);
+              }
+            }}
+          >
+            <option value="__custom__">Custom View</option>
+            {QUEUE_PRESETS.map((preset) => (
+              <option key={preset.key} value={preset.key}>
+                {preset.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="stack" style={{ gap: "0.35rem" }}>
           <label htmlFor="recommendation-filter-status">Status</label>
           <select
