@@ -229,6 +229,12 @@ export async function fetchRecommendations(
   if (filters.category) {
     params.set("category", filters.category);
   }
+  if (filters.sort_by) {
+    params.set("sort_by", filters.sort_by);
+  }
+  if (filters.sort_order) {
+    params.set("sort_order", filters.sort_order);
+  }
   const query = params.toString();
 
   return apiRequest<RecommendationListResponse>(

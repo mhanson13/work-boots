@@ -90,6 +90,22 @@ export default function RecommendationDetailPage() {
     if (["SEO", "CONTENT", "STRUCTURE", "TECHNICAL"].includes(category)) {
       nextParams.set("category", category);
     }
+    const sort = (searchParams.get("sort") || "").trim().toLowerCase();
+    if (["priority_asc", "priority_desc", "newest", "oldest"].includes(sort)) {
+      if (sort !== "priority_desc") {
+        nextParams.set("sort", sort);
+      }
+    } else {
+      const sortBy = (searchParams.get("sort_by") || "").trim().toLowerCase();
+      const sortOrder = (searchParams.get("sort_order") || "").trim().toLowerCase();
+      if (sortBy === "created_at" && sortOrder === "asc") {
+        nextParams.set("sort", "oldest");
+      } else if (sortBy === "created_at" && sortOrder === "desc") {
+        nextParams.set("sort", "newest");
+      } else if (sortBy === "priority_score" && sortOrder === "asc") {
+        nextParams.set("sort", "priority_asc");
+      }
+    }
     const query = nextParams.toString();
     return query ? `/recommendations?${query}` : "/recommendations";
   }, [searchParams]);

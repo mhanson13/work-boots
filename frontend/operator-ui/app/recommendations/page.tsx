@@ -13,11 +13,22 @@ type FilterState = {
   category: "" | NonNullable<RecommendationListFilters["category"]>;
 };
 
+type SortState = "priority_desc" | "priority_asc" | "newest" | "oldest";
+
 const DEFAULT_FILTERS: FilterState = {
   status: "",
   priorityBand: "",
   category: "",
 };
+
+const DEFAULT_SORT: SortState = "priority_desc";
+
+const SORT_OPTIONS: Array<{ label: string; value: SortState }> = [
+  { label: "Priority: High to Low", value: "priority_desc" },
+  { label: "Priority: Low to High", value: "priority_asc" },
+  { label: "Newest First", value: "newest" },
+  { label: "Oldest First", value: "oldest" },
+];
 
 const STATUS_FILTER_OPTIONS: Array<{ label: string; value: FilterState["status"] }> = [
   { label: "All statuses", value: "" },
@@ -81,6 +92,41 @@ function parseCategoryFilter(value: string | null): FilterState["category"] {
   return normalized as FilterState["category"];
 }
 
+function parseSortOption(
+  sortValue: string | null,
+  sortByValue: string | null,
+  sortOrderValue: string | null,
+): SortState {
+  const allowedSortValues = new Set(SORT_OPTIONS.map((option) => option.value));
+  const normalizedSort = (sortValue || "").trim().toLowerCase();
+  if (allowedSortValues.has(normalizedSort as SortState)) {
+    return normalizedSort as SortState;
+  }
+
+  const sortBy = (sortByValue || "").trim().toLowerCase();
+  const sortOrder = (sortOrderValue || "").trim().toLowerCase();
+  if (sortBy === "created_at") {
+    return sortOrder === "asc" ? "oldest" : "newest";
+  }
+  if (sortBy === "priority_score" && sortOrder === "asc") {
+    return "priority_asc";
+  }
+  return DEFAULT_SORT;
+}
+
+function mapSortToApi(sort: SortState): Pick<RecommendationListFilters, "sort_by" | "sort_order"> {
+  if (sort === "newest") {
+    return { sort_by: "created_at", sort_order: "desc" };
+  }
+  if (sort === "oldest") {
+    return { sort_by: "created_at", sort_order: "asc" };
+  }
+  if (sort === "priority_asc") {
+    return { sort_by: "priority_score", sort_order: "asc" };
+  }
+  return { sort_by: "priority_score", sort_order: "desc" };
+}
+
 function deriveSourceType(item: Recommendation): string {
   if (item.audit_run_id && item.comparison_run_id) {
     return "mixed";
@@ -125,6 +171,13 @@ function RecommendationsPageContent() {
       category: parseCategoryFilter(searchParams.get("category")),
     };
   }, [searchParams]);
+  const sort = useMemo<SortState>(() => {
+    return parseSortOption(
+      searchParams.get("sort"),
+      searchParams.get("sort_by"),
+      searchParams.get("sort_order"),
+    );
+  }, [searchParams]);
 
   const hasActiveFilters = Boolean(filters.status || filters.priorityBand || filters.category);
 
@@ -146,6 +199,21 @@ function RecommendationsPageContent() {
     } else {
       params.delete("category");
     }
+    params.delete("sort_by");
+    params.delete("sort_order");
+    const query = params.toString();
+    router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }
+
+  function updateSortParam(nextSort: SortState) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextSort === DEFAULT_SORT) {
+      params.delete("sort");
+    } else {
+      params.set("sort", nextSort);
+    }
+    params.delete("sort_by");
+    params.delete("sort_order");
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
   }
@@ -161,6 +229,9 @@ function RecommendationsPageContent() {
     }
     if (filters.category) {
       params.set("category", filters.category);
+    }
+    if (sort !== DEFAULT_SORT) {
+      params.set("sort", sort);
     }
     return `/recommendations/${item.id}?${params.toString()}`;
   }
@@ -189,6 +260,9 @@ function RecommendationsPageContent() {
         if (filters.category) {
           activeFilters.category = filters.category;
         }
+        const sortConfig = mapSortToApi(sort);
+        activeFilters.sort_by = sortConfig.sort_by;
+        activeFilters.sort_order = sortConfig.sort_order;
         const response = await fetchRecommendations(context.token, context.businessId, selectedSiteId, activeFilters);
         if (!cancelled) {
           setItems(response.items);
@@ -216,6 +290,7 @@ function RecommendationsPageContent() {
     filters.status,
     filters.priorityBand,
     filters.category,
+    sort,
   ]);
 
   if (context.loading) {
@@ -308,6 +383,20 @@ function RecommendationsPageContent() {
           >
             {CATEGORY_FILTER_OPTIONS.map((option) => (
               <option key={option.label} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="stack" style={{ gap: "0.35rem" }}>
+          <label htmlFor="recommendation-sort">Sort</label>
+          <select
+            id="recommendation-sort"
+            value={sort}
+            onChange={(event) => updateSortParam(event.target.value as SortState)}
+          >
+            {SORT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}

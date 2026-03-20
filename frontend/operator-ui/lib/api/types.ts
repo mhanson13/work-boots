@@ -202,6 +202,8 @@ export interface RecommendationListFilters {
   status?: "open" | "in_progress" | "accepted" | "dismissed" | "snoozed" | "resolved";
   priority_band?: "low" | "medium" | "high" | "critical";
   category?: "SEO" | "CONTENT" | "STRUCTURE" | "TECHNICAL";
+  sort_by?: "priority_score" | "created_at";
+  sort_order?: "asc" | "desc";
 }
 
 export interface RecommendationListResponse {
