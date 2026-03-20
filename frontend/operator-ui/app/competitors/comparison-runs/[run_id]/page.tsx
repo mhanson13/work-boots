@@ -116,6 +116,20 @@ export default function ComparisonRunDetailPage() {
     return queryText ? `/competitors/${parentSetId}?${queryText}` : `/competitors/${parentSetId}`;
   }, [requestedSetId, requestedSiteId, run]);
 
+  function buildSnapshotRunHref(snapshotId: string): string {
+    const params = new URLSearchParams();
+    const siteId = run?.site_id || requestedSiteId;
+    const setId = run?.competitor_set_id || requestedSetId;
+    if (siteId) {
+      params.set("site_id", siteId);
+    }
+    if (setId) {
+      params.set("set_id", setId);
+    }
+    const query = params.toString();
+    return query ? `/competitors/snapshot-runs/${snapshotId}?${query}` : `/competitors/snapshot-runs/${snapshotId}`;
+  }
+
   const findings = report?.findings.items || [];
   const findingsTotal = report?.findings.total ?? findings.length;
   const typeCounts = toSortedCountEntries(report?.rollups.findings_by_type);
@@ -348,7 +362,10 @@ export default function ComparisonRunDetailPage() {
               </Link>
             </p>
             <p>
-              Snapshot Run ID: <code>{run.snapshot_run_id}</code>
+              Snapshot Run ID:{" "}
+              <Link href={buildSnapshotRunHref(run.snapshot_run_id)}>
+                <code>{run.snapshot_run_id}</code>
+              </Link>
             </p>
             <p>Status: {run.status}</p>
             <p>Created By: {run.created_by_principal_id || "-"}</p>
@@ -364,6 +381,7 @@ export default function ComparisonRunDetailPage() {
             <h2>Related Navigation</h2>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
               <Link href={backToSetHref}>Parent Competitor Set</Link>
+              <Link href={buildSnapshotRunHref(run.snapshot_run_id)}>Snapshot Run</Link>
               <Link href="/recommendations">Recommendation Queue</Link>
               <Link href="/audits">Audit Runs</Link>
               {run.baseline_audit_run_id ? (

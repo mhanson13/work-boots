@@ -204,6 +204,33 @@ export interface CompetitorSnapshotRunListResponse {
   total: number;
 }
 
+export interface CompetitorSnapshotPage {
+  id: string;
+  business_id: string;
+  site_id: string;
+  competitor_set_id: string;
+  snapshot_run_id: string;
+  competitor_domain_id: string;
+  url: string;
+  status_code: number | null;
+  title: string | null;
+  meta_description: string | null;
+  canonical_url: string | null;
+  h1_json: string[] | null;
+  h2_json: string[] | null;
+  word_count: number | null;
+  internal_link_count: number | null;
+  fetched_at: string;
+  error_summary: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CompetitorSnapshotPageListResponse {
+  items: CompetitorSnapshotPage[];
+  total: number;
+}
+
 export interface CompetitorComparisonRun {
   id: string;
   business_id: string;

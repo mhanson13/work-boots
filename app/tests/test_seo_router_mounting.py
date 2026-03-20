@@ -25,6 +25,7 @@ def test_main_app_mounts_seo_routes() -> None:
     # Phase 2 snapshot runs.
     assert route_methods["/api/businesses/{business_id}/seo/competitor-sets/{set_id}/snapshot-runs"] >= {"GET", "POST"}
     assert route_methods["/api/businesses/{business_id}/seo/snapshot-runs/{run_id}"] >= {"GET"}
+    assert route_methods["/api/businesses/{business_id}/seo/snapshot-runs/{run_id}/pages"] >= {"GET"}
 
     # Phase 2 deterministic comparison runs.
     assert route_methods["/api/businesses/{business_id}/seo/competitor-sets/{set_id}/comparison-runs"] >= {
@@ -99,6 +100,9 @@ def test_main_app_mounts_seo_routes() -> None:
     ] >= {"GET", "POST"}
     assert route_methods[
         "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-snapshot-runs/{snapshot_run_id}"
+    ] >= {"GET"}
+    assert route_methods[
+        "/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-snapshot-runs/{snapshot_run_id}/pages"
     ] >= {"GET"}
     assert route_methods["/api/v1/businesses/{business_id}/seo/sites/{site_id}/competitor-comparison-runs"] >= {
         "GET",

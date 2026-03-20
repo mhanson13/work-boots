@@ -52,6 +52,8 @@ from app.schemas.seo_competitor import (
     SEOCompetitorSetRead,
     SEOCompetitorSetUpdateRequest,
     SEOCompetitorSnapshotRunCreateRequest,
+    SEOCompetitorSnapshotPageListResponse,
+    SEOCompetitorSnapshotPageRead,
     SEOCompetitorSnapshotRunListResponse,
     SEOCompetitorSnapshotRunRead,
 )
@@ -1484,6 +1486,30 @@ def get_competitor_snapshot_run(
     return SEOCompetitorSnapshotRunRead.model_validate(snapshot_run)
 
 
+@router.get("/snapshot-runs/{run_id}/pages", response_model=SEOCompetitorSnapshotPageListResponse)
+def list_competitor_snapshot_pages(
+    business_id: str,
+    run_id: str,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_competitor_service: SEOCompetitorService = Depends(get_seo_competitor_service),
+) -> SEOCompetitorSnapshotPageListResponse:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        items = seo_competitor_service.list_snapshot_pages(
+            business_id=scoped_business_id,
+            snapshot_run_id=run_id,
+        )
+    except SEOCompetitorNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return SEOCompetitorSnapshotPageListResponse(
+        items=[SEOCompetitorSnapshotPageRead.model_validate(item) for item in items],
+        total=len(items),
+    )
+
+
 @router.post(
     "/competitor-sets/{set_id}/comparison-runs",
     response_model=SEOCompetitorComparisonRunRead,
@@ -1963,6 +1989,45 @@ def get_competitor_snapshot_run_v1(
         detail="Competitor snapshot run not found",
     )
     return SEOCompetitorSnapshotRunRead.model_validate(snapshot_run)
+
+
+@router_v1.get(
+    "/sites/{site_id}/competitor-snapshot-runs/{snapshot_run_id}/pages",
+    response_model=SEOCompetitorSnapshotPageListResponse,
+)
+def list_competitor_snapshot_pages_v1(
+    business_id: str,
+    site_id: str,
+    snapshot_run_id: str,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    seo_competitor_service: SEOCompetitorService = Depends(get_seo_competitor_service),
+) -> SEOCompetitorSnapshotPageListResponse:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        snapshot_run = seo_competitor_service.get_snapshot_run(
+            business_id=scoped_business_id,
+            snapshot_run_id=snapshot_run_id,
+        )
+        items = seo_competitor_service.list_snapshot_pages(
+            business_id=scoped_business_id,
+            snapshot_run_id=snapshot_run_id,
+        )
+    except (SEOSiteNotFoundError, SEOCompetitorNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    _assert_site_match(
+        expected_site_id=site_id,
+        actual_site_id=snapshot_run.site_id,
+        detail="Competitor snapshot run not found",
+    )
+    return SEOCompetitorSnapshotPageListResponse(
+        items=[SEOCompetitorSnapshotPageRead.model_validate(item) for item in items],
+        total=len(items),
+    )
 
 
 @router_v1.post(

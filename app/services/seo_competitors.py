@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.seo_competitor_domain import SEOCompetitorDomain
+from app.models.seo_competitor_snapshot_page import SEOCompetitorSnapshotPage
 from app.models.seo_competitor_set import SEOCompetitorSet
 from app.models.seo_competitor_snapshot_run import SEOCompetitorSnapshotRun
 from app.repositories.business_repository import BusinessRepository
@@ -233,6 +234,19 @@ class SEOCompetitorService:
         if snapshot_run is None:
             raise SEOCompetitorNotFoundError("Competitor snapshot run not found")
         return snapshot_run
+
+    def list_snapshot_pages(
+        self,
+        *,
+        business_id: str,
+        snapshot_run_id: str,
+    ) -> list[SEOCompetitorSnapshotPage]:
+        self._require_business(business_id)
+        self.get_snapshot_run(business_id=business_id, snapshot_run_id=snapshot_run_id)
+        return self.seo_competitor_repository.list_snapshot_pages_for_business_run(
+            business_id,
+            snapshot_run_id,
+        )
 
     def _require_business(self, business_id: str) -> None:
         business = self.business_repository.get(business_id)

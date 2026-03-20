@@ -225,6 +225,44 @@ class SEOCompetitorSnapshotRunListResponse(BaseModel):
     total: int
 
 
+class SEOCompetitorSnapshotPageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    business_id: str
+    site_id: str
+    competitor_set_id: str
+    snapshot_run_id: str
+    competitor_domain_id: str
+    url: str
+    status_code: int | None
+    title: str | None
+    meta_description: str | None
+    canonical_url: str | None
+    h1_json: list[str] | None
+    h2_json: list[str] | None
+    word_count: int | None
+    internal_link_count: int | None
+    fetched_at: datetime
+    error_summary: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    @field_validator("h1_json", "h2_json", mode="before")
+    @classmethod
+    def normalize_heading_lists(cls, value: Any) -> list[str] | None:
+        if value is None:
+            return None
+        if isinstance(value, list):
+            return [str(item) for item in value]
+        raise TypeError("Expected list for heading fields")
+
+
+class SEOCompetitorSnapshotPageListResponse(BaseModel):
+    items: list[SEOCompetitorSnapshotPageRead]
+    total: int
+
+
 class SEOCompetitorComparisonRunCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

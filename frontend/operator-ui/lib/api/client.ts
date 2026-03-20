@@ -15,6 +15,7 @@ import type {
   CompetitorComparisonReport,
   CompetitorDomainListResponse,
   CompetitorComparisonRunListResponse,
+  CompetitorSnapshotPageListResponse,
   CompetitorSet,
   CompetitorSetListResponse,
   RecommendationRunListResponse,
@@ -249,6 +250,17 @@ export async function fetchCompetitorSnapshotRun(
   return apiRequest<CompetitorSnapshotRun>(`/api/businesses/${businessId}/seo/snapshot-runs/${snapshotRunId}`, {
     token,
   });
+}
+
+export async function fetchCompetitorSnapshotPages(
+  token: string,
+  businessId: string,
+  snapshotRunId: string,
+): Promise<CompetitorSnapshotPageListResponse> {
+  return apiRequest<CompetitorSnapshotPageListResponse>(
+    `/api/businesses/${businessId}/seo/snapshot-runs/${snapshotRunId}/pages`,
+    { token },
+  );
 }
 
 export async function fetchCompetitorComparisonRuns(
