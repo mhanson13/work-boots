@@ -32,6 +32,9 @@ const DEFAULT_FILTERS: FilterState = {
 };
 
 const DEFAULT_SORT: SortState = "priority_desc";
+const DEFAULT_PAGE = 1;
+const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+const DEFAULT_PAGE_SIZE = PAGE_SIZE_OPTIONS[0];
 
 const SORT_OPTIONS: Array<{ label: string; value: SortState }> = [
   { label: "Priority: High to Low", value: "priority_desc" },
@@ -168,6 +171,38 @@ function parseSortOption(
   return DEFAULT_SORT;
 }
 
+function parsePage(value: string | null): number {
+  if (!value) {
+    return DEFAULT_PAGE;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < DEFAULT_PAGE) {
+    return DEFAULT_PAGE;
+  }
+  return parsed;
+}
+
+function parsePageSize(value: string | null): number {
+  if (!value) {
+    return DEFAULT_PAGE_SIZE;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_PAGE_SIZE;
+  }
+  if (!PAGE_SIZE_OPTIONS.includes(parsed as (typeof PAGE_SIZE_OPTIONS)[number])) {
+    return DEFAULT_PAGE_SIZE;
+  }
+  return parsed;
+}
+
+function totalPagesFor(totalItems: number, pageSize: number): number {
+  if (totalItems <= 0) {
+    return 1;
+  }
+  return Math.ceil(totalItems / pageSize);
+}
+
 function mapSortToApi(sort: SortState): Pick<RecommendationListFilters, "sort_by" | "sort_order"> {
   if (sort === "newest") {
     return { sort_by: "created_at", sort_order: "desc" };
@@ -298,19 +333,32 @@ function RecommendationsPageContent() {
       searchParams.get("sort_order"),
     );
   }, [searchParams]);
+  const currentPage = useMemo<number>(() => parsePage(searchParams.get("page")), [searchParams]);
+  const pageSize = useMemo<number>(() => parsePageSize(searchParams.get("page_size")), [searchParams]);
   const activePreset = useMemo<QueuePresetSelection>(() => {
     const matchedPreset = QUEUE_PRESETS.find((preset) => matchesPresetState(filters, sort, preset));
     return matchedPreset ? matchedPreset.key : "__custom__";
   }, [filters, sort]);
 
+  const totalRecommendations = items.length;
+  const totalPages = useMemo<number>(() => totalPagesFor(totalRecommendations, pageSize), [totalRecommendations, pageSize]);
+  const activePage = useMemo<number>(() => Math.min(currentPage, totalPages), [currentPage, totalPages]);
+  const pageStartIndex = useMemo<number>(() => (activePage - DEFAULT_PAGE) * pageSize, [activePage, pageSize]);
+  const visibleItems = useMemo<Recommendation[]>(
+    () => items.slice(pageStartIndex, pageStartIndex + pageSize),
+    [items, pageStartIndex, pageSize],
+  );
+  const firstVisiblePosition = totalRecommendations === 0 ? 0 : pageStartIndex + 1;
+  const lastVisiblePosition = totalRecommendations === 0 ? 0 : pageStartIndex + visibleItems.length;
+
   const hasActiveFilters = Boolean(filters.status || filters.priorityBand || filters.category);
-  const displayedRecommendationIds = useMemo(() => items.map((item) => item.id), [items]);
+  const displayedRecommendationIds = useMemo(() => visibleItems.map((item) => item.id), [visibleItems]);
   const displayedRecommendationIdSet = useMemo(() => new Set(displayedRecommendationIds), [displayedRecommendationIds]);
   const selectedCount = selectedRecommendationIds.length;
   const allDisplayedSelected =
     displayedRecommendationIds.length > 0 &&
     displayedRecommendationIds.every((id) => selectedRecommendationIds.includes(id));
-  const queueSummary = useMemo(() => summarizeQueue(items), [items]);
+  const queueSummary = useMemo(() => summarizeQueue(visibleItems), [visibleItems]);
 
   function updateQueueParams(nextFilters: FilterState, nextSort: SortState) {
     const params = new URLSearchParams(searchParams.toString());
@@ -338,6 +386,7 @@ function RecommendationsPageContent() {
     params.delete("preset");
     params.delete("sort_by");
     params.delete("sort_order");
+    params.delete("page");
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
   }
@@ -358,6 +407,31 @@ function RecommendationsPageContent() {
     updateQueueParams(preset.filters, preset.sort);
   }
 
+  function updatePaginationParams(nextPage: number, nextPageSize: number) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextPage > DEFAULT_PAGE) {
+      params.set("page", String(nextPage));
+    } else {
+      params.delete("page");
+    }
+    if (nextPageSize !== DEFAULT_PAGE_SIZE) {
+      params.set("page_size", String(nextPageSize));
+    } else {
+      params.delete("page_size");
+    }
+    const query = params.toString();
+    router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }
+
+  function updatePageSizeParam(nextPageSize: number) {
+    updatePaginationParams(DEFAULT_PAGE, nextPageSize);
+  }
+
+  function goToPage(nextPage: number) {
+    const boundedPage = Math.min(Math.max(nextPage, DEFAULT_PAGE), totalPages);
+    updatePaginationParams(boundedPage, pageSize);
+  }
+
   function buildRecommendationDetailHref(item: Recommendation): string {
     const params = new URLSearchParams();
     params.set("site_id", item.site_id);
@@ -372,6 +446,12 @@ function RecommendationsPageContent() {
     }
     if (sort !== DEFAULT_SORT) {
       params.set("sort", sort);
+    }
+    if (activePage > DEFAULT_PAGE) {
+      params.set("page", String(activePage));
+    }
+    if (pageSize !== DEFAULT_PAGE_SIZE) {
+      params.set("page_size", String(pageSize));
     }
     return `/recommendations/${item.id}?${params.toString()}`;
   }
@@ -398,7 +478,7 @@ function RecommendationsPageContent() {
       return;
     }
 
-    const selectedItems = items.filter((item) => selectedRecommendationIds.includes(item.id));
+    const selectedItems = visibleItems.filter((item) => selectedRecommendationIds.includes(item.id));
     if (selectedItems.length === 0) {
       return;
     }
@@ -438,6 +518,25 @@ function RecommendationsPageContent() {
       setBulkActionInFlight(null);
     }
   }
+
+  useEffect(() => {
+    if (currentPage === activePage) {
+      return;
+    }
+    const params = new URLSearchParams(searchParams.toString());
+    if (activePage > DEFAULT_PAGE) {
+      params.set("page", String(activePage));
+    } else {
+      params.delete("page");
+    }
+    if (pageSize !== DEFAULT_PAGE_SIZE) {
+      params.set("page_size", String(pageSize));
+    } else {
+      params.delete("page_size");
+    }
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }, [activePage, currentPage, pageSize, pathname, router, searchParams]);
 
   useEffect(() => {
     setSelectedRecommendationIds((current) => current.filter((id) => displayedRecommendationIdSet.has(id)));
@@ -651,7 +750,7 @@ function RecommendationsPageContent() {
         }}
       >
         <div className="panel stack" style={{ padding: "0.6rem", gap: "0.2rem" }}>
-          <span className="hint muted">Total Shown</span>
+          <span className="hint muted">Shown On Page</span>
           <strong>{queueSummary.total}</strong>
         </div>
         <div className="panel stack" style={{ padding: "0.6rem", gap: "0.2rem" }}>
@@ -670,6 +769,46 @@ function RecommendationsPageContent() {
           <span className="hint muted">High Priority</span>
           <strong>{queueSummary.highPriority}</strong>
         </div>
+      </div>
+      <p className="hint muted">Summary cards reflect the current page only.</p>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "end" }}>
+        <div className="stack" style={{ gap: "0.35rem", minWidth: "140px" }}>
+          <label htmlFor="recommendation-page-size">Results per page</label>
+          <select
+            id="recommendation-page-size"
+            value={pageSize}
+            onChange={(event) => updatePageSizeParam(Number.parseInt(event.target.value, 10))}
+          >
+            {PAGE_SIZE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+          <button
+            type="button"
+            onClick={() => goToPage(activePage - 1)}
+            disabled={loadingItems || activePage <= DEFAULT_PAGE}
+          >
+            Previous
+          </button>
+          <span className="hint muted">
+            Page {activePage} of {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => goToPage(activePage + 1)}
+            disabled={loadingItems || activePage >= totalPages}
+          >
+            Next
+          </button>
+        </div>
+        <span className="hint muted" style={{ marginLeft: "auto" }}>
+          Showing {firstVisiblePosition}-{lastVisiblePosition} of {totalRecommendations}
+        </span>
       </div>
 
       {loadingItems ? <p className="hint muted">Loading recommendations...</p> : null}
@@ -697,7 +836,7 @@ function RecommendationsPageContent() {
         >
           {bulkActionInFlight === "dismissed" ? "Applying..." : "Dismiss Selected"}
         </button>
-        <span className="hint muted">{selectedCount} selected</span>
+        <span className="hint muted">{selectedCount} selected on this page</span>
       </div>
 
       <table className="table">
@@ -709,7 +848,7 @@ function RecommendationsPageContent() {
                 aria-label="Select all displayed recommendations"
                 checked={allDisplayedSelected}
                 onChange={(event) => toggleSelectAllDisplayed(event.target.checked)}
-                disabled={items.length === 0 || bulkActionInFlight !== null}
+                disabled={visibleItems.length === 0 || bulkActionInFlight !== null}
               />
             </th>
             <th>Title</th>
@@ -724,7 +863,7 @@ function RecommendationsPageContent() {
           </tr>
         </thead>
         <tbody>
-          {items.map((item) => (
+          {visibleItems.map((item) => (
             <tr
               key={item.id}
               role="link"
@@ -762,7 +901,7 @@ function RecommendationsPageContent() {
               <td>{item.site_id}</td>
             </tr>
           ))}
-          {items.length === 0 && !loadingItems ? (
+          {visibleItems.length === 0 && !loadingItems ? (
             <tr>
               <td colSpan={10}>
                 {hasActiveFilters

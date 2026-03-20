@@ -12,6 +12,8 @@ import {
 } from "../../../lib/api/client";
 import type { Recommendation } from "../../../lib/api/types";
 
+const RECOMMENDATION_PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+
 function formatDateTime(value: string | null): string {
   if (!value) {
     return "-";
@@ -105,6 +107,17 @@ export default function RecommendationDetailPage() {
       } else if (sortBy === "priority_score" && sortOrder === "asc") {
         nextParams.set("sort", "priority_asc");
       }
+    }
+    const page = Number.parseInt((searchParams.get("page") || "").trim(), 10);
+    if (Number.isFinite(page) && page > 1) {
+      nextParams.set("page", String(page));
+    }
+    const pageSize = Number.parseInt((searchParams.get("page_size") || "").trim(), 10);
+    if (
+      Number.isFinite(pageSize) &&
+      RECOMMENDATION_PAGE_SIZE_OPTIONS.includes(pageSize as (typeof RECOMMENDATION_PAGE_SIZE_OPTIONS)[number])
+    ) {
+      nextParams.set("page_size", String(pageSize));
     }
     const query = nextParams.toString();
     return query ? `/recommendations?${query}` : "/recommendations";
