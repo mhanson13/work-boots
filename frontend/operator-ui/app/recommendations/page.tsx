@@ -4,8 +4,16 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useOperatorContext } from "../../components/useOperatorContext";
-import { ApiRequestError, fetchRecommendations } from "../../lib/api/client";
-import type { Recommendation, RecommendationListFilters } from "../../lib/api/types";
+import {
+  ApiRequestError,
+  fetchRecommendations,
+  updateRecommendationStatus,
+} from "../../lib/api/client";
+import type {
+  Recommendation,
+  RecommendationActionStatus,
+  RecommendationListFilters,
+} from "../../lib/api/types";
 
 type FilterState = {
   status: "" | NonNullable<RecommendationListFilters["status"]>;
@@ -155,6 +163,24 @@ function safeRecommendationsErrorMessage(error: unknown): string {
   return "Unable to load recommendations right now. Please try again.";
 }
 
+function safeBulkRecommendationErrorMessage(error: unknown): string {
+  if (error instanceof ApiRequestError) {
+    if (error.status === 401) {
+      return "Session expired. Sign in again.";
+    }
+    if (error.status === 403) {
+      return "You are not authorized to update one or more recommendations.";
+    }
+    if (error.status === 404) {
+      return "One or more recommendations were not found in your tenant scope.";
+    }
+    if (error.status === 422) {
+      return "One or more recommendation updates are not allowed in the current state.";
+    }
+  }
+  return "Unable to update one or more recommendations right now. Please try again.";
+}
+
 function RecommendationsPageContent() {
   const router = useRouter();
   const pathname = usePathname();
@@ -163,6 +189,11 @@ function RecommendationsPageContent() {
   const [items, setItems] = useState<Recommendation[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
   const [itemsError, setItemsError] = useState<string | null>(null);
+  const [selectedRecommendationIds, setSelectedRecommendationIds] = useState<string[]>([]);
+  const [bulkActionInFlight, setBulkActionInFlight] = useState<RecommendationActionStatus | null>(null);
+  const [bulkActionSuccess, setBulkActionSuccess] = useState<string | null>(null);
+  const [bulkActionError, setBulkActionError] = useState<string | null>(null);
+  const [bulkRefreshNonce, setBulkRefreshNonce] = useState(0);
 
   const filters = useMemo<FilterState>(() => {
     return {
@@ -180,6 +211,12 @@ function RecommendationsPageContent() {
   }, [searchParams]);
 
   const hasActiveFilters = Boolean(filters.status || filters.priorityBand || filters.category);
+  const displayedRecommendationIds = useMemo(() => items.map((item) => item.id), [items]);
+  const displayedRecommendationIdSet = useMemo(() => new Set(displayedRecommendationIds), [displayedRecommendationIds]);
+  const selectedCount = selectedRecommendationIds.length;
+  const allDisplayedSelected =
+    displayedRecommendationIds.length > 0 &&
+    displayedRecommendationIds.every((id) => selectedRecommendationIds.includes(id));
 
   function updateFilterParams(nextFilters: FilterState) {
     const params = new URLSearchParams(searchParams.toString());
@@ -236,11 +273,82 @@ function RecommendationsPageContent() {
     return `/recommendations/${item.id}?${params.toString()}`;
   }
 
+  function toggleRecommendationSelection(recommendationId: string) {
+    setSelectedRecommendationIds((current) => {
+      if (current.includes(recommendationId)) {
+        return current.filter((value) => value !== recommendationId);
+      }
+      return [...current, recommendationId];
+    });
+  }
+
+  function toggleSelectAllDisplayed(checked: boolean) {
+    if (checked) {
+      setSelectedRecommendationIds(displayedRecommendationIds);
+      return;
+    }
+    setSelectedRecommendationIds([]);
+  }
+
+  async function handleBulkStatusUpdate(status: RecommendationActionStatus) {
+    if (!context.selectedSiteId || selectedRecommendationIds.length === 0 || bulkActionInFlight) {
+      return;
+    }
+
+    const selectedItems = items.filter((item) => selectedRecommendationIds.includes(item.id));
+    if (selectedItems.length === 0) {
+      return;
+    }
+
+    setBulkActionInFlight(status);
+    setBulkActionSuccess(null);
+    setBulkActionError(null);
+    try {
+      const results = await Promise.allSettled(
+        selectedItems.map((item) =>
+          updateRecommendationStatus(context.token, context.businessId, item.site_id, item.id, { status }),
+        ),
+      );
+      const successfulCount = results.filter((result) => result.status === "fulfilled").length;
+      const failedResults = results.filter((result) => result.status === "rejected");
+      const failedCount = failedResults.length;
+
+      if (successfulCount > 0) {
+        setBulkActionSuccess(
+          `Updated ${successfulCount} recommendation${successfulCount === 1 ? "" : "s"} to ${status}.`,
+        );
+        setSelectedRecommendationIds([]);
+        setBulkRefreshNonce((current) => current + 1);
+      }
+
+      if (failedCount > 0) {
+        const firstError = failedResults[0];
+        const baseErrorMessage =
+          firstError && firstError.status === "rejected"
+            ? safeBulkRecommendationErrorMessage(firstError.reason)
+            : safeBulkRecommendationErrorMessage(null);
+        setBulkActionError(
+          `${baseErrorMessage} ${failedCount} update${failedCount === 1 ? "" : "s"} failed.`,
+        );
+      }
+    } finally {
+      setBulkActionInFlight(null);
+    }
+  }
+
+  useEffect(() => {
+    setSelectedRecommendationIds((current) => current.filter((id) => displayedRecommendationIdSet.has(id)));
+  }, [displayedRecommendationIdSet]);
+
   useEffect(() => {
     if (context.loading || context.error || !context.selectedSiteId) {
       setItems([]);
       setItemsError(null);
       setLoadingItems(false);
+      setSelectedRecommendationIds([]);
+      setBulkActionInFlight(null);
+      setBulkActionSuccess(null);
+      setBulkActionError(null);
       return;
     }
     let cancelled = false;
@@ -291,6 +399,7 @@ function RecommendationsPageContent() {
     filters.priorityBand,
     filters.category,
     sort,
+    bulkRefreshNonce,
   ]);
 
   if (context.loading) {
@@ -413,10 +522,44 @@ function RecommendationsPageContent() {
 
       {loadingItems ? <p className="hint muted">Loading recommendations...</p> : null}
       {itemsError ? <p className="hint error">{itemsError}</p> : null}
+      {bulkActionSuccess ? <p className="hint">{bulkActionSuccess}</p> : null}
+      {bulkActionError ? <p className="hint error">{bulkActionError}</p> : null}
+
+      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+        <button
+          type="button"
+          className="primary"
+          disabled={selectedCount === 0 || bulkActionInFlight !== null}
+          onClick={() => {
+            void handleBulkStatusUpdate("accepted");
+          }}
+        >
+          {bulkActionInFlight === "accepted" ? "Applying..." : "Accept Selected"}
+        </button>
+        <button
+          type="button"
+          disabled={selectedCount === 0 || bulkActionInFlight !== null}
+          onClick={() => {
+            void handleBulkStatusUpdate("dismissed");
+          }}
+        >
+          {bulkActionInFlight === "dismissed" ? "Applying..." : "Dismiss Selected"}
+        </button>
+        <span className="hint muted">{selectedCount} selected</span>
+      </div>
 
       <table className="table">
         <thead>
           <tr>
+            <th>
+              <input
+                type="checkbox"
+                aria-label="Select all displayed recommendations"
+                checked={allDisplayedSelected}
+                onChange={(event) => toggleSelectAllDisplayed(event.target.checked)}
+                disabled={items.length === 0 || bulkActionInFlight !== null}
+              />
+            </th>
             <th>Title</th>
             <th>Summary</th>
             <th>Status</th>
@@ -443,6 +586,17 @@ function RecommendationsPageContent() {
                 }
               }}
             >
+              <td>
+                <input
+                  type="checkbox"
+                  aria-label={`Select recommendation ${item.id}`}
+                  checked={selectedRecommendationIds.includes(item.id)}
+                  disabled={bulkActionInFlight !== null}
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                  onChange={() => toggleRecommendationSelection(item.id)}
+                />
+              </td>
               <td>{item.title}</td>
               <td>{item.rationale}</td>
               <td>{item.status}</td>
@@ -458,7 +612,7 @@ function RecommendationsPageContent() {
           ))}
           {items.length === 0 && !loadingItems ? (
             <tr>
-              <td colSpan={9}>
+              <td colSpan={10}>
                 {hasActiveFilters
                   ? "No recommendations match the current filters."
                   : "No recommendations found for this site."}
