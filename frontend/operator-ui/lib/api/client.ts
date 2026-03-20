@@ -17,6 +17,7 @@ import type {
   Recommendation,
   RecommendationActionStatus,
   RecommendationWorkflowUpdatePayload,
+  RecommendationListFilters,
   RecommendationListResponse,
   AutomationRunListResponse,
   GoogleBusinessProfileAccountsResponse,
@@ -216,9 +217,22 @@ export async function fetchRecommendations(
   token: string,
   businessId: string,
   siteId: string,
+  filters: RecommendationListFilters = {},
 ): Promise<RecommendationListResponse> {
+  const params = new URLSearchParams();
+  if (filters.status) {
+    params.set("status", filters.status);
+  }
+  if (filters.priority_band) {
+    params.set("priority_band", filters.priority_band);
+  }
+  if (filters.category) {
+    params.set("category", filters.category);
+  }
+  const query = params.toString();
+
   return apiRequest<RecommendationListResponse>(
-    `/api/businesses/${businessId}/seo/sites/${siteId}/recommendations`,
+    `/api/businesses/${businessId}/seo/sites/${siteId}/recommendations${query ? `?${query}` : ""}`,
     { token },
   );
 }

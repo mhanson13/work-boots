@@ -198,6 +198,12 @@ export interface RecommendationWorkflowUpdatePayload {
   note?: string | null;
 }
 
+export interface RecommendationListFilters {
+  status?: "open" | "in_progress" | "accepted" | "dismissed" | "snoozed" | "resolved";
+  priority_band?: "low" | "medium" | "high" | "critical";
+  category?: "SEO" | "CONTENT" | "STRUCTURE" | "TECHNICAL";
+}
+
 export interface RecommendationListResponse {
   items: Recommendation[];
   total: number;
