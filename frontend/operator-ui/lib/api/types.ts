@@ -205,6 +205,7 @@ export interface CompetitorProfileGenerationRun {
   id: string;
   business_id: string;
   site_id: string;
+  parent_run_id?: string | null;
   status: "queued" | "running" | "completed" | "failed";
   requested_candidate_count: number;
   generated_draft_count: number;

@@ -2,6 +2,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import SiteWorkspacePage from "./[site_id]/page";
+import { ApiRequestError } from "../../lib/api/client";
 import type {
   CompetitorComparisonRun,
   CompetitorProfileDraft,
@@ -57,6 +58,10 @@ const mockCreateCompetitorProfileGenerationRun = jest.fn<
   Promise<CompetitorProfileGenerationRunDetailResponse>,
   unknown[]
 >();
+const mockRetryCompetitorProfileGenerationRun = jest.fn<
+  Promise<CompetitorProfileGenerationRunDetailResponse>,
+  unknown[]
+>();
 const mockAcceptCompetitorProfileDraft = jest.fn<Promise<CompetitorProfileDraft>, unknown[]>();
 const mockRejectCompetitorProfileDraft = jest.fn<Promise<CompetitorProfileDraft>, unknown[]>();
 const mockEditCompetitorProfileDraft = jest.fn<Promise<CompetitorProfileDraft>, unknown[]>();
@@ -88,6 +93,8 @@ jest.mock("../../lib/api/client", () => {
       mockFetchCompetitorProfileGenerationRunDetail(...args),
     createCompetitorProfileGenerationRun: (...args: unknown[]) =>
       mockCreateCompetitorProfileGenerationRun(...args),
+    retryCompetitorProfileGenerationRun: (...args: unknown[]) =>
+      mockRetryCompetitorProfileGenerationRun(...args),
     acceptCompetitorProfileDraft: (...args: unknown[]) => mockAcceptCompetitorProfileDraft(...args),
     rejectCompetitorProfileDraft: (...args: unknown[]) => mockRejectCompetitorProfileDraft(...args),
     editCompetitorProfileDraft: (...args: unknown[]) => mockEditCompetitorProfileDraft(...args),
@@ -128,6 +135,7 @@ function seedCompetitorProfileGenerationDefaults(): void {
   mockFetchCompetitorProfileGenerationRuns.mockResolvedValue({ items: [], total: 0 });
   mockFetchCompetitorProfileGenerationRunDetail.mockReset();
   mockCreateCompetitorProfileGenerationRun.mockReset();
+  mockRetryCompetitorProfileGenerationRun.mockReset();
   mockAcceptCompetitorProfileDraft.mockReset();
   mockRejectCompetitorProfileDraft.mockReset();
   mockEditCompetitorProfileDraft.mockReset();
@@ -1043,6 +1051,19 @@ function seedCompetitorProfileGenerationWorkspaceData(): void {
     drafts: [],
     total_drafts: 0,
   });
+  mockRetryCompetitorProfileGenerationRun.mockResolvedValue({
+    run: {
+      ...run,
+      id: "gen-run-3",
+      parent_run_id: "gen-run-1",
+      status: "queued",
+      created_at: "2026-03-21T01:16:00Z",
+      completed_at: null,
+      updated_at: "2026-03-21T01:16:00Z",
+    },
+    drafts: [],
+    total_drafts: 0,
+  });
   mockAcceptCompetitorProfileDraft.mockResolvedValue({
     ...draftOne,
     review_status: "accepted",
@@ -1531,5 +1552,160 @@ describe("site workspace ai competitor profile drafts", () => {
 
     await screen.findByText("Competitor profile generation failed");
     expect(screen.getByText("This run did not produce any reviewable drafts.")).toBeInTheDocument();
+  });
+
+  it("shows retry action for failed generation runs", async () => {
+    seedRichWorkspaceData();
+    const failedRun = {
+      id: "gen-run-failed",
+      business_id: "biz-1",
+      site_id: "site-1",
+      parent_run_id: null,
+      status: "failed" as const,
+      requested_candidate_count: 5,
+      generated_draft_count: 0,
+      provider_name: "mock",
+      model_name: "mock-seo-competitor-profile-v1",
+      prompt_version: "seo-competitor-profile-v1",
+      error_summary: "Competitor profile generation failed",
+      completed_at: "2026-03-21T01:00:00Z",
+      created_by_principal_id: "principal-1",
+      created_at: "2026-03-21T00:59:00Z",
+      updated_at: "2026-03-21T01:00:00Z",
+    };
+    mockFetchCompetitorProfileGenerationRuns.mockResolvedValue({
+      items: [failedRun],
+      total: 1,
+    });
+    mockFetchCompetitorProfileGenerationRunDetail.mockResolvedValue({
+      run: failedRun,
+      drafts: [],
+      total_drafts: 0,
+    });
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByText("Competitor profile generation failed");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("retries a failed generation run and promotes the new queued run", async () => {
+    seedRichWorkspaceData();
+    const user = userEvent.setup();
+    const failedRun = {
+      id: "gen-run-failed",
+      business_id: "biz-1",
+      site_id: "site-1",
+      parent_run_id: null,
+      status: "failed" as const,
+      requested_candidate_count: 5,
+      generated_draft_count: 0,
+      provider_name: "mock",
+      model_name: "mock-seo-competitor-profile-v1",
+      prompt_version: "seo-competitor-profile-v1",
+      error_summary: "Competitor profile generation failed",
+      completed_at: "2026-03-21T01:00:00Z",
+      created_by_principal_id: "principal-1",
+      created_at: "2026-03-21T00:59:00Z",
+      updated_at: "2026-03-21T01:00:00Z",
+    };
+    const retriedRun = {
+      ...failedRun,
+      id: "gen-run-retry-1",
+      parent_run_id: "gen-run-failed",
+      status: "queued" as const,
+      error_summary: null,
+      completed_at: null,
+      created_at: "2026-03-21T01:02:00Z",
+      updated_at: "2026-03-21T01:02:00Z",
+    };
+    mockFetchCompetitorProfileGenerationRuns
+      .mockResolvedValueOnce({
+        items: [failedRun],
+        total: 1,
+      })
+      .mockResolvedValue({
+        items: [retriedRun],
+        total: 1,
+      });
+    mockFetchCompetitorProfileGenerationRunDetail
+      .mockResolvedValueOnce({
+        run: failedRun,
+        drafts: [],
+        total_drafts: 0,
+      })
+      .mockResolvedValue({
+        run: retriedRun,
+        drafts: [],
+        total_drafts: 0,
+      });
+    mockRetryCompetitorProfileGenerationRun.mockResolvedValue({
+      run: retriedRun,
+      drafts: [],
+      total_drafts: 0,
+    });
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("button", { name: "Retry" });
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    await screen.findByText("Retry queued. Drafts will appear after the run completes.");
+    expect(mockRetryCompetitorProfileGenerationRun).toHaveBeenCalledWith(
+      "token-1",
+      "biz-1",
+      "site-1",
+      "gen-run-failed",
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/Latest Run:/i)).toHaveTextContent("gen-run-retry-1");
+    });
+    expect(screen.getByText(/Retry of run/i)).toHaveTextContent("gen-run-failed");
+    expect(screen.getByText("Generation is in progress for this run.")).toBeInTheDocument();
+  });
+
+  it("renders safe retry error state when retry request fails", async () => {
+    seedRichWorkspaceData();
+    const user = userEvent.setup();
+    const failedRun = {
+      id: "gen-run-failed",
+      business_id: "biz-1",
+      site_id: "site-1",
+      parent_run_id: null,
+      status: "failed" as const,
+      requested_candidate_count: 5,
+      generated_draft_count: 0,
+      provider_name: "mock",
+      model_name: "mock-seo-competitor-profile-v1",
+      prompt_version: "seo-competitor-profile-v1",
+      error_summary: "Competitor profile generation failed",
+      completed_at: "2026-03-21T01:00:00Z",
+      created_by_principal_id: "principal-1",
+      created_at: "2026-03-21T00:59:00Z",
+      updated_at: "2026-03-21T01:00:00Z",
+    };
+    mockFetchCompetitorProfileGenerationRuns.mockResolvedValue({
+      items: [failedRun],
+      total: 1,
+    });
+    mockFetchCompetitorProfileGenerationRunDetail.mockResolvedValue({
+      run: failedRun,
+      drafts: [],
+      total_drafts: 0,
+    });
+    mockRetryCompetitorProfileGenerationRun.mockRejectedValue(
+      new ApiRequestError("Retry is not allowed for this run", {
+        status: 422,
+        detail: null,
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("button", { name: "Retry" });
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    await screen.findByText("Retry is not allowed for this run");
+    expect(screen.getByText(/Latest Run:/i)).toHaveTextContent("gen-run-failed");
   });
 });

@@ -27,6 +27,10 @@ class SEOCompetitorProfileGenerationRun(Base):
             "business_id",
             "status",
         ),
+        Index(
+            "ix_scpg_runs_parent",
+            "parent_run_id",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -41,6 +45,11 @@ class SEOCompetitorProfileGenerationRun(Base):
         ForeignKey("seo_sites.id"),
         nullable=False,
         index=True,
+    )
+    parent_run_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("seo_competitor_profile_generation_runs.id"),
+        nullable=True,
     )
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="queued")
     requested_candidate_count: Mapped[int] = mapped_column(Integer, nullable=False, default=5)

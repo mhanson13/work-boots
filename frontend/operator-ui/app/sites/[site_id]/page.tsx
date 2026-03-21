@@ -23,6 +23,7 @@ import {
   fetchRecommendations,
   fetchSiteCompetitorComparisonRuns,
   rejectCompetitorProfileDraft,
+  retryCompetitorProfileGenerationRun,
 } from "../../../lib/api/client";
 import type {
   CompetitorComparisonRun,
@@ -341,6 +342,7 @@ export default function SiteWorkspacePage() {
   const [competitorProfileActionError, setCompetitorProfileActionError] = useState<string | null>(null);
   const [competitorProfileActionMessage, setCompetitorProfileActionMessage] = useState<string | null>(null);
   const [generationInFlight, setGenerationInFlight] = useState(false);
+  const [retryInFlight, setRetryInFlight] = useState(false);
   const [competitorProfilePolling, setCompetitorProfilePolling] = useState(false);
   const [draftActionTargetId, setDraftActionTargetId] = useState<string | null>(null);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
@@ -701,6 +703,46 @@ export default function SiteWorkspacePage() {
     }
   }
 
+  async function handleRetryCompetitorProfileRun(): Promise<void> {
+    if (
+      !context.token ||
+      !context.businessId ||
+      !siteId ||
+      !latestCompetitorProfileRun ||
+      latestCompetitorProfileRun.status !== "failed"
+    ) {
+      return;
+    }
+    setRetryInFlight(true);
+    setCompetitorProfileActionError(null);
+    setCompetitorProfileActionMessage(null);
+    try {
+      const detail = await retryCompetitorProfileGenerationRun(
+        context.token,
+        context.businessId,
+        siteId,
+        latestCompetitorProfileRun.id,
+      );
+      setCompetitorProfileGenerationRuns((current) => {
+        const next = [detail.run, ...current.filter((item) => item.id !== detail.run.id)];
+        return next.sort((left, right) => right.created_at.localeCompare(left.created_at));
+      });
+      setLatestCompetitorProfileRunId(detail.run.id);
+      setCompetitorProfileDrafts(detail.drafts);
+      setCompetitorProfileActionMessage(
+        "Retry queued. Drafts will appear after the run completes.",
+      );
+      setEditingDraftId(null);
+      setEditFormState(null);
+    } catch (error) {
+      setCompetitorProfileActionError(
+        safeActionErrorMessage("retry competitor profile generation", error),
+      );
+    } finally {
+      setRetryInFlight(false);
+    }
+  }
+
   async function handleRejectCompetitorProfileDraft(draftId: string): Promise<void> {
     if (!context.token || !context.businessId || !siteId || !latestCompetitorProfileRunId) {
       return;
@@ -851,6 +893,7 @@ export default function SiteWorkspacePage() {
       setCompetitorProfileActionError(null);
       setCompetitorProfileActionMessage(null);
       setGenerationInFlight(false);
+      setRetryInFlight(false);
       setCompetitorProfilePolling(false);
       setDraftActionTargetId(null);
       setEditingDraftId(null);
@@ -868,6 +911,7 @@ export default function SiteWorkspacePage() {
       setCompetitorProfileDrafts([]);
       setCompetitorProfileLoading(false);
       setCompetitorProfileError(null);
+      setRetryInFlight(false);
       setCompetitorProfilePolling(false);
       return;
     }
@@ -1528,10 +1572,19 @@ export default function SiteWorkspacePage() {
           <button
             type="button"
             onClick={() => void handleGenerateCompetitorProfiles()}
-            disabled={loadingWorkspace || generationInFlight || competitorProfileLoading}
+            disabled={loadingWorkspace || generationInFlight || retryInFlight || competitorProfileLoading}
           >
             {generationInFlight ? "Queuing..." : "Generate Competitor Profiles"}
           </button>
+          {latestCompetitorProfileRun?.status === "failed" ? (
+            <button
+              type="button"
+              onClick={() => void handleRetryCompetitorProfileRun()}
+              disabled={loadingWorkspace || generationInFlight || retryInFlight || competitorProfileLoading}
+            >
+              {retryInFlight ? "Retrying..." : "Retry"}
+            </button>
+          ) : null}
         </div>
         {latestCompetitorProfileRun ? (
           <p>
@@ -1543,6 +1596,11 @@ export default function SiteWorkspacePage() {
         ) : (
           <p className="hint muted">No competitor profile generation runs have been created for this site yet.</p>
         )}
+        {latestCompetitorProfileRun?.parent_run_id ? (
+          <p className="hint muted">
+            Retry of run <code>{latestCompetitorProfileRun.parent_run_id}</code>.
+          </p>
+        ) : null}
         {latestCompetitorProfileRun?.error_summary ? (
           <p className="hint warning">{latestCompetitorProfileRun.error_summary}</p>
         ) : null}
@@ -1576,7 +1634,7 @@ export default function SiteWorkspacePage() {
                 {competitorProfileDrafts.map((draft) => {
                   const isEditing = editingDraftId === draft.id && editFormState !== null;
                   const actionDisabled =
-                    draftActionTargetId === draft.id || editActionInFlight || generationInFlight;
+                    draftActionTargetId === draft.id || editActionInFlight || generationInFlight || retryInFlight;
                   const editable = draft.review_status === "pending" || draft.review_status === "edited";
                   return (
                     <Fragment key={draft.id}>

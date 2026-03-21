@@ -93,17 +93,65 @@ class SEOCompetitorProfileGenerationService:
     ) -> SEOCompetitorProfileGenerationRunDetail:
         self._require_business(business_id)
         self._require_site(business_id=business_id, site_id=site_id)
+        return self._queue_run(
+            business_id=business_id,
+            site_id=site_id,
+            candidate_count=payload.candidate_count,
+            prompt_version="seo-competitor-profile-v1",
+            parent_run_id=None,
+            created_by_principal_id=created_by_principal_id,
+        )
 
+    def retry_failed_run(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+        generation_run_id: str,
+        created_by_principal_id: str | None,
+    ) -> SEOCompetitorProfileGenerationRunDetail:
+        self._require_business(business_id)
+        self._require_site(business_id=business_id, site_id=site_id)
+        self._reconcile_stale_runs_for_site(business_id=business_id, site_id=site_id)
+        failed_run = self._get_run_for_site(
+            business_id=business_id,
+            site_id=site_id,
+            generation_run_id=generation_run_id,
+        )
+        if failed_run.status != "failed":
+            raise SEOCompetitorProfileGenerationValidationError(
+                "Only failed competitor profile generation runs can be retried"
+            )
+        return self._queue_run(
+            business_id=business_id,
+            site_id=site_id,
+            candidate_count=failed_run.requested_candidate_count,
+            prompt_version=failed_run.prompt_version or "seo-competitor-profile-v1",
+            parent_run_id=failed_run.id,
+            created_by_principal_id=created_by_principal_id,
+        )
+
+    def _queue_run(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+        candidate_count: int,
+        prompt_version: str,
+        parent_run_id: str | None,
+        created_by_principal_id: str | None,
+    ) -> SEOCompetitorProfileGenerationRunDetail:
         run = SEOCompetitorProfileGenerationRun(
             id=str(uuid4()),
             business_id=business_id,
             site_id=site_id,
+            parent_run_id=parent_run_id,
             status="queued",
-            requested_candidate_count=payload.candidate_count,
+            requested_candidate_count=candidate_count,
             generated_draft_count=0,
             provider_name="pending",
             model_name="pending",
-            prompt_version="seo-competitor-profile-v1",
+            prompt_version=prompt_version,
             error_summary=None,
             completed_at=None,
             created_by_principal_id=created_by_principal_id,
@@ -113,11 +161,15 @@ class SEOCompetitorProfileGenerationService:
             self.session.commit()
             self.session.refresh(run)
             logger.info(
-                "SEO competitor profile generation run queued business_id=%s site_id=%s run_id=%s candidate_count=%s",
+                (
+                    "SEO competitor profile generation run queued business_id=%s site_id=%s run_id=%s "
+                    "parent_run_id=%s candidate_count=%s"
+                ),
                 business_id,
                 site_id,
                 run.id,
-                payload.candidate_count,
+                parent_run_id,
+                candidate_count,
             )
             return SEOCompetitorProfileGenerationRunDetail(run=run, drafts=[])
         except Exception as exc:  # noqa: BLE001

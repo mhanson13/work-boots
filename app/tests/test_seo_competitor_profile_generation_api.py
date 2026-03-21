@@ -539,6 +539,124 @@ def test_stale_queued_run_marked_failed_is_not_executed(db_session, seeded_busin
     assert payload["total_drafts"] == 0
 
 
+def test_retry_failed_run_creates_new_queued_run_with_lineage_and_schedules_executor(
+    db_session,
+    seeded_business,
+) -> None:
+    deferred_executor = _DeferredRunExecutor()
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
+    )
+    site_id = _create_site(client, seeded_business.id)
+    created = _create_generation_run(client, seeded_business.id, site_id)
+    original_run_id = created["run"]["id"]
+
+    original_run = (
+        db_session.query(SEOCompetitorProfileGenerationRun)
+        .filter(SEOCompetitorProfileGenerationRun.business_id == seeded_business.id)
+        .filter(SEOCompetitorProfileGenerationRun.id == original_run_id)
+        .one()
+    )
+    original_run.status = "failed"
+    original_run.error_summary = "provider timeout"
+    original_run.prompt_version = "seo-competitor-profile-v2"
+    original_run.completed_at = utc_now()
+    db_session.add(original_run)
+    db_session.commit()
+
+    prior_executor_call_count = len(deferred_executor.calls)
+    response = client.post(
+        (
+            f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/"
+            f"competitor-profile-generation-runs/{original_run_id}/retry"
+        )
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    retried_run = payload["run"]
+
+    assert retried_run["id"] != original_run_id
+    assert retried_run["status"] == "queued"
+    assert retried_run["parent_run_id"] == original_run_id
+    assert retried_run["requested_candidate_count"] == original_run.requested_candidate_count
+    assert retried_run["prompt_version"] == "seo-competitor-profile-v2"
+    assert payload["total_drafts"] == 0
+    assert payload["drafts"] == []
+
+    assert len(deferred_executor.calls) == prior_executor_call_count + 1
+    assert deferred_executor.calls[-1] == (seeded_business.id, site_id, retried_run["id"])
+
+    persisted_original = (
+        db_session.query(SEOCompetitorProfileGenerationRun)
+        .filter(SEOCompetitorProfileGenerationRun.business_id == seeded_business.id)
+        .filter(SEOCompetitorProfileGenerationRun.id == original_run_id)
+        .one()
+    )
+    assert persisted_original.status == "failed"
+    assert persisted_original.error_summary == "provider timeout"
+
+    persisted_retry = (
+        db_session.query(SEOCompetitorProfileGenerationRun)
+        .filter(SEOCompetitorProfileGenerationRun.business_id == seeded_business.id)
+        .filter(SEOCompetitorProfileGenerationRun.id == retried_run["id"])
+        .one()
+    )
+    assert persisted_retry.parent_run_id == original_run_id
+
+
+def test_retry_is_rejected_for_non_failed_runs(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
+    )
+    site_id = _create_site(client, seeded_business.id)
+    created = _create_generation_run(client, seeded_business.id, site_id)
+    run_id = created["run"]["id"]
+
+    response = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/{run_id}/retry"
+    )
+    assert response.status_code == 422
+    assert "only failed competitor profile generation runs can be retried" in response.json()["detail"].lower()
+
+
+def test_retry_route_enforces_tenant_scope(db_session, seeded_business) -> None:
+    other_business = _seed_other_business(db_session)
+    deferred_executor = _DeferredRunExecutor()
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
+    )
+    site_id = _create_site(client, seeded_business.id)
+    created = _create_generation_run(client, seeded_business.id, site_id)
+    run_id = created["run"]["id"]
+
+    run = (
+        db_session.query(SEOCompetitorProfileGenerationRun)
+        .filter(SEOCompetitorProfileGenerationRun.business_id == seeded_business.id)
+        .filter(SEOCompetitorProfileGenerationRun.id == run_id)
+        .one()
+    )
+    run.status = "failed"
+    run.error_summary = "forced failure"
+    run.completed_at = utc_now()
+    db_session.add(run)
+    db_session.commit()
+
+    cross_tenant_retry = client.post(
+        f"/api/businesses/{other_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/{run_id}/retry"
+    )
+    assert cross_tenant_retry.status_code == 404
+
+
 def test_competitor_profile_draft_accept_creates_real_competitor_domain(db_session, seeded_business) -> None:
     deferred_executor = _DeferredRunExecutor()
     client = _make_client(

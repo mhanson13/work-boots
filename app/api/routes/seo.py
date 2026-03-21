@@ -1478,6 +1478,61 @@ def get_competitor_profile_generation_run_detail(
     )
 
 
+@router.post(
+    "/sites/{site_id}/competitor-profile-generation-runs/{generation_run_id}/retry",
+    response_model=SEOCompetitorProfileGenerationRunDetailRead,
+    status_code=status.HTTP_201_CREATED,
+)
+@router_v1.post(
+    "/sites/{site_id}/competitor-profile-generation-runs/{generation_run_id}/retry",
+    response_model=SEOCompetitorProfileGenerationRunDetailRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def retry_competitor_profile_generation_run(
+    business_id: str,
+    site_id: str,
+    generation_run_id: str,
+    background_tasks: BackgroundTasks,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    generation_service: SEOCompetitorProfileGenerationService = Depends(
+        get_seo_competitor_profile_generation_service
+    ),
+    generation_run_executor: SEOCompetitorProfileGenerationRunExecutor = Depends(
+        get_seo_competitor_profile_generation_run_executor
+    ),
+) -> SEOCompetitorProfileGenerationRunDetailRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        result = generation_service.retry_failed_run(
+            business_id=scoped_business_id,
+            site_id=site_id,
+            generation_run_id=generation_run_id,
+            created_by_principal_id=tenant_context.principal_id,
+        )
+    except (
+        SEOSiteNotFoundError,
+        SEOCompetitorProfileGenerationNotFoundError,
+    ) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except SEOCompetitorProfileGenerationValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    background_tasks.add_task(
+        generation_run_executor,
+        scoped_business_id,
+        site_id,
+        result.run.id,
+    )
+    return _to_competitor_profile_generation_run_detail_response(
+        run=result.run,
+        drafts=result.drafts,
+    )
+
+
 @router.patch(
     "/sites/{site_id}/competitor-profile-generation-runs/{generation_run_id}/drafts/{draft_id}",
     response_model=SEOCompetitorProfileDraftRead,

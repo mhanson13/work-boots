@@ -191,6 +191,7 @@ class SEOCompetitorProfileGenerationRunRead(BaseModel):
     id: str
     business_id: str
     site_id: str
+    parent_run_id: str | None
     status: SEOCompetitorProfileGenerationRunStatus
     requested_candidate_count: int
     generated_draft_count: int

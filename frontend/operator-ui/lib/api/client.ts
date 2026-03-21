@@ -367,6 +367,21 @@ export async function createCompetitorProfileGenerationRun(
   );
 }
 
+export async function retryCompetitorProfileGenerationRun(
+  token: string,
+  businessId: string,
+  siteId: string,
+  generationRunId: string,
+): Promise<CompetitorProfileGenerationRunDetailResponse> {
+  return apiRequest<CompetitorProfileGenerationRunDetailResponse>(
+    `/api/businesses/${businessId}/seo/sites/${siteId}/competitor-profile-generation-runs/${generationRunId}/retry`,
+    {
+      method: "POST",
+      token,
+    },
+  );
+}
+
 export async function editCompetitorProfileDraft(
   token: string,
   businessId: string,
