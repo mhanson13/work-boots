@@ -393,6 +393,7 @@ jobs:
           UI_IMAGE="${{ needs.frontend-build.outputs.image_uri }}"
           kubectl -n "${NAMESPACE}" set image deployment/work-boots-api api="${API_IMAGE}"
           kubectl -n "${NAMESPACE}" set image deployment/work-boots-ui ui="${UI_IMAGE}"
+          kubectl -n "${NAMESPACE}" set image cronjob/work-boots-seo-competitor-profile-retention retention-cleanup="${API_IMAGE}"
 
       - name: Verify rollout
         run: |

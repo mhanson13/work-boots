@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - configmap.yaml
   - api-deployment.yaml
+  - api-seo-competitor-profile-retention-cronjob.yaml
   - api-service.yaml
   - ui-deployment.yaml
   - ui-service.yaml
