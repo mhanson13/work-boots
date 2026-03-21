@@ -847,7 +847,7 @@ export default function SiteWorkspacePage() {
             ? "This site is currently selected in operator context."
             : "This page is scoped to this site even if a different site is selected elsewhere."}
         </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+        <div className="link-row">
           <Link href="/audits">Audit Runs</Link>
           <Link href={`/competitors?site_id=${encodeURIComponent(selectedSite.id)}`}>Competitor Workspace</Link>
           <Link href="/recommendations">Recommendation Queue</Link>
@@ -866,11 +866,11 @@ export default function SiteWorkspacePage() {
         ) : null}
         {!loadingWorkspace && timelineEvents.length > 0 ? (
           <>
-            <div className="stack" data-testid="timeline-controls" style={{ gap: "0.5rem" }}>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+            <div className="stack timeline-controls" data-testid="timeline-controls">
+              <div className="timeline-filter-row">
                 <span className="hint muted">Event Types:</span>
                 {TIMELINE_EVENT_TYPE_OPTIONS.map((option) => (
-                  <label key={option.value} style={{ display: "inline-flex", gap: "0.35rem", alignItems: "center" }}>
+                  <label key={option.value} className="checkbox-chip">
                     <input
                       type="checkbox"
                       checked={activeEventTypes.has(option.value)}
@@ -881,10 +881,10 @@ export default function SiteWorkspacePage() {
                 ))}
               </div>
 
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+              <div className="timeline-filter-row">
                 <span className="hint muted">Statuses:</span>
                 {availableTimelineStatuses.map((statusValue) => (
-                  <label key={statusValue} style={{ display: "inline-flex", gap: "0.35rem", alignItems: "center" }}>
+                  <label key={statusValue} className="checkbox-chip">
                     <input
                       type="checkbox"
                       checked={activeStatuses.has(statusValue)}
@@ -918,7 +918,7 @@ export default function SiteWorkspacePage() {
                       {groupedVisibleTimelineEvents.map((group) => (
                         <Fragment key={group.key}>
                           <tr data-testid="site-activity-day-header">
-                            <td colSpan={4} style={{ fontWeight: 600, background: "rgba(255,255,255,0.03)" }}>
+                            <td colSpan={4} className="timeline-day-header-cell">
                               {group.label}
                             </td>
                           </tr>
@@ -945,14 +945,14 @@ export default function SiteWorkspacePage() {
                 </div>
 
                 {shouldShowTimelineExpansionToggle ? (
-                  <p>
+                  <div className="form-actions">
                     <button
                       type="button"
                       onClick={() => setExpandedTimeline((current) => !current)}
                     >
                       {expandedTimeline ? "Show less" : "Show more"}
                     </button>
-                  </p>
+                  </div>
                 ) : null}
               </>
             )}

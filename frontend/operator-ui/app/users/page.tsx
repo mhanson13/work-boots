@@ -458,8 +458,8 @@ export default function UsersPage() {
     return (
       <PageContainer>
         <SectionCard>
-        <h1>Users</h1>
-        <p className="hint muted">User administration is available to admin principals only.</p>
+          <h1>Users</h1>
+          <p className="hint muted">User administration is available to admin principals only.</p>
         </SectionCard>
       </PageContainer>
     );
@@ -472,7 +472,7 @@ export default function UsersPage() {
         <p>
           Business: <code>{context.businessId}</code>
         </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+        <div className="link-row">
           <span className="hint muted">Principals: {users.length}</span>
           <span className="hint muted">Active Principals: {activeUsersCount}</span>
           <span className="hint muted">Sign-In Identities: {identities.length}</span>
@@ -562,7 +562,7 @@ export default function UsersPage() {
             disabled={identitySubmitting}
           />
 
-          <label htmlFor="identity-email-verified" style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+          <label htmlFor="identity-email-verified" className="checkbox-chip">
             <input
               id="identity-email-verified"
               type="checkbox"
@@ -573,7 +573,7 @@ export default function UsersPage() {
             Email verified
           </label>
 
-          <label htmlFor="identity-is-active" style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+          <label htmlFor="identity-is-active" className="checkbox-chip">
             <input
               id="identity-is-active"
               type="checkbox"
@@ -610,22 +610,24 @@ export default function UsersPage() {
           </div>
         </FormContainer>
 
-        {submitSuccess ? <p className="hint">{submitSuccess}</p> : null}
-        {submitError ? <p className="hint error">{submitError}</p> : null}
-        {identitySubmitSuccess ? <p className="hint">{identitySubmitSuccess}</p> : null}
-        {identitySubmitError ? <p className="hint error">{identitySubmitError}</p> : null}
-        {actionSuccess ? <p className="hint">Principal action: {actionSuccess}</p> : null}
-        {actionError ? <p className="hint error">Principal action: {actionError}</p> : null}
-        {identityActionSuccess ? <p className="hint">Identity action: {identityActionSuccess}</p> : null}
-        {identityActionError ? <p className="hint error">Identity action: {identityActionError}</p> : null}
-        {loadingUsers ? <p className="hint muted">Loading users...</p> : null}
-        {usersError ? <p className="hint error">{usersError}</p> : null}
-        {identityWarning ? <p className="hint warning">{identityWarning}</p> : null}
-        {!loadingUsers && users.length > 0 && principalsWithoutIdentityCount > 0 ? (
-          <p className="hint muted">
-            Some principals have no mapped sign-in identity yet. They will not be able to authenticate until an identity is linked.
-          </p>
-        ) : null}
+        <div className="message-stack">
+          {submitSuccess ? <p className="hint">{submitSuccess}</p> : null}
+          {submitError ? <p className="hint error">{submitError}</p> : null}
+          {identitySubmitSuccess ? <p className="hint">{identitySubmitSuccess}</p> : null}
+          {identitySubmitError ? <p className="hint error">{identitySubmitError}</p> : null}
+          {actionSuccess ? <p className="hint">Principal action: {actionSuccess}</p> : null}
+          {actionError ? <p className="hint error">Principal action: {actionError}</p> : null}
+          {identityActionSuccess ? <p className="hint">Identity action: {identityActionSuccess}</p> : null}
+          {identityActionError ? <p className="hint error">Identity action: {identityActionError}</p> : null}
+          {loadingUsers ? <p className="hint muted">Loading users...</p> : null}
+          {usersError ? <p className="hint error">{usersError}</p> : null}
+          {identityWarning ? <p className="hint warning">{identityWarning}</p> : null}
+          {!loadingUsers && users.length > 0 && principalsWithoutIdentityCount > 0 ? (
+            <p className="hint muted">
+              Some principals have no mapped sign-in identity yet. They will not be able to authenticate until an identity is linked.
+            </p>
+          ) : null}
+        </div>
       </SectionCard>
 
       <SectionCard>
@@ -658,7 +660,7 @@ export default function UsersPage() {
                       {userIdentities.length === 0 ? (
                         "none"
                       ) : (
-                        <ul style={{ margin: 0, paddingInlineStart: "1.25rem" }}>
+                        <ul className="compact-list">
                           {userIdentities.map((identity) => (
                             <li key={identity.id}>
                               {formatIdentityLabel(identity)} ({identity.is_active ? "active" : "inactive"})
@@ -671,7 +673,7 @@ export default function UsersPage() {
                       {userIdentities.length === 0 ? (
                         "none"
                       ) : (
-                        <div style={{ display: "grid", gap: "0.4rem" }}>
+                        <div className="button-stack">
                           {userIdentities.map((identity) => (
                             <button
                               key={identity.id}

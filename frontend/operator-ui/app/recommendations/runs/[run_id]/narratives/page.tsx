@@ -713,7 +713,7 @@ export default function RecommendationRunNarrativeHistoryPage() {
             <p>Completed: {formatDateTime(run.completed_at)}</p>
             <p>Updated: {formatDateTime(run.updated_at)}</p>
             <p>Error Summary: {run.error_summary || "-"}</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+            <div className="link-row">
               <Link href={parentRunHref}>Parent Recommendation Run</Link>
               <Link href={backToRecommendationsHref}>Recommendation Queue</Link>
               {run.audit_run_id ? <Link href={`/audits/${run.audit_run_id}`}>Linked Audit Run</Link> : null}
@@ -816,8 +816,8 @@ export default function RecommendationRunNarrativeHistoryPage() {
               <p className="hint muted">At least two narrative versions are required to compare changes.</p>
             ) : (
               <>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "end" }}>
-                  <label className="stack" style={{ minWidth: "220px" }}>
+                <div className="compare-controls">
+                  <label className="stack compare-control-field">
                     <span>Base Version</span>
                     <select
                       aria-label="Base Version"
@@ -832,7 +832,7 @@ export default function RecommendationRunNarrativeHistoryPage() {
                     </select>
                   </label>
 
-                  <label className="stack" style={{ minWidth: "220px" }}>
+                  <label className="stack compare-control-field">
                     <span>Compare Version</span>
                     <select
                       aria-label="Compare Version"
@@ -971,12 +971,12 @@ export default function RecommendationRunNarrativeHistoryPage() {
                                     <td>{item.change_type}</td>
                                     <td>{item.section_name}</td>
                                     <td>
-                                      <pre style={{ margin: 0, whiteSpace: "pre-wrap", overflowX: "auto" }}>
+                                      <pre className="pre-scroll">
                                         {item.change_type === "added" ? "-" : formatStructuredValue(item.compare_value)}
                                       </pre>
                                     </td>
                                     <td>
-                                      <pre style={{ margin: 0, whiteSpace: "pre-wrap", overflowX: "auto" }}>
+                                      <pre className="pre-scroll">
                                         {item.change_type === "removed" ? "-" : formatStructuredValue(item.base_value)}
                                       </pre>
                                     </td>
@@ -997,8 +997,7 @@ export default function RecommendationRunNarrativeHistoryPage() {
                             {narrativeComparison.text_entries.map((item) => (
                               <div
                                 key={`text-diff-${item.paragraph_index}-${item.change_type}`}
-                                className="panel stack"
-                                style={{ padding: "0.75rem" }}
+                                className="panel stack panel-compact"
                                 data-testid="narrative-compare-text-row"
                               >
                                 <p>
@@ -1007,11 +1006,11 @@ export default function RecommendationRunNarrativeHistoryPage() {
                                 <p>
                                   <strong>Compare</strong>
                                 </p>
-                                <p style={{ whiteSpace: "pre-wrap" }}>{item.compare_text || "-"}</p>
+                                <p className="pre-wrap">{item.compare_text || "-"}</p>
                                 <p>
                                   <strong>Base</strong>
                                 </p>
-                                <p style={{ whiteSpace: "pre-wrap" }}>{item.base_text || "-"}</p>
+                                <p className="pre-wrap">{item.base_text || "-"}</p>
                               </div>
                             ))}
                           </div>

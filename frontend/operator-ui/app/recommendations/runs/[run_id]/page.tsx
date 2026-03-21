@@ -560,7 +560,7 @@ export default function RecommendationRunDetailPage() {
                 Recommendation run is still {run.status}. Recommendations and rollups may still change.
               </p>
             )}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+            <div className="link-row">
               <Link href={backToRecommendationsHref}>Recommendation Queue</Link>
               <Link href={recommendationRunNarrativeHistoryHref}>Narrative History</Link>
               <Link href="/audits">Audit Runs</Link>
@@ -594,11 +594,8 @@ export default function RecommendationRunDetailPage() {
                 </tbody>
               </table>
             </div>
-            <div
-              className="stack"
-              style={{ gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", alignItems: "start" }}
-            >
-              <div className="panel stack" style={{ padding: "0.75rem" }}>
+            <div className="metrics-grid">
+              <div className="panel stack panel-compact">
                 <h3>By Category</h3>
                 {recommendationsByCategory.length === 0 ? (
                   <p className="hint muted">No category rollups are available.</p>
@@ -617,7 +614,7 @@ export default function RecommendationRunDetailPage() {
                   </div>
                 )}
               </div>
-              <div className="panel stack" style={{ padding: "0.75rem" }}>
+              <div className="panel stack panel-compact">
                 <h3>By Severity</h3>
                 {recommendationsBySeverity.length === 0 ? (
                   <p className="hint muted">No severity rollups are available.</p>
@@ -636,7 +633,7 @@ export default function RecommendationRunDetailPage() {
                   </div>
                 )}
               </div>
-              <div className="panel stack" style={{ padding: "0.75rem" }}>
+              <div className="panel stack panel-compact">
                 <h3>By Effort</h3>
                 {recommendationsByEffort.length === 0 ? (
                   <p className="hint muted">No effort rollups are available.</p>
@@ -655,7 +652,7 @@ export default function RecommendationRunDetailPage() {
                   </div>
                 )}
               </div>
-              <div className="panel stack" style={{ padding: "0.75rem" }}>
+              <div className="panel stack panel-compact">
                 <h3>By Workflow Status</h3>
                 {recommendationsByStatus.length === 0 ? (
                   <p className="hint muted">No status breakdown is available.</p>
@@ -749,9 +746,9 @@ export default function RecommendationRunDetailPage() {
                     <Link href={latestNarrativeDetailHref}>Open Narrative Detail</Link>
                   </p>
                 ) : null}
-                <div className="panel stack" style={{ padding: "0.75rem" }}>
+                <div className="panel stack panel-compact">
                   <h3>Narrative Text</h3>
-                  <p style={{ whiteSpace: "pre-wrap" }}>{latestNarrative.narrative_text || "No narrative text returned."}</p>
+                  <p className="pre-wrap">{latestNarrative.narrative_text || "No narrative text returned."}</p>
                 </div>
               </>
             )}

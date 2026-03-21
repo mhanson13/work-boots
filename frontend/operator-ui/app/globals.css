@@ -81,6 +81,84 @@ main {
   align-items: center;
 }
 
+.message-stack {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.checkbox-chip {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.button-stack {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.compact-list {
+  margin: 0;
+  padding-inline-start: 1.25rem;
+}
+
+.pre-wrap {
+  white-space: pre-wrap;
+}
+
+.pre-scroll {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+.metrics-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  align-items: start;
+}
+
+.panel-compact {
+  padding: 0.75rem;
+}
+
+.timeline-controls {
+  gap: 0.5rem;
+}
+
+.timeline-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.timeline-day-header-cell {
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.compare-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.compare-control-field {
+  min-width: 220px;
+  flex: 1 1 220px;
+}
+
 button {
   border: 1px solid var(--border);
   background: #fff;
