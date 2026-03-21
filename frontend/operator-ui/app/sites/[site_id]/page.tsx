@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 import { useOperatorContext } from "../../../components/useOperatorContext";
 import {
@@ -33,6 +33,22 @@ const MAX_RECOMMENDATION_ROWS = 8;
 const MAX_RECOMMENDATION_RUN_ROWS = 8;
 const NARRATIVE_LOOKUP_LIMIT = 5;
 const MAX_TIMELINE_EVENTS = 20;
+const TIMELINE_INITIAL_VISIBLE_COUNT = 10;
+
+type SiteTimelineEventType =
+  | "audit_run"
+  | "snapshot_run"
+  | "comparison_run"
+  | "recommendation_run"
+  | "narrative";
+
+const TIMELINE_EVENT_TYPE_OPTIONS: Array<{ value: SiteTimelineEventType; label: string }> = [
+  { value: "audit_run", label: "Audit Runs" },
+  { value: "snapshot_run", label: "Snapshot Runs" },
+  { value: "comparison_run", label: "Comparison Runs" },
+  { value: "recommendation_run", label: "Recommendation Runs" },
+  { value: "narrative", label: "Narratives" },
+];
 
 interface WorkspaceCompetitorSet extends CompetitorSet {
   domain_count: number;
@@ -42,6 +58,7 @@ interface WorkspaceCompetitorSet extends CompetitorSet {
 
 interface SiteTimelineEvent {
   id: string;
+  event_type: SiteTimelineEventType;
   type_label: "Audit Run" | "Snapshot Run" | "Comparison Run" | "Recommendation Run" | "Recommendation Narrative";
   status: string;
   timestamp: string;
@@ -50,6 +67,12 @@ interface SiteTimelineEvent {
   title: string;
   context: string;
   href: string;
+}
+
+interface SiteTimelineDayGroup {
+  key: string;
+  label: string;
+  events: SiteTimelineEvent[];
 }
 
 function formatDateTime(value: string | null): string {
@@ -83,6 +106,45 @@ function latestByActivity<
 function timestampToMs(value: string): number {
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function dayKeyFromTimestampMs(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "unknown";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "unknown";
+  }
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function localDayStartMs(value: Date): number {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+}
+
+function formatTimelineDayLabel(timestampMs: number, referenceNowMs: number): string {
+  const eventDate = new Date(timestampMs);
+  if (Number.isNaN(eventDate.getTime())) {
+    return "Unknown date";
+  }
+  const eventDayStartMs = localDayStartMs(eventDate);
+  const referenceDayStartMs = localDayStartMs(new Date(referenceNowMs));
+  const dayDiff = Math.round((referenceDayStartMs - eventDayStartMs) / (24 * 60 * 60 * 1000));
+  if (dayDiff === 0) {
+    return "Today";
+  }
+  if (dayDiff === 1) {
+    return "Yesterday";
+  }
+  return eventDate.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function deriveLifecycleTimestamp(
@@ -120,6 +182,11 @@ function safeSectionErrorMessage(section: string, error: unknown): string {
     }
   }
   return `Unable to load ${section} right now. Please try again.`;
+}
+
+function normalizeTimelineStatus(value: string | null | undefined): string {
+  const normalized = (value || "").trim();
+  return normalized || "-";
 }
 
 function recommendationSourceType(item: Recommendation): string {
@@ -209,6 +276,11 @@ export default function SiteWorkspacePage() {
   const [recommendationRunError, setRecommendationRunError] = useState<string | null>(null);
   const [latestNarrativesByRunId, setLatestNarrativesByRunId] = useState<Record<string, RecommendationNarrative>>({});
   const [narrativeLookupError, setNarrativeLookupError] = useState<string | null>(null);
+  const [activeEventTypes, setActiveEventTypes] = useState<Set<SiteTimelineEventType>>(
+    () => new Set(TIMELINE_EVENT_TYPE_OPTIONS.map((option) => option.value)),
+  );
+  const [activeStatuses, setActiveStatuses] = useState<Set<string>>(() => new Set());
+  const [expandedTimeline, setExpandedTimeline] = useState(false);
 
   const activeCompetitorSetCount = useMemo(
     () => competitorSets.filter((item) => item.is_active).length,
@@ -293,8 +365,9 @@ export default function SiteWorkspacePage() {
       const eventTimestamp = deriveLifecycleTimestamp(run);
       events.push({
         id: `audit-${run.id}`,
+        event_type: "audit_run",
         type_label: "Audit Run",
-        status: run.status,
+        status: normalizeTimelineStatus(run.status),
         timestamp: eventTimestamp.value,
         timestamp_label: eventTimestamp.label,
         timestamp_ms: timestampToMs(eventTimestamp.value),
@@ -309,8 +382,9 @@ export default function SiteWorkspacePage() {
       const setName = competitorSetNameById[run.competitor_set_id] || run.competitor_set_id;
       events.push({
         id: `snapshot-${run.id}`,
+        event_type: "snapshot_run",
         type_label: "Snapshot Run",
-        status: run.status,
+        status: normalizeTimelineStatus(run.status),
         timestamp: eventTimestamp.value,
         timestamp_label: eventTimestamp.label,
         timestamp_ms: timestampToMs(eventTimestamp.value),
@@ -325,8 +399,9 @@ export default function SiteWorkspacePage() {
       const setName = competitorSetNameById[run.competitor_set_id] || run.competitor_set_id;
       events.push({
         id: `comparison-${run.id}`,
+        event_type: "comparison_run",
         type_label: "Comparison Run",
-        status: run.status,
+        status: normalizeTimelineStatus(run.status),
         timestamp: eventTimestamp.value,
         timestamp_label: eventTimestamp.label,
         timestamp_ms: timestampToMs(eventTimestamp.value),
@@ -340,8 +415,9 @@ export default function SiteWorkspacePage() {
       const eventTimestamp = deriveLifecycleTimestamp(run);
       events.push({
         id: `recommendation-run-${run.id}`,
+        event_type: "recommendation_run",
         type_label: "Recommendation Run",
-        status: run.status,
+        status: normalizeTimelineStatus(run.status),
         timestamp: eventTimestamp.value,
         timestamp_label: eventTimestamp.label,
         timestamp_ms: timestampToMs(eventTimestamp.value),
@@ -355,8 +431,9 @@ export default function SiteWorkspacePage() {
       const timestamp = narrative.created_at || narrative.updated_at;
       events.push({
         id: `narrative-${narrative.id}`,
+        event_type: "narrative",
         type_label: "Recommendation Narrative",
-        status: narrative.status,
+        status: normalizeTimelineStatus(narrative.status),
         timestamp,
         timestamp_label: "created",
         timestamp_ms: timestampToMs(timestamp),
@@ -387,6 +464,95 @@ export default function SiteWorkspacePage() {
     selectedSite,
     snapshotRuns,
   ]);
+
+  const availableTimelineStatuses = useMemo(() => {
+    return [...new Set(timelineEvents.map((item) => item.status))]
+      .sort((left, right) => left.localeCompare(right));
+  }, [timelineEvents]);
+
+  const availableTimelineStatusesKey = useMemo(
+    () => availableTimelineStatuses.join("||"),
+    [availableTimelineStatuses],
+  );
+
+  useEffect(() => {
+    setActiveStatuses((current) => {
+      if (availableTimelineStatuses.length === 0) {
+        return new Set();
+      }
+      if (current.size === 0) {
+        return new Set(availableTimelineStatuses);
+      }
+      const next = new Set(
+        [...current].filter((status) => availableTimelineStatuses.includes(status)),
+      );
+      if (next.size === 0) {
+        return new Set(availableTimelineStatuses);
+      }
+      return next;
+    });
+  }, [availableTimelineStatuses, availableTimelineStatusesKey]);
+
+  const filteredTimelineEvents = useMemo(() => {
+    return timelineEvents
+      .filter((item) => activeEventTypes.has(item.event_type))
+      .filter((item) => activeStatuses.has(item.status));
+  }, [activeEventTypes, activeStatuses, timelineEvents]);
+
+  const visibleTimelineEvents = useMemo(() => {
+    if (expandedTimeline) {
+      return filteredTimelineEvents;
+    }
+    return filteredTimelineEvents.slice(0, TIMELINE_INITIAL_VISIBLE_COUNT);
+  }, [expandedTimeline, filteredTimelineEvents]);
+
+  const groupedVisibleTimelineEvents = useMemo<SiteTimelineDayGroup[]>(() => {
+    if (visibleTimelineEvents.length === 0) {
+      return [];
+    }
+    const nowMs = Date.now();
+    const grouped: SiteTimelineDayGroup[] = [];
+    for (const event of visibleTimelineEvents) {
+      const dayKey = dayKeyFromTimestampMs(event.timestamp_ms);
+      const lastGroup = grouped[grouped.length - 1];
+      if (!lastGroup || lastGroup.key !== dayKey) {
+        grouped.push({
+          key: dayKey,
+          label: formatTimelineDayLabel(event.timestamp_ms, nowMs),
+          events: [event],
+        });
+      } else {
+        lastGroup.events.push(event);
+      }
+    }
+    return grouped;
+  }, [visibleTimelineEvents]);
+
+  const shouldShowTimelineExpansionToggle = filteredTimelineEvents.length > TIMELINE_INITIAL_VISIBLE_COUNT;
+
+  function handleEventTypeToggle(eventType: SiteTimelineEventType): void {
+    setActiveEventTypes((current) => {
+      const next = new Set(current);
+      if (next.has(eventType)) {
+        next.delete(eventType);
+      } else {
+        next.add(eventType);
+      }
+      return next;
+    });
+  }
+
+  function handleStatusToggle(statusValue: string): void {
+    setActiveStatuses((current) => {
+      const next = new Set(current);
+      if (next.has(statusValue)) {
+        next.delete(statusValue);
+      } else {
+        next.add(statusValue);
+      }
+      return next;
+    });
+  }
 
   const timelineWarning = useMemo(() => {
     const possibleIssues = [auditError, competitorError, recommendationRunError, narrativeLookupError];
@@ -685,34 +851,96 @@ export default function SiteWorkspacePage() {
           <p className="hint muted">No recent site activity events are available for this site yet.</p>
         ) : null}
         {!loadingWorkspace && timelineEvents.length > 0 ? (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>When</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th>Event</th>
-              </tr>
-            </thead>
-            <tbody>
-              {timelineEvents.map((event) => (
-                <tr key={event.id} data-testid="site-activity-row">
-                  <td>
-                    {formatDateTime(event.timestamp)}
-                    <br />
-                    <span className="hint muted">{event.timestamp_label}</span>
-                  </td>
-                  <td>{event.type_label}</td>
-                  <td>{event.status || "-"}</td>
-                  <td>
-                    <Link href={event.href}>{event.title}</Link>
-                    <br />
-                    <span className="hint muted">{event.context}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <>
+            <div className="stack" data-testid="timeline-controls" style={{ gap: "0.5rem" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+                <span className="hint muted">Event Types:</span>
+                {TIMELINE_EVENT_TYPE_OPTIONS.map((option) => (
+                  <label key={option.value} style={{ display: "inline-flex", gap: "0.35rem", alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={activeEventTypes.has(option.value)}
+                      onChange={() => handleEventTypeToggle(option.value)}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+                <span className="hint muted">Statuses:</span>
+                {availableTimelineStatuses.map((statusValue) => (
+                  <label key={statusValue} style={{ display: "inline-flex", gap: "0.35rem", alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={activeStatuses.has(statusValue)}
+                      onChange={() => handleStatusToggle(statusValue)}
+                    />
+                    {statusValue}
+                  </label>
+                ))}
+              </div>
+
+              <p className="hint muted">
+                Showing {visibleTimelineEvents.length} of {filteredTimelineEvents.length} events
+              </p>
+            </div>
+
+            {filteredTimelineEvents.length === 0 ? (
+              <p className="hint muted">No timeline events match the selected filters.</p>
+            ) : (
+              <>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>When</th>
+                      <th>Type</th>
+                      <th>Status</th>
+                      <th>Event</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {groupedVisibleTimelineEvents.map((group) => (
+                      <Fragment key={group.key}>
+                        <tr data-testid="site-activity-day-header">
+                          <td colSpan={4} style={{ fontWeight: 600, background: "rgba(255,255,255,0.03)" }}>
+                            {group.label}
+                          </td>
+                        </tr>
+                        {group.events.map((event) => (
+                          <tr key={event.id} data-testid="site-activity-row">
+                            <td>
+                              {formatDateTime(event.timestamp)}
+                              <br />
+                              <span className="hint muted">{event.timestamp_label}</span>
+                            </td>
+                            <td>{event.type_label}</td>
+                            <td>{event.status}</td>
+                            <td>
+                              <Link href={event.href}>{event.title}</Link>
+                              <br />
+                              <span className="hint muted">{event.context}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+
+                {shouldShowTimelineExpansionToggle ? (
+                  <p>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedTimeline((current) => !current)}
+                    >
+                      {expandedTimeline ? "Show less" : "Show more"}
+                    </button>
+                  </p>
+                ) : null}
+              </>
+            )}
+          </>
         ) : null}
       </div>
 
