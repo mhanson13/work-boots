@@ -250,6 +250,29 @@ class SEOCompetitorProfileGenerationRunDetailRead(BaseModel):
     total_drafts: int
 
 
+class SEOCompetitorProfileGenerationRetentionCleanupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    business_id: str | None = None
+    site_id: str | None = Field(default=None, min_length=1, max_length=36)
+
+    @field_validator("site_id", mode="before")
+    @classmethod
+    def normalize_site_id(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        return _strip_or_none(str(value))
+
+
+class SEOCompetitorProfileGenerationRetentionCleanupRead(BaseModel):
+    business_id: str
+    site_id: str | None
+    stale_runs_reconciled: int
+    raw_output_pruned_runs: int
+    rejected_drafts_pruned: int
+    runs_pruned: int
+
+
 class SEOCompetitorProfileDraftEditRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

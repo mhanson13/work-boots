@@ -58,6 +58,9 @@ INVALID_OUTPUT_ERROR_SUMMARY = (
 GENERIC_PROVIDER_ERROR_SUMMARY = "Competitor profile generation failed due to a provider error."
 GENERIC_INTERNAL_ERROR_SUMMARY = "Competitor profile generation failed"
 RUN_RAW_OUTPUT_MAX_CHARS = 12000
+DEFAULT_RAW_OUTPUT_RETENTION_DAYS = 30
+DEFAULT_RUN_RETENTION_DAYS = 180
+DEFAULT_REJECTED_DRAFT_RETENTION_DAYS = 90
 
 
 class SEOCompetitorProfileGenerationNotFoundError(ValueError):
@@ -66,6 +69,21 @@ class SEOCompetitorProfileGenerationNotFoundError(ValueError):
 
 class SEOCompetitorProfileGenerationValidationError(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class SEOCompetitorProfileRetentionPolicy:
+    raw_output_retention_days: int = DEFAULT_RAW_OUTPUT_RETENTION_DAYS
+    run_retention_days: int = DEFAULT_RUN_RETENTION_DAYS
+    rejected_draft_retention_days: int = DEFAULT_REJECTED_DRAFT_RETENTION_DAYS
+
+    def __post_init__(self) -> None:
+        if self.raw_output_retention_days < 1:
+            raise ValueError("raw_output_retention_days must be >= 1")
+        if self.run_retention_days < 1:
+            raise ValueError("run_retention_days must be >= 1")
+        if self.rejected_draft_retention_days < 1:
+            raise ValueError("rejected_draft_retention_days must be >= 1")
 
 
 @dataclass(frozen=True)
@@ -80,6 +98,14 @@ class SEOCompetitorProfileDraftAcceptanceResult:
     competitor_domain: SEOCompetitorDomain
 
 
+@dataclass(frozen=True)
+class SEOCompetitorProfileRetentionCleanupSummary:
+    stale_runs_reconciled: int
+    raw_output_pruned_runs: int
+    rejected_drafts_pruned: int
+    runs_pruned: int
+
+
 class SEOCompetitorProfileGenerationService:
     def __init__(
         self,
@@ -90,6 +116,7 @@ class SEOCompetitorProfileGenerationService:
         seo_competitor_repository: SEOCompetitorRepository,
         seo_competitor_profile_generation_repository: SEOCompetitorProfileGenerationRepository,
         provider: SEOCompetitorProfileGenerationProvider,
+        retention_policy: SEOCompetitorProfileRetentionPolicy = SEOCompetitorProfileRetentionPolicy(),
     ) -> None:
         self.session = session
         self.business_repository = business_repository
@@ -97,6 +124,7 @@ class SEOCompetitorProfileGenerationService:
         self.seo_competitor_repository = seo_competitor_repository
         self.seo_competitor_profile_generation_repository = seo_competitor_profile_generation_repository
         self.provider = provider
+        self.retention_policy = retention_policy
 
     def create_run(
         self,
@@ -785,6 +813,77 @@ class SEOCompetitorProfileGenerationService:
         if len(normalized) > RUN_RAW_OUTPUT_MAX_CHARS:
             return normalized[: RUN_RAW_OUTPUT_MAX_CHARS - 3] + "..."
         return normalized
+
+    def cleanup_retention(
+        self,
+        *,
+        business_id: str,
+        site_id: str | None = None,
+    ) -> SEOCompetitorProfileRetentionCleanupSummary:
+        self._require_business(business_id)
+        site_ids = self._target_site_ids_for_cleanup(business_id=business_id, site_id=site_id)
+        stale_runs_reconciled = 0
+        for target_site_id in site_ids:
+            stale_runs_reconciled += self._reconcile_stale_runs_for_site(
+                business_id=business_id,
+                site_id=target_site_id,
+            )
+
+        now = utc_now()
+        raw_output_before = now - timedelta(days=self.retention_policy.raw_output_retention_days)
+        rejected_draft_before = now - timedelta(days=self.retention_policy.rejected_draft_retention_days)
+        run_before = now - timedelta(days=self.retention_policy.run_retention_days)
+
+        try:
+            raw_output_pruned_runs = (
+                self.seo_competitor_profile_generation_repository.prune_raw_output_for_terminal_runs(
+                    business_id=business_id,
+                    completed_before=raw_output_before,
+                    site_id=site_id,
+                )
+            )
+            rejected_drafts_pruned = self.seo_competitor_profile_generation_repository.prune_rejected_drafts(
+                business_id=business_id,
+                reviewed_before=rejected_draft_before,
+                site_id=site_id,
+            )
+            runs_pruned = self.seo_competitor_profile_generation_repository.prune_terminal_runs_without_drafts(
+                business_id=business_id,
+                updated_before=run_before,
+                site_id=site_id,
+            )
+            self.session.commit()
+        except Exception as exc:  # noqa: BLE001
+            self.session.rollback()
+            raise SEOCompetitorProfileGenerationValidationError(
+                "Failed to run competitor profile retention cleanup"
+            ) from exc
+
+        logger.info(
+            (
+                "SEO competitor profile retention cleanup completed business_id=%s site_id=%s "
+                "stale_runs_reconciled=%s raw_output_pruned_runs=%s rejected_drafts_pruned=%s runs_pruned=%s"
+            ),
+            business_id,
+            site_id or "all",
+            stale_runs_reconciled,
+            raw_output_pruned_runs,
+            rejected_drafts_pruned,
+            runs_pruned,
+        )
+
+        return SEOCompetitorProfileRetentionCleanupSummary(
+            stale_runs_reconciled=stale_runs_reconciled,
+            raw_output_pruned_runs=raw_output_pruned_runs,
+            rejected_drafts_pruned=rejected_drafts_pruned,
+            runs_pruned=runs_pruned,
+        )
+
+    def _target_site_ids_for_cleanup(self, *, business_id: str, site_id: str | None) -> list[str]:
+        if site_id:
+            self._require_site(business_id=business_id, site_id=site_id)
+            return [site_id]
+        return [item.id for item in self.seo_site_repository.list_for_business(business_id)]
 
     def reconcile_stale_runs(
         self,

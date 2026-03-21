@@ -38,6 +38,9 @@ def test_ai_provider_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AI_MODEL_NAME", raising=False)
     monkeypatch.delenv("AI_TIMEOUT_VALUE", raising=False)
     monkeypatch.delenv("AI_PROMPT_TEXT_RECOMMENDATION", raising=False)
+    monkeypatch.delenv("SEO_COMPETITOR_PROFILE_RAW_OUTPUT_RETENTION_DAYS", raising=False)
+    monkeypatch.delenv("SEO_COMPETITOR_PROFILE_RUN_RETENTION_DAYS", raising=False)
+    monkeypatch.delenv("SEO_COMPETITOR_PROFILE_REJECTED_DRAFT_RETENTION_DAYS", raising=False)
 
     settings = get_settings()
 
@@ -46,6 +49,9 @@ def test_ai_provider_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.ai_model_name == "gpt-4o-mini"
     assert settings.ai_timeout_value == 30
     assert settings.ai_prompt_text_recommendation == ""
+    assert settings.seo_competitor_profile_raw_output_retention_days == 30
+    assert settings.seo_competitor_profile_run_retention_days == 180
+    assert settings.seo_competitor_profile_rejected_draft_retention_days == 90
 
 
 def test_ai_provider_config_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -54,6 +60,9 @@ def test_ai_provider_config_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AI_MODEL_NAME", " gpt-custom-model ")
     monkeypatch.setenv("AI_TIMEOUT_VALUE", "45")
     monkeypatch.setenv("AI_PROMPT_TEXT_RECOMMENDATION", "Prefer local competitors")
+    monkeypatch.setenv("SEO_COMPETITOR_PROFILE_RAW_OUTPUT_RETENTION_DAYS", "21")
+    monkeypatch.setenv("SEO_COMPETITOR_PROFILE_RUN_RETENTION_DAYS", "365")
+    monkeypatch.setenv("SEO_COMPETITOR_PROFILE_REJECTED_DRAFT_RETENTION_DAYS", "60")
 
     settings = get_settings()
 
@@ -62,6 +71,9 @@ def test_ai_provider_config_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.ai_model_name == "gpt-custom-model"
     assert settings.ai_timeout_value == 45
     assert settings.ai_prompt_text_recommendation == "Prefer local competitors"
+    assert settings.seo_competitor_profile_raw_output_retention_days == 21
+    assert settings.seo_competitor_profile_run_retention_days == 365
+    assert settings.seo_competitor_profile_rejected_draft_retention_days == 60
 
 
 def test_provider_factory_uses_configured_model_timeout_and_prompt_text(
@@ -124,3 +136,10 @@ def test_provider_factory_supports_mock_provider(monkeypatch: pytest.MonkeyPatch
 
     assert isinstance(provider, MockSEOCompetitorProfileGenerationProvider)
     assert provider.model_name == "mock-model-configured"
+
+
+def test_retention_config_rejects_invalid_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEO_COMPETITOR_PROFILE_RUN_RETENTION_DAYS", "0")
+
+    with pytest.raises(RuntimeError, match="SEO_COMPETITOR_PROFILE_RUN_RETENTION_DAYS must be >= 1"):
+        get_settings()

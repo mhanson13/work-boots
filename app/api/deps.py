@@ -38,6 +38,7 @@ from app.integrations import (
     TwilioSMSProvider,
 )
 from app.jobs.lead_reminders import LeadReminderJob
+from app.jobs.seo_competitor_profile_generation_retention import SEOCompetitorProfileGenerationRetentionJob
 from app.jobs.seo_automation import SEOAutomationJob
 from app.models.principal import Principal, PrincipalRole
 from app.repositories.api_credential_repository import APICredentialRepository
@@ -79,7 +80,10 @@ from app.services.response_metrics import ResponseMetricsService
 from app.services.seo_audit import SEOAuditService
 from app.services.seo_automation import SEOAutomationService
 from app.services.seo_competitor_comparison import SEOCompetitorComparisonService
-from app.services.seo_competitor_profile_generation import SEOCompetitorProfileGenerationService
+from app.services.seo_competitor_profile_generation import (
+    SEOCompetitorProfileGenerationService,
+    SEOCompetitorProfileRetentionPolicy,
+)
 from app.services.seo_competitors import SEOCompetitorService
 from app.services.seo_competitor_summary import SEOCompetitorSummaryService
 from app.services.seo_crawler import SEOCrawler
@@ -604,6 +608,7 @@ def get_seo_competitor_profile_generation_service(
     ),
     provider: SEOCompetitorProfileGenerationProvider = Depends(get_seo_competitor_profile_generation_provider),
 ) -> SEOCompetitorProfileGenerationService:
+    settings = get_settings()
     return SEOCompetitorProfileGenerationService(
         session=db,
         business_repository=business_repository,
@@ -611,7 +616,18 @@ def get_seo_competitor_profile_generation_service(
         seo_competitor_repository=seo_competitor_repository,
         seo_competitor_profile_generation_repository=seo_competitor_profile_generation_repository,
         provider=provider,
+        retention_policy=SEOCompetitorProfileRetentionPolicy(
+            raw_output_retention_days=settings.seo_competitor_profile_raw_output_retention_days,
+            run_retention_days=settings.seo_competitor_profile_run_retention_days,
+            rejected_draft_retention_days=settings.seo_competitor_profile_rejected_draft_retention_days,
+        ),
     )
+
+
+def get_seo_competitor_profile_generation_retention_job(
+    generation_service: SEOCompetitorProfileGenerationService = Depends(get_seo_competitor_profile_generation_service),
+) -> SEOCompetitorProfileGenerationRetentionJob:
+    return SEOCompetitorProfileGenerationRetentionJob(generation_service=generation_service)
 
 
 def get_seo_competitor_comparison_service(

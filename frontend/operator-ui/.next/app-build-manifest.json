@@ -34,14 +34,22 @@
       "static/chunks/684-8fa057f1fed14a3b.js",
       "static/chunks/app/audits/[run_id]/page-9694b9fd39227233.js"
     ],
-    "/competitors/[set_id]/page": [
+    "/business-profile/page": [
+      "static/chunks/webpack-91b2d14d0f678b80.js",
+      "static/chunks/fd9d1056-6de69cb02e30351c.js",
+      "static/chunks/23-21a584629fa2301e.js",
+      "static/chunks/main-app-07945d87530df67d.js",
+      "static/chunks/684-8fa057f1fed14a3b.js",
+      "static/chunks/app/business-profile/page-2d95cd8190d102b9.js"
+    ],
+    "/dashboard/page": [
       "static/chunks/webpack-91b2d14d0f678b80.js",
       "static/chunks/fd9d1056-6de69cb02e30351c.js",
       "static/chunks/23-21a584629fa2301e.js",
       "static/chunks/main-app-07945d87530df67d.js",
       "static/chunks/718-9e6ff91e5311e06a.js",
       "static/chunks/684-8fa057f1fed14a3b.js",
-      "static/chunks/app/competitors/[set_id]/page-d1b0b571539fb723.js"
+      "static/chunks/app/dashboard/page-2f859ff193cecace.js"
     ],
     "/automation/page": [
       "static/chunks/webpack-91b2d14d0f678b80.js",
@@ -50,14 +58,6 @@
       "static/chunks/main-app-07945d87530df67d.js",
       "static/chunks/684-8fa057f1fed14a3b.js",
       "static/chunks/app/automation/page-39d2d1979707faec.js"
-    ],
-    "/business-profile/page": [
-      "static/chunks/webpack-91b2d14d0f678b80.js",
-      "static/chunks/fd9d1056-6de69cb02e30351c.js",
-      "static/chunks/23-21a584629fa2301e.js",
-      "static/chunks/main-app-07945d87530df67d.js",
-      "static/chunks/684-8fa057f1fed14a3b.js",
-      "static/chunks/app/business-profile/page-2d95cd8190d102b9.js"
     ],
     "/competitors/page": [
       "static/chunks/webpack-91b2d14d0f678b80.js",
@@ -68,23 +68,23 @@
       "static/chunks/684-8fa057f1fed14a3b.js",
       "static/chunks/app/competitors/page-c6f7faca71301e82.js"
     ],
-    "/competitors/comparison-runs/[run_id]/page": [
+    "/page": [
       "static/chunks/webpack-91b2d14d0f678b80.js",
       "static/chunks/fd9d1056-6de69cb02e30351c.js",
       "static/chunks/23-21a584629fa2301e.js",
       "static/chunks/main-app-07945d87530df67d.js",
-      "static/chunks/718-9e6ff91e5311e06a.js",
+      "static/chunks/573-8fc58521c9c22f0a.js",
       "static/chunks/684-8fa057f1fed14a3b.js",
-      "static/chunks/app/competitors/comparison-runs/[run_id]/page-eddb625586ecaa3a.js"
+      "static/chunks/app/page-0c943704b321ff42.js"
     ],
-    "/competitors/snapshot-runs/[run_id]/page": [
+    "/competitors/[set_id]/page": [
       "static/chunks/webpack-91b2d14d0f678b80.js",
       "static/chunks/fd9d1056-6de69cb02e30351c.js",
       "static/chunks/23-21a584629fa2301e.js",
       "static/chunks/main-app-07945d87530df67d.js",
       "static/chunks/718-9e6ff91e5311e06a.js",
       "static/chunks/684-8fa057f1fed14a3b.js",
-      "static/chunks/app/competitors/snapshot-runs/[run_id]/page-b5fe8e9c4dc6c479.js"
+      "static/chunks/app/competitors/[set_id]/page-d1b0b571539fb723.js"
     ],
     "/recommendations/[id]/page": [
       "static/chunks/webpack-91b2d14d0f678b80.js",
@@ -95,23 +95,14 @@
       "static/chunks/684-8fa057f1fed14a3b.js",
       "static/chunks/app/recommendations/[id]/page-309b6318f42c3f9f.js"
     ],
-    "/page": [
-      "static/chunks/webpack-91b2d14d0f678b80.js",
-      "static/chunks/fd9d1056-6de69cb02e30351c.js",
-      "static/chunks/23-21a584629fa2301e.js",
-      "static/chunks/main-app-07945d87530df67d.js",
-      "static/chunks/573-8fc58521c9c22f0a.js",
-      "static/chunks/684-8fa057f1fed14a3b.js",
-      "static/chunks/app/page-0c943704b321ff42.js"
-    ],
-    "/dashboard/page": [
+    "/competitors/comparison-runs/[run_id]/page": [
       "static/chunks/webpack-91b2d14d0f678b80.js",
       "static/chunks/fd9d1056-6de69cb02e30351c.js",
       "static/chunks/23-21a584629fa2301e.js",
       "static/chunks/main-app-07945d87530df67d.js",
       "static/chunks/718-9e6ff91e5311e06a.js",
       "static/chunks/684-8fa057f1fed14a3b.js",
-      "static/chunks/app/dashboard/page-2f859ff193cecace.js"
+      "static/chunks/app/competitors/comparison-runs/[run_id]/page-eddb625586ecaa3a.js"
     ],
     "/recommendations/page": [
       "static/chunks/webpack-91b2d14d0f678b80.js",
@@ -131,15 +122,6 @@
       "static/chunks/684-8fa057f1fed14a3b.js",
       "static/chunks/app/recommendations/runs/[run_id]/narratives/[narrative_id]/page-6d97f64769935afa.js"
     ],
-    "/recommendations/runs/[run_id]/page": [
-      "static/chunks/webpack-91b2d14d0f678b80.js",
-      "static/chunks/fd9d1056-6de69cb02e30351c.js",
-      "static/chunks/23-21a584629fa2301e.js",
-      "static/chunks/main-app-07945d87530df67d.js",
-      "static/chunks/718-9e6ff91e5311e06a.js",
-      "static/chunks/684-8fa057f1fed14a3b.js",
-      "static/chunks/app/recommendations/runs/[run_id]/page-d91f259730a48cbb.js"
-    ],
     "/recommendations/runs/[run_id]/narratives/page": [
       "static/chunks/webpack-91b2d14d0f678b80.js",
       "static/chunks/fd9d1056-6de69cb02e30351c.js",
@@ -158,6 +140,15 @@
       "static/chunks/684-8fa057f1fed14a3b.js",
       "static/chunks/app/sites/page-8fdf871af1191193.js"
     ],
+    "/recommendations/runs/[run_id]/page": [
+      "static/chunks/webpack-91b2d14d0f678b80.js",
+      "static/chunks/fd9d1056-6de69cb02e30351c.js",
+      "static/chunks/23-21a584629fa2301e.js",
+      "static/chunks/main-app-07945d87530df67d.js",
+      "static/chunks/718-9e6ff91e5311e06a.js",
+      "static/chunks/684-8fa057f1fed14a3b.js",
+      "static/chunks/app/recommendations/runs/[run_id]/page-d91f259730a48cbb.js"
+    ],
     "/users/page": [
       "static/chunks/webpack-91b2d14d0f678b80.js",
       "static/chunks/fd9d1056-6de69cb02e30351c.js",
@@ -174,6 +165,15 @@
       "static/chunks/718-9e6ff91e5311e06a.js",
       "static/chunks/684-8fa057f1fed14a3b.js",
       "static/chunks/app/sites/[site_id]/page-faff902a08078748.js"
+    ],
+    "/competitors/snapshot-runs/[run_id]/page": [
+      "static/chunks/webpack-91b2d14d0f678b80.js",
+      "static/chunks/fd9d1056-6de69cb02e30351c.js",
+      "static/chunks/23-21a584629fa2301e.js",
+      "static/chunks/main-app-07945d87530df67d.js",
+      "static/chunks/718-9e6ff91e5311e06a.js",
+      "static/chunks/684-8fa057f1fed14a3b.js",
+      "static/chunks/app/competitors/snapshot-runs/[run_id]/page-b5fe8e9c4dc6c479.js"
     ]
   }
 }

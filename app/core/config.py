@@ -53,6 +53,9 @@ class Settings:
     ai_model_name: str
     ai_timeout_value: int
     ai_prompt_text_recommendation: str
+    seo_competitor_profile_raw_output_retention_days: int
+    seo_competitor_profile_run_retention_days: int
+    seo_competitor_profile_rejected_draft_retention_days: int
     openai_api_base_url: str
     twilio_account_sid: str | None
     twilio_auth_token: str | None
@@ -82,6 +85,20 @@ def _env_bool(name: str, default: bool) -> bool:
     if raw is None:
         return default
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int, *, min_value: int | None = None) -> int:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        value = default
+    else:
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise RuntimeError(f"{name} must be an integer.") from exc
+    if min_value is not None and value < min_value:
+        raise RuntimeError(f"{name} must be >= {min_value}.")
+    return value
 
 
 def _env_csv(name: str) -> tuple[str, ...]:
@@ -237,8 +254,23 @@ def get_settings() -> Settings:
         ai_provider_api_key=os.getenv("AI_PROVIDER_API_KEY"),
         ai_provider_name=(os.getenv("AI_PROVIDER_NAME", "openai").strip().lower() or "openai"),
         ai_model_name=(os.getenv("AI_MODEL_NAME", "gpt-4o-mini").strip() or "gpt-4o-mini"),
-        ai_timeout_value=int(os.getenv("AI_TIMEOUT_VALUE", "30")),
+        ai_timeout_value=_env_int("AI_TIMEOUT_VALUE", 30, min_value=1),
         ai_prompt_text_recommendation=os.getenv("AI_PROMPT_TEXT_RECOMMENDATION", ""),
+        seo_competitor_profile_raw_output_retention_days=_env_int(
+            "SEO_COMPETITOR_PROFILE_RAW_OUTPUT_RETENTION_DAYS",
+            30,
+            min_value=1,
+        ),
+        seo_competitor_profile_run_retention_days=_env_int(
+            "SEO_COMPETITOR_PROFILE_RUN_RETENTION_DAYS",
+            180,
+            min_value=1,
+        ),
+        seo_competitor_profile_rejected_draft_retention_days=_env_int(
+            "SEO_COMPETITOR_PROFILE_REJECTED_DRAFT_RETENTION_DAYS",
+            90,
+            min_value=1,
+        ),
         openai_api_base_url=os.getenv("OPENAI_API_BASE_URL", "https://api.openai.com/v1").strip(),
         twilio_account_sid=os.getenv("TWILIO_ACCOUNT_SID"),
         twilio_auth_token=os.getenv("TWILIO_AUTH_TOKEN"),
