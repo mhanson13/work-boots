@@ -27,6 +27,11 @@ from app.integrations.seo_summary_provider import (
     SEOAuditSummaryOutput,
     SEOAuditSummaryProvider,
 )
+from app.integrations.seo_competitor_profile_generation_provider import (
+    MisconfiguredSEOCompetitorProfileGenerationProvider,
+    OpenAISEOCompetitorProfileGenerationProvider,
+    SEOCompetitorProfileProviderError,
+)
 from app.integrations.google_auth import (
     GoogleIdentityClaims,
     GoogleOIDCJWKSVerifier,
@@ -66,6 +71,9 @@ __all__ = [
     "SEORecommendationNarrativeProvider",
     "SEOAuditSummaryOutput",
     "SEOAuditSummaryProvider",
+    "MisconfiguredSEOCompetitorProfileGenerationProvider",
+    "OpenAISEOCompetitorProfileGenerationProvider",
+    "SEOCompetitorProfileProviderError",
     "GoogleIdentityClaims",
     "GoogleOIDCJWKSVerifier",
     "GoogleOIDCTokenInfoVerifier",

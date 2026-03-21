@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 
 
@@ -48,6 +48,12 @@ class Settings:
     session_state_fail_open: bool
     sms_provider: str
     email_provider: str
+    ai_provider_api_key: str | None = field(repr=False)
+    ai_provider_name: str
+    ai_model_name: str
+    ai_timeout_value: int
+    ai_prompt_text_recommendation: str
+    openai_api_base_url: str
     twilio_account_sid: str | None
     twilio_auth_token: str | None
     twilio_from_number: str | None
@@ -228,6 +234,12 @@ def get_settings() -> Settings:
         session_state_fail_open=session_state_fail_open,
         sms_provider=os.getenv("SMS_PROVIDER", "mock").strip().lower(),
         email_provider=os.getenv("EMAIL_PROVIDER", "mock").strip().lower(),
+        ai_provider_api_key=os.getenv("AI_PROVIDER_API_KEY"),
+        ai_provider_name=(os.getenv("AI_PROVIDER_NAME", "openai").strip().lower() or "openai"),
+        ai_model_name=(os.getenv("AI_MODEL_NAME", "gpt-4o-mini").strip() or "gpt-4o-mini"),
+        ai_timeout_value=int(os.getenv("AI_TIMEOUT_VALUE", "30")),
+        ai_prompt_text_recommendation=os.getenv("AI_PROMPT_TEXT_RECOMMENDATION", ""),
+        openai_api_base_url=os.getenv("OPENAI_API_BASE_URL", "https://api.openai.com/v1").strip(),
         twilio_account_sid=os.getenv("TWILIO_ACCOUNT_SID"),
         twilio_auth_token=os.getenv("TWILIO_AUTH_TOKEN"),
         twilio_from_number=os.getenv("TWILIO_FROM_NUMBER"),

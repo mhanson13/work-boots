@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
+import json
 import logging
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -10,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
+from app.integrations.seo_competitor_profile_generation_provider import SEOCompetitorProfileProviderError
 from app.integrations.seo_summary_provider import (
     SEOCompetitorProfileDraftCandidateOutput,
     SEOCompetitorProfileGenerationProvider,
@@ -30,6 +32,7 @@ from app.schemas.seo_competitor import (
     SEOCompetitorProfileDraftRejectRequest,
     SEOCompetitorProfileGenerationRunCreateRequest,
 )
+from app.services.seo_competitor_profile_prompt import SEO_COMPETITOR_PROFILE_PROMPT_VERSION
 
 
 logger = logging.getLogger(__name__)
@@ -43,6 +46,18 @@ STALE_QUEUED_RUN_ERROR_SUMMARY = (
 STALE_RUNNING_RUN_ERROR_SUMMARY = (
     "Competitor profile generation timed out before completion. Start a new generation run to retry."
 )
+PROVIDER_TIMEOUT_ERROR_SUMMARY = (
+    "Competitor profile generation timed out while contacting the AI provider. Start a new generation run to retry."
+)
+PROVIDER_AUTH_CONFIG_ERROR_SUMMARY = (
+    "AI provider credentials are not configured for competitor profile generation."
+)
+INVALID_OUTPUT_ERROR_SUMMARY = (
+    "Competitor profile generation returned invalid structured output. Start a new generation run to retry."
+)
+GENERIC_PROVIDER_ERROR_SUMMARY = "Competitor profile generation failed due to a provider error."
+GENERIC_INTERNAL_ERROR_SUMMARY = "Competitor profile generation failed"
+RUN_RAW_OUTPUT_MAX_CHARS = 12000
 
 
 class SEOCompetitorProfileGenerationNotFoundError(ValueError):
@@ -97,7 +112,7 @@ class SEOCompetitorProfileGenerationService:
             business_id=business_id,
             site_id=site_id,
             candidate_count=payload.candidate_count,
-            prompt_version="seo-competitor-profile-v1",
+            prompt_version=self._default_prompt_version(),
             parent_run_id=None,
             created_by_principal_id=created_by_principal_id,
         )
@@ -126,7 +141,7 @@ class SEOCompetitorProfileGenerationService:
             business_id=business_id,
             site_id=site_id,
             candidate_count=failed_run.requested_candidate_count,
-            prompt_version=failed_run.prompt_version or "seo-competitor-profile-v1",
+            prompt_version=failed_run.prompt_version or self._default_prompt_version(),
             parent_run_id=failed_run.id,
             created_by_principal_id=created_by_principal_id,
         )
@@ -149,9 +164,10 @@ class SEOCompetitorProfileGenerationService:
             status="queued",
             requested_candidate_count=candidate_count,
             generated_draft_count=0,
-            provider_name="pending",
-            model_name="pending",
+            provider_name=self._default_provider_name(),
+            model_name=self._default_model_name(),
             prompt_version=prompt_version,
+            raw_output=None,
             error_summary=None,
             completed_at=None,
             created_by_principal_id=created_by_principal_id,
@@ -219,6 +235,11 @@ class SEOCompetitorProfileGenerationService:
             run.id,
         )
 
+        provider_name = run.provider_name
+        model_name = run.model_name
+        prompt_version = run.prompt_version or self._default_prompt_version()
+        raw_output: str | None = None
+
         try:
             existing_domains = [
                 item.domain
@@ -232,6 +253,10 @@ class SEOCompetitorProfileGenerationService:
                 existing_domains=existing_domains,
                 candidate_count=run.requested_candidate_count,
             )
+            provider_name = self._clean_required_value(output.provider_name, field_name="provider_name")
+            model_name = self._clean_required_value(output.model_name, field_name="model_name")
+            prompt_version = self._clean_required_value(output.prompt_version, field_name="prompt_version")
+            raw_output = self._sanitize_raw_output(output.raw_response)
 
             drafts = self._build_drafts(
                 run=run,
@@ -244,9 +269,10 @@ class SEOCompetitorProfileGenerationService:
 
             run.status = "completed"
             run.generated_draft_count = len(drafts)
-            run.provider_name = self._clean_required_value(output.provider_name, field_name="provider_name")
-            run.model_name = self._clean_required_value(output.model_name, field_name="model_name")
-            run.prompt_version = self._clean_required_value(output.prompt_version, field_name="prompt_version")
+            run.provider_name = provider_name
+            run.model_name = model_name
+            run.prompt_version = prompt_version
+            run.raw_output = raw_output
             run.error_summary = None
             run.completed_at = utc_now()
             self.seo_competitor_profile_generation_repository.save_run(run)
@@ -262,12 +288,43 @@ class SEOCompetitorProfileGenerationService:
                 len(drafts),
             )
             return SEOCompetitorProfileGenerationRunDetail(run=run, drafts=drafts)
+        except SEOCompetitorProfileProviderError as exc:
+            self.session.rollback()
+            self._mark_run_failed(
+                business_id=business_id,
+                generation_run_id=generation_run_id,
+                reason=exc,
+                error_summary=self._provider_error_summary(exc),
+                provider_name=exc.provider_name,
+                model_name=exc.model_name,
+                prompt_version=exc.prompt_version,
+                raw_output=exc.raw_output,
+            )
+            return None
+        except SEOCompetitorProfileGenerationValidationError as exc:
+            self.session.rollback()
+            self._mark_run_failed(
+                business_id=business_id,
+                generation_run_id=generation_run_id,
+                reason=exc,
+                error_summary=INVALID_OUTPUT_ERROR_SUMMARY,
+                provider_name=provider_name,
+                model_name=model_name,
+                prompt_version=prompt_version,
+                raw_output=raw_output,
+            )
+            return None
         except Exception as exc:  # noqa: BLE001
             self.session.rollback()
             self._mark_run_failed(
                 business_id=business_id,
                 generation_run_id=generation_run_id,
                 reason=exc,
+                error_summary=GENERIC_INTERNAL_ERROR_SUMMARY,
+                provider_name=provider_name,
+                model_name=model_name,
+                prompt_version=prompt_version,
+                raw_output=raw_output,
             )
             return None
 
@@ -687,6 +744,48 @@ class SEOCompetitorProfileGenerationService:
         cleaned = value.strip()
         return cleaned or None
 
+    def _default_provider_name(self) -> str:
+        provider_name = self._clean_optional(str(getattr(self.provider, "provider_name", "") or ""))
+        return provider_name or "pending"
+
+    def _default_model_name(self) -> str:
+        model_name = self._clean_optional(str(getattr(self.provider, "model_name", "") or ""))
+        return model_name or "pending"
+
+    def _default_prompt_version(self) -> str:
+        prompt_version = self._clean_optional(str(getattr(self.provider, "prompt_version", "") or ""))
+        return prompt_version or SEO_COMPETITOR_PROFILE_PROMPT_VERSION
+
+    def _provider_error_summary(self, error: SEOCompetitorProfileProviderError) -> str:
+        if error.code == "timeout":
+            return PROVIDER_TIMEOUT_ERROR_SUMMARY
+        if error.code == "provider_auth_config":
+            return PROVIDER_AUTH_CONFIG_ERROR_SUMMARY
+        if error.code in {"invalid_output", "schema_validation", "parsing_error"}:
+            return INVALID_OUTPUT_ERROR_SUMMARY
+        return GENERIC_PROVIDER_ERROR_SUMMARY
+
+    def _sanitize_raw_output(self, raw_output: str | object | None) -> str | None:
+        if raw_output is None:
+            return None
+        if isinstance(raw_output, str):
+            raw_text = raw_output
+        else:
+            raw_text = json.dumps(raw_output, ensure_ascii=True, sort_keys=True, default=str)
+        if not raw_text:
+            return None
+
+        filtered = []
+        for char in raw_text:
+            if char in {"\n", "\r", "\t"} or ord(char) >= 32:
+                filtered.append(char)
+        normalized = "".join(filtered).strip()
+        if not normalized:
+            return None
+        if len(normalized) > RUN_RAW_OUTPUT_MAX_CHARS:
+            return normalized[: RUN_RAW_OUTPUT_MAX_CHARS - 3] + "..."
+        return normalized
+
     def reconcile_stale_runs(
         self,
         *,
@@ -743,10 +842,22 @@ class SEOCompetitorProfileGenerationService:
         run: SEOCompetitorProfileGenerationRun,
         *,
         error_summary: str,
+        provider_name: str | None = None,
+        model_name: str | None = None,
+        prompt_version: str | None = None,
+        raw_output: str | object | None = None,
     ) -> None:
         run.status = "failed"
         run.generated_draft_count = 0
         run.error_summary = error_summary
+        if provider_name:
+            run.provider_name = provider_name
+        if model_name:
+            run.model_name = model_name
+        if prompt_version:
+            run.prompt_version = prompt_version
+        if raw_output is not None:
+            run.raw_output = self._sanitize_raw_output(raw_output)
         run.completed_at = utc_now()
         self.seo_competitor_profile_generation_repository.save_run(run)
 
@@ -756,6 +867,11 @@ class SEOCompetitorProfileGenerationService:
         business_id: str,
         generation_run_id: str,
         reason: Exception,
+        error_summary: str,
+        provider_name: str | None = None,
+        model_name: str | None = None,
+        prompt_version: str | None = None,
+        raw_output: str | object | None = None,
     ) -> None:
         logger.warning(
             "SEO competitor profile generation run failed business_id=%s run_id=%s reason=%s",
@@ -769,7 +885,14 @@ class SEOCompetitorProfileGenerationService:
         )
         if run is None:
             return
-        self._set_run_failed(run, error_summary="Competitor profile generation failed")
+        self._set_run_failed(
+            run,
+            error_summary=error_summary,
+            provider_name=provider_name,
+            model_name=model_name,
+            prompt_version=prompt_version,
+            raw_output=raw_output,
+        )
         self.session.commit()
 
     def _commit_with_constraint_handling(self) -> None:

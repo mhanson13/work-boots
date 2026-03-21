@@ -18,6 +18,7 @@ from app.api.deps import (
 from app.api.routes.seo import router as seo_router
 from app.api.routes.seo import router_v1 as seo_v1_router
 from app.core.time import utc_now
+from app.integrations.seo_competitor_profile_generation_provider import SEOCompetitorProfileProviderError
 from app.integrations.seo_summary_provider import (
     SEOCompetitorProfileDraftCandidateOutput,
     SEOCompetitorProfileGenerationOutput,
@@ -34,6 +35,9 @@ from app.repositories.seo_competitor_profile_generation_repository import (
 from app.repositories.seo_competitor_repository import SEOCompetitorRepository
 from app.repositories.seo_site_repository import SEOSiteRepository
 from app.services.seo_competitor_profile_generation import (
+    INVALID_OUTPUT_ERROR_SUMMARY,
+    PROVIDER_AUTH_CONFIG_ERROR_SUMMARY,
+    PROVIDER_TIMEOUT_ERROR_SUMMARY,
     STALE_QUEUED_RUN_ERROR_SUMMARY,
     STALE_QUEUED_RUN_TIMEOUT,
     STALE_RUNNING_RUN_ERROR_SUMMARY,
@@ -43,6 +47,10 @@ from app.services.seo_competitor_profile_generation import (
 
 
 class _DeterministicCompetitorProfileProvider:
+    provider_name = "deterministic-test-provider"
+    model_name = "deterministic-test-model"
+    prompt_version = "seo-competitor-profile-v1"
+
     def generate_competitor_profiles(
         self,
         *,
@@ -73,13 +81,20 @@ class _DeterministicCompetitorProfileProvider:
         ]
         return SEOCompetitorProfileGenerationOutput(
             candidates=candidates[:candidate_count],
-            provider_name="deterministic-test-provider",
-            model_name="deterministic-test-model",
-            prompt_version="seo-competitor-profile-v1",
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            prompt_version=self.prompt_version,
+            raw_response=(
+                '{\"candidates\":[{\"name\":\"Draft Competitor One\"},{\"name\":\"Draft Competitor Two\"}]}'
+            ),
         )
 
 
 class _InvalidCompetitorProfileProvider:
+    provider_name = "invalid-test-provider"
+    model_name = "invalid-test-model"
+    prompt_version = "seo-competitor-profile-v1"
+
     def generate_competitor_profiles(
         self,
         *,
@@ -100,13 +115,18 @@ class _InvalidCompetitorProfileProvider:
                     confidence_score=0.5,
                 )
             ],
-            provider_name="invalid-test-provider",
-            model_name="invalid-test-model",
-            prompt_version="seo-competitor-profile-v1",
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            prompt_version=self.prompt_version,
+            raw_response='{\"candidates\":[{\"domain\":\"invalid-domain-without-tld\"}]}',
         )
 
 
 class _PartiallyInvalidCompetitorProfileProvider:
+    provider_name = "partial-invalid-provider"
+    model_name = "partial-invalid-model"
+    prompt_version = "seo-competitor-profile-v1"
+
     def generate_competitor_profiles(
         self,
         *,
@@ -136,9 +156,88 @@ class _PartiallyInvalidCompetitorProfileProvider:
                     confidence_score=0.4,
                 ),
             ],
-            provider_name="partial-invalid-provider",
-            model_name="partial-invalid-model",
-            prompt_version="seo-competitor-profile-v1",
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            prompt_version=self.prompt_version,
+            raw_response='{\"candidates\":[{\"domain\":\"valid-competitor.example\"},{\"domain\":\"broken\"}]}',
+        )
+
+
+class _InvalidConfidenceCompetitorProfileProvider:
+    provider_name = "invalid-confidence-provider"
+    model_name = "invalid-confidence-model"
+    prompt_version = "seo-competitor-profile-v1"
+
+    def generate_competitor_profiles(
+        self,
+        *,
+        site,  # noqa: ANN001
+        existing_domains,  # noqa: ANN001
+        candidate_count: int,
+    ) -> SEOCompetitorProfileGenerationOutput:
+        del site, existing_domains, candidate_count
+        return SEOCompetitorProfileGenerationOutput(
+            candidates=[
+                SEOCompetitorProfileDraftCandidateOutput(
+                    suggested_name="Invalid Confidence Candidate",
+                    suggested_domain="invalid-confidence.example",
+                    competitor_type="direct",
+                    summary="invalid confidence",
+                    why_competitor="invalid confidence",
+                    evidence="invalid confidence",
+                    confidence_score=1.2,
+                )
+            ],
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            prompt_version=self.prompt_version,
+            raw_response='{\"candidates\":[{\"confidence_score\":1.2}]}',
+        )
+
+
+class _TimeoutCompetitorProfileProvider:
+    provider_name = "openai"
+    model_name = "gpt-4.1-mini"
+    prompt_version = "seo-competitor-profile-v1"
+
+    def generate_competitor_profiles(
+        self,
+        *,
+        site,  # noqa: ANN001
+        existing_domains,  # noqa: ANN001
+        candidate_count: int,
+    ) -> SEOCompetitorProfileGenerationOutput:
+        del site, existing_domains, candidate_count
+        raise SEOCompetitorProfileProviderError(
+            code="timeout",
+            safe_message="provider timeout",
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            prompt_version=self.prompt_version,
+            raw_output="{\"error\":\"timeout\"}",
+        )
+
+
+class _ProviderAuthCompetitorProfileProvider:
+    provider_name = "openai"
+    model_name = "gpt-4.1-mini"
+    prompt_version = "seo-competitor-profile-v1"
+
+    def generate_competitor_profiles(
+        self,
+        *,
+        site,  # noqa: ANN001
+        existing_domains,  # noqa: ANN001
+        candidate_count: int,
+    ) -> SEOCompetitorProfileGenerationOutput:
+        del site, existing_domains, candidate_count
+        raise SEOCompetitorProfileProviderError(
+            code="provider_auth_config",
+            safe_message="provider auth failure",
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            prompt_version=self.prompt_version,
+            raw_output="{\"error\":\"unauthorized\"}",
         )
 
 
@@ -390,12 +489,17 @@ def test_async_execution_transitions_running_to_completed_and_persists_drafts(db
     payload = detail.json()
     assert payload["run"]["status"] == "completed"
     assert payload["run"]["generated_draft_count"] == 2
+    assert payload["run"]["provider_name"] == "deterministic-test-provider"
+    assert payload["run"]["model_name"] == "deterministic-test-model"
+    assert payload["run"]["prompt_version"] == "seo-competitor-profile-v1"
     assert payload["total_drafts"] == 2
 
     persisted_runs = db_session.query(SEOCompetitorProfileGenerationRun).all()
     persisted_drafts = db_session.query(SEOCompetitorProfileDraft).all()
     assert len(persisted_runs) == 1
     assert len(persisted_drafts) == 2
+    assert persisted_runs[0].raw_output is not None
+    assert "Draft Competitor One" in persisted_runs[0].raw_output
 
 
 def test_async_execution_failure_marks_run_failed_safely(db_session, seeded_business) -> None:
@@ -425,8 +529,19 @@ def test_async_execution_failure_marks_run_failed_safely(db_session, seeded_busi
     payload = detail.json()
     assert payload["run"]["status"] == "failed"
     assert payload["run"]["generated_draft_count"] == 0
-    assert payload["run"]["error_summary"] == "Competitor profile generation failed"
+    assert payload["run"]["error_summary"] == INVALID_OUTPUT_ERROR_SUMMARY
+    assert payload["run"]["provider_name"] == "invalid-test-provider"
+    assert payload["run"]["model_name"] == "invalid-test-model"
+    assert payload["run"]["prompt_version"] == "seo-competitor-profile-v1"
     assert payload["total_drafts"] == 0
+    persisted_run = (
+        db_session.query(SEOCompetitorProfileGenerationRun)
+        .filter(SEOCompetitorProfileGenerationRun.business_id == seeded_business.id)
+        .filter(SEOCompetitorProfileGenerationRun.id == run_id)
+        .one()
+    )
+    assert persisted_run.raw_output is not None
+    assert "invalid-domain-without-tld" in persisted_run.raw_output
 
 
 def test_malformed_provider_output_results_in_failed_run_without_partial_drafts(db_session, seeded_business) -> None:
@@ -455,7 +570,108 @@ def test_malformed_provider_output_results_in_failed_run_without_partial_drafts(
     assert detail.status_code == 200
     payload = detail.json()
     assert payload["run"]["status"] == "failed"
+    assert payload["run"]["error_summary"] == INVALID_OUTPUT_ERROR_SUMMARY
     assert payload["total_drafts"] == 0
+
+
+def test_invalid_confidence_output_fails_run_safely(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
+    )
+    site_id = _create_site(client, seeded_business.id)
+    created = _create_generation_run(client, seeded_business.id, site_id)
+    run_id = created["run"]["id"]
+
+    _execute_generation_run(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        run_id=run_id,
+        provider=_InvalidConfidenceCompetitorProfileProvider(),
+    )
+
+    detail = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/{run_id}"
+    )
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["run"]["status"] == "failed"
+    assert payload["run"]["error_summary"] == INVALID_OUTPUT_ERROR_SUMMARY
+    assert payload["total_drafts"] == 0
+
+
+def test_timeout_provider_failure_marks_run_failed_safely(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
+    )
+    site_id = _create_site(client, seeded_business.id)
+    created = _create_generation_run(client, seeded_business.id, site_id)
+    run_id = created["run"]["id"]
+
+    _execute_generation_run(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        run_id=run_id,
+        provider=_TimeoutCompetitorProfileProvider(),
+    )
+
+    detail = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/{run_id}"
+    )
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["run"]["status"] == "failed"
+    assert payload["run"]["error_summary"] == PROVIDER_TIMEOUT_ERROR_SUMMARY
+    assert payload["run"]["provider_name"] == "openai"
+    assert payload["run"]["model_name"] == "gpt-4.1-mini"
+    persisted_run = (
+        db_session.query(SEOCompetitorProfileGenerationRun)
+        .filter(SEOCompetitorProfileGenerationRun.business_id == seeded_business.id)
+        .filter(SEOCompetitorProfileGenerationRun.id == run_id)
+        .one()
+    )
+    assert persisted_run.raw_output is not None
+    assert "timeout" in persisted_run.raw_output
+
+
+def test_provider_auth_failure_marks_run_failed_safely(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
+    )
+    site_id = _create_site(client, seeded_business.id)
+    created = _create_generation_run(client, seeded_business.id, site_id)
+    run_id = created["run"]["id"]
+
+    _execute_generation_run(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        run_id=run_id,
+        provider=_ProviderAuthCompetitorProfileProvider(),
+    )
+
+    detail = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/{run_id}"
+    )
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["run"]["status"] == "failed"
+    assert payload["run"]["error_summary"] == PROVIDER_AUTH_CONFIG_ERROR_SUMMARY
+    assert payload["run"]["provider_name"] == "openai"
+    assert payload["run"]["model_name"] == "gpt-4.1-mini"
 
 
 def test_list_runs_reconciles_stale_queued_and_running_runs(db_session, seeded_business) -> None:

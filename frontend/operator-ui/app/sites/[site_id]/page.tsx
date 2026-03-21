@@ -1596,6 +1596,13 @@ export default function SiteWorkspacePage() {
         ) : (
           <p className="hint muted">No competitor profile generation runs have been created for this site yet.</p>
         )}
+        {latestCompetitorProfileRun ? (
+          <p className="hint muted">
+            Provider: <code>{latestCompetitorProfileRun.provider_name}</code> | Model:{" "}
+            <code>{latestCompetitorProfileRun.model_name}</code> | Prompt:{" "}
+            <code>{latestCompetitorProfileRun.prompt_version}</code>
+          </p>
+        ) : null}
         {latestCompetitorProfileRun?.parent_run_id ? (
           <p className="hint muted">
             Retry of run <code>{latestCompetitorProfileRun.parent_run_id}</code>.

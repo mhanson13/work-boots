@@ -57,6 +57,7 @@ class SEOCompetitorProfileGenerationRun(Base):
     provider_name: Mapped[str] = mapped_column(String(64), nullable=False, default="unknown")
     model_name: Mapped[str] = mapped_column(String(128), nullable=False, default="unknown")
     prompt_version: Mapped[str] = mapped_column(String(64), nullable=False, default="unknown")
+    raw_output: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by_principal_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

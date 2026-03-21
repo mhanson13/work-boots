@@ -19,11 +19,13 @@ from app.integrations import (
     DevSMSProvider,
     EmailProvider,
     GoogleBusinessProfileClient,
+    MisconfiguredSEOCompetitorProfileGenerationProvider,
     MockSEOCompetitorComparisonSummaryProvider,
     MockSEOCompetitorProfileGenerationProvider,
     MockSEORecommendationNarrativeProvider,
     MockSEOAuditSummaryProvider,
     MockEmailProvider,
+    OpenAISEOCompetitorProfileGenerationProvider,
     MockSMSProvider,
     SEOCompetitorProfileGenerationProvider,
     SEORecommendationNarrativeProvider,
@@ -382,7 +384,54 @@ def get_seo_competitor_summary_provider() -> SEOCompetitorComparisonSummaryProvi
 
 
 def get_seo_competitor_profile_generation_provider() -> SEOCompetitorProfileGenerationProvider:
-    return MockSEOCompetitorProfileGenerationProvider()
+    settings = get_settings()
+    provider_name = settings.ai_provider_name
+    model_name = settings.ai_model_name
+
+    if provider_name == "openai":
+        api_key = (settings.ai_provider_api_key or "").strip()
+        if not api_key:
+            logger.warning(
+                "SEO competitor profile generation provider misconfigured: AI_PROVIDER_API_KEY is missing for provider=openai"
+            )
+            return MisconfiguredSEOCompetitorProfileGenerationProvider(
+                provider_name="openai",
+                model_name=model_name or "gpt-4o-mini",
+                prompt_version="seo-competitor-profile-v1",
+                safe_message="AI provider credentials are not configured for competitor profile generation.",
+            )
+        try:
+            return OpenAISEOCompetitorProfileGenerationProvider(
+                api_key=api_key,
+                model_name=model_name or "gpt-4o-mini",
+                timeout_seconds=settings.ai_timeout_value,
+                api_base_url=settings.openai_api_base_url,
+                prompt_version="seo-competitor-profile-v1",
+                prompt_text_recommendation=settings.ai_prompt_text_recommendation,
+            )
+        except ValueError as exc:
+            logger.warning("Failed to initialize OpenAI competitor profile provider: %s", str(exc))
+            return MisconfiguredSEOCompetitorProfileGenerationProvider(
+                provider_name="openai",
+                model_name=model_name or "gpt-4o-mini",
+                prompt_version="seo-competitor-profile-v1",
+                safe_message="AI provider configuration is invalid for competitor profile generation.",
+            )
+
+    if provider_name == "mock":
+        return MockSEOCompetitorProfileGenerationProvider(
+            provider_name="mock",
+            model_name=model_name or "mock-seo-competitor-profile-v1",
+            prompt_version="seo-competitor-profile-v1",
+        )
+
+    logger.warning("Unknown SEO competitor profile generation provider '%s'", provider_name)
+    return MisconfiguredSEOCompetitorProfileGenerationProvider(
+        provider_name=provider_name or "unknown",
+        model_name=model_name or "unknown-model",
+        prompt_version="seo-competitor-profile-v1",
+        safe_message="AI provider selection is invalid for competitor profile generation.",
+    )
 
 
 SEOCompetitorProfileGenerationRunExecutor = Callable[[str, str, str], None]

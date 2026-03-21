@@ -66,6 +66,7 @@ class SEOCompetitorProfileGenerationOutput:
     provider_name: str
     model_name: str
     prompt_version: str
+    raw_response: str | None = None
 
 
 class SEOCompetitorProfileGenerationProvider(Protocol):

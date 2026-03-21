@@ -71,6 +71,7 @@ class SEOCompetitorProfileGenerationRepository:
             .values(
                 status="running",
                 error_summary=None,
+                raw_output=None,
                 completed_at=None,
                 updated_at=utc_now(),
             )

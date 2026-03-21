@@ -1365,6 +1365,20 @@ describe("site workspace ai competitor profile drafts", () => {
     await screen.findByRole("heading", { name: "AI Competitor Profiles" });
     expect(screen.getByRole("button", { name: "Generate Competitor Profiles" })).toBeInTheDocument();
     expect(await screen.findByText(/Latest Run:/i)).toBeInTheDocument();
+    const metadataLine = screen.getByText((_, element) => {
+      if (!element || element.tagName.toLowerCase() !== "p") {
+        return false;
+      }
+      const text = element.textContent || "";
+      return (
+        text.includes("Provider:") &&
+        text.includes("Model:") &&
+        text.includes("Prompt:")
+      );
+    });
+    expect(metadataLine).toHaveTextContent(/Provider:\s*mock/);
+    expect(metadataLine).toHaveTextContent(/Model:\s*mock-seo-competitor-profile-v1/);
+    expect(metadataLine).toHaveTextContent(/Prompt:\s*seo-competitor-profile-v1/);
     expect(screen.getAllByTestId("competitor-profile-draft-row")).toHaveLength(2);
     expect(mockFetchCompetitorProfileGenerationRuns).toHaveBeenCalled();
     expect(mockFetchCompetitorProfileGenerationRunDetail).toHaveBeenCalled();
