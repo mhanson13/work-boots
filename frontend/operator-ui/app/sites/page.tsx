@@ -409,12 +409,14 @@ export default function SitesPage() {
           </div>
         </FormContainer>
 
-        {submitSuccess ? <p className="hint">{submitSuccess}</p> : null}
-        {submitError ? <p className="hint error">{submitError}</p> : null}
-        {triggerMessage ? <p className="hint">{triggerMessage}</p> : null}
-        {triggerError ? <p className="hint error">{triggerError}</p> : null}
-        {siteActionSuccess ? <p className="hint">{siteActionSuccess}</p> : null}
-        {siteActionError ? <p className="hint error">{siteActionError}</p> : null}
+        <div className="message-stack">
+          {submitSuccess ? <p className="hint">{submitSuccess}</p> : null}
+          {submitError ? <p className="hint error">{submitError}</p> : null}
+          {triggerMessage ? <p className="hint">{triggerMessage}</p> : null}
+          {triggerError ? <p className="hint error">{triggerError}</p> : null}
+          {siteActionSuccess ? <p className="hint">{siteActionSuccess}</p> : null}
+          {siteActionError ? <p className="hint error">{siteActionError}</p> : null}
+        </div>
       </SectionCard>
 
       <SectionCard>
@@ -438,9 +440,9 @@ export default function SitesPage() {
             <tbody>
               {context.sites.map((site) => (
                 <tr key={site.id}>
-                  <td>{site.display_name}</td>
-                  <td>{site.base_url}</td>
-                  <td>{site.normalized_domain}</td>
+                  <td className="table-cell-wrap">{site.display_name}</td>
+                  <td className="table-cell-wrap">{site.base_url}</td>
+                  <td className="table-cell-wrap">{site.normalized_domain}</td>
                   <td>
                     <span className={statuses[site.id]?.badgeClass || "badge badge-muted"}>
                       {statuses[site.id]?.label || "unknown"}
@@ -501,19 +503,21 @@ export default function SitesPage() {
       <SectionCard>
         <h2>Site Intelligence</h2>
 
-        <label htmlFor="site-picker-intelligence">Selected Site</label>
-        <select
-          id="site-picker-intelligence"
-          value={context.selectedSiteId || ""}
-          onChange={(event) => context.setSelectedSiteId(event.target.value)}
-          disabled={context.sites.length === 0}
-        >
-          {context.sites.map((site) => (
-            <option key={site.id} value={site.id}>
-              {site.display_name}
-            </option>
-          ))}
-        </select>
+        <div className="form-container">
+          <label htmlFor="site-picker-intelligence">Selected Site</label>
+          <select
+            id="site-picker-intelligence"
+            value={context.selectedSiteId || ""}
+            onChange={(event) => context.setSelectedSiteId(event.target.value)}
+            disabled={context.sites.length === 0}
+          >
+            {context.sites.map((site) => (
+              <option key={site.id} value={site.id}>
+                {site.display_name}
+              </option>
+            ))}
+          </select>
+        </div>
 
         {!selectedSite ? <p className="hint muted">No site selected.</p> : null}
         {loadingIntelligence ? <p className="hint muted">Loading site intelligence...</p> : null}

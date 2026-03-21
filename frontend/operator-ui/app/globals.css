@@ -202,6 +202,15 @@ code {
   min-width: 56rem;
 }
 
+.table-container-compact > .table {
+  min-width: 0;
+}
+
+.table-cell-wrap {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .table th,
 .table td {
   border-bottom: 1px solid var(--border);

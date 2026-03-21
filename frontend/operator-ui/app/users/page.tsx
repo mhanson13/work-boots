@@ -651,8 +651,8 @@ export default function UsersPage() {
                 const userIdentities = identitiesByPrincipalId.get(user.id) || [];
                 return (
                   <tr key={`${user.business_id}:${user.id}`}>
-                    <td>{user.id}</td>
-                    <td>{user.display_name}</td>
+                    <td className="table-cell-wrap">{user.id}</td>
+                    <td className="table-cell-wrap">{user.display_name}</td>
                     <td>{user.role}</td>
                     <td>{user.is_active ? "yes" : "no"}</td>
                     <td>{user.last_authenticated_at || "never"}</td>

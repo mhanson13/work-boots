@@ -786,7 +786,7 @@ export default function RecommendationRunNarrativeHistoryPage() {
                         <td>{item.version}</td>
                         <td>{item.status}</td>
                         <td>{formatDateTime(item.created_at)}</td>
-                        <td>{item.provider_name} / {item.model_name}</td>
+                        <td className="table-cell-wrap">{item.provider_name} / {item.model_name}</td>
                         <td>{item.top_themes_json.length > 0 ? item.top_themes_json.slice(0, 3).join(", ") : "-"}</td>
                         <td>{item.sections_json ? Object.keys(item.sections_json).length : 0}</td>
                         <td>{item.error_message || "-"}</td>
@@ -1048,7 +1048,7 @@ export default function RecommendationRunNarrativeHistoryPage() {
                     <tbody>
                       {producedRecommendations.map((item) => (
                         <tr key={item.id}>
-                          <td>
+                          <td className="table-cell-wrap">
                             <Link href={buildRecommendationDetailHref(item)}>{item.title}</Link>
                             <br />
                             <span className="hint muted"><code>{item.id}</code></span>

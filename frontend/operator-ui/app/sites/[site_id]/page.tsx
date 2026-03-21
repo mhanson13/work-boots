@@ -931,7 +931,7 @@ export default function SiteWorkspacePage() {
                               </td>
                               <td>{event.type_label}</td>
                               <td>{event.status}</td>
-                              <td>
+                              <td className="table-cell-wrap">
                                 <Link href={event.href}>{event.title}</Link>
                                 <br />
                                 <span className="hint muted">{event.context}</span>
@@ -1059,7 +1059,7 @@ export default function SiteWorkspacePage() {
                 <tbody>
                   {competitorSets.slice(0, MAX_COMPETITOR_ROWS).map((setItem) => (
                     <tr key={setItem.id}>
-                      <td>
+                      <td className="table-cell-wrap">
                         <Link href={buildCompetitorSetHref(setItem.id, selectedSite.id)}>{setItem.name}</Link>
                         <br />
                         <span className="hint muted"><code>{setItem.id}</code></span>
@@ -1128,7 +1128,7 @@ export default function SiteWorkspacePage() {
               <tbody>
                 {queueResponse.items.map((item) => (
                   <tr key={item.id}>
-                    <td>
+                    <td className="table-cell-wrap">
                       <Link href={buildRecommendationDetailHref(item.id, selectedSite.id)}>{item.title}</Link>
                       <br />
                       <span className="hint muted"><code>{item.id}</code></span>

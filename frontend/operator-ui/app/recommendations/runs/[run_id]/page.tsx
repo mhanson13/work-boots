@@ -572,7 +572,7 @@ export default function RecommendationRunDetailPage() {
 
           <SectionCard>
             <h2>Recommendation Metrics</h2>
-            <div className="table-container">
+            <div className="table-container table-container-compact">
               <table className="table">
                 <tbody>
                   <tr>
@@ -600,7 +600,7 @@ export default function RecommendationRunDetailPage() {
                 {recommendationsByCategory.length === 0 ? (
                   <p className="hint muted">No category rollups are available.</p>
                 ) : (
-                  <div className="table-container">
+                  <div className="table-container table-container-compact">
                     <table className="table">
                       <tbody>
                         {recommendationsByCategory.map(([key, value]) => (
@@ -619,7 +619,7 @@ export default function RecommendationRunDetailPage() {
                 {recommendationsBySeverity.length === 0 ? (
                   <p className="hint muted">No severity rollups are available.</p>
                 ) : (
-                  <div className="table-container">
+                  <div className="table-container table-container-compact">
                     <table className="table">
                       <tbody>
                         {recommendationsBySeverity.map(([key, value]) => (
@@ -638,7 +638,7 @@ export default function RecommendationRunDetailPage() {
                 {recommendationsByEffort.length === 0 ? (
                   <p className="hint muted">No effort rollups are available.</p>
                 ) : (
-                  <div className="table-container">
+                  <div className="table-container table-container-compact">
                     <table className="table">
                       <tbody>
                         {recommendationsByEffort.map(([key, value]) => (
@@ -657,7 +657,7 @@ export default function RecommendationRunDetailPage() {
                 {recommendationsByStatus.length === 0 ? (
                   <p className="hint muted">No status breakdown is available.</p>
                 ) : (
-                  <div className="table-container">
+                  <div className="table-container table-container-compact">
                     <table className="table">
                       <tbody>
                         {recommendationsByStatus.map(([key, value]) => (
@@ -776,7 +776,7 @@ export default function RecommendationRunDetailPage() {
                     <tbody>
                       {recommendations.map((item) => (
                         <tr key={item.id}>
-                          <td>
+                          <td className="table-cell-wrap">
                             <Link href={buildRecommendationDetailHref(item)}>{item.title}</Link>
                             <br />
                             <span className="hint muted"><code>{item.id}</code></span>
