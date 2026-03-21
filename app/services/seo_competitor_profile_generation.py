@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 import logging
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -34,6 +35,14 @@ from app.schemas.seo_competitor import (
 logger = logging.getLogger(__name__)
 
 _ALLOWED_COMPETITOR_TYPES = {"direct", "indirect", "local", "marketplace", "informational", "unknown"}
+STALE_QUEUED_RUN_TIMEOUT = timedelta(minutes=15)
+STALE_RUNNING_RUN_TIMEOUT = timedelta(minutes=45)
+STALE_QUEUED_RUN_ERROR_SUMMARY = (
+    "Competitor profile generation did not start in time. Start a new generation run to retry."
+)
+STALE_RUNNING_RUN_ERROR_SUMMARY = (
+    "Competitor profile generation timed out before completion. Start a new generation run to retry."
+)
 
 
 class SEOCompetitorProfileGenerationNotFoundError(ValueError):
@@ -83,13 +92,13 @@ class SEOCompetitorProfileGenerationService:
         created_by_principal_id: str | None,
     ) -> SEOCompetitorProfileGenerationRunDetail:
         self._require_business(business_id)
-        site = self._require_site(business_id=business_id, site_id=site_id)
+        self._require_site(business_id=business_id, site_id=site_id)
 
         run = SEOCompetitorProfileGenerationRun(
             id=str(uuid4()),
             business_id=business_id,
             site_id=site_id,
-            status="running",
+            status="queued",
             requested_candidate_count=payload.candidate_count,
             generated_draft_count=0,
             provider_name="pending",
@@ -99,9 +108,64 @@ class SEOCompetitorProfileGenerationService:
             completed_at=None,
             created_by_principal_id=created_by_principal_id,
         )
-        self.seo_competitor_profile_generation_repository.create_run(run)
+        try:
+            self.seo_competitor_profile_generation_repository.create_run(run)
+            self.session.commit()
+            self.session.refresh(run)
+            logger.info(
+                "SEO competitor profile generation run queued business_id=%s site_id=%s run_id=%s candidate_count=%s",
+                business_id,
+                site_id,
+                run.id,
+                payload.candidate_count,
+            )
+            return SEOCompetitorProfileGenerationRunDetail(run=run, drafts=[])
+        except Exception as exc:  # noqa: BLE001
+            self.session.rollback()
+            raise SEOCompetitorProfileGenerationValidationError("Failed to queue competitor profile generation run") from exc
+
+    def execute_queued_run(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+        generation_run_id: str,
+    ) -> SEOCompetitorProfileGenerationRunDetail | None:
+        self._require_business(business_id)
+        site = self._require_site(business_id=business_id, site_id=site_id)
+
+        existing_run = self._get_run_for_site(
+            business_id=business_id,
+            site_id=site_id,
+            generation_run_id=generation_run_id,
+        )
+        claimed = self.seo_competitor_profile_generation_repository.claim_run_for_execution(
+            business_id,
+            generation_run_id,
+        )
+        if not claimed:
+            self.session.rollback()
+            logger.info(
+                "SEO competitor profile generation run execution skipped business_id=%s site_id=%s run_id=%s status=%s",
+                business_id,
+                site_id,
+                generation_run_id,
+                existing_run.status,
+            )
+            return None
+
         self.session.commit()
-        self.session.refresh(run)
+        run = self._get_run_for_site(
+            business_id=business_id,
+            site_id=site_id,
+            generation_run_id=generation_run_id,
+        )
+        logger.info(
+            "SEO competitor profile generation run started business_id=%s site_id=%s run_id=%s",
+            business_id,
+            site_id,
+            run.id,
+        )
 
         try:
             existing_domains = [
@@ -114,7 +178,7 @@ class SEOCompetitorProfileGenerationService:
             output = self.provider.generate_competitor_profiles(
                 site=site,
                 existing_domains=existing_domains,
-                candidate_count=payload.candidate_count,
+                candidate_count=run.requested_candidate_count,
             )
 
             drafts = self._build_drafts(
@@ -138,24 +202,22 @@ class SEOCompetitorProfileGenerationService:
                 self.seo_competitor_profile_generation_repository.create_draft(draft)
             self.session.commit()
             self.session.refresh(run)
-            return SEOCompetitorProfileGenerationRunDetail(run=run, drafts=drafts)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "SEO competitor profile generation failed business_id=%s site_id=%s run_id=%s reason=%s",
+            logger.info(
+                "SEO competitor profile generation run completed business_id=%s site_id=%s run_id=%s drafts=%s",
                 business_id,
                 site_id,
                 run.id,
-                str(exc),
+                len(drafts),
             )
+            return SEOCompetitorProfileGenerationRunDetail(run=run, drafts=drafts)
+        except Exception as exc:  # noqa: BLE001
             self.session.rollback()
-            run = self.seo_competitor_profile_generation_repository.get_run_for_business(business_id, run.id) or run
-            run.status = "failed"
-            run.generated_draft_count = 0
-            run.error_summary = "Competitor profile generation failed"
-            run.completed_at = utc_now()
-            self.seo_competitor_profile_generation_repository.save_run(run)
-            self.session.commit()
-            raise SEOCompetitorProfileGenerationValidationError("Competitor profile generation failed") from exc
+            self._mark_run_failed(
+                business_id=business_id,
+                generation_run_id=generation_run_id,
+                reason=exc,
+            )
+            return None
 
     def list_runs(
         self,
@@ -165,6 +227,7 @@ class SEOCompetitorProfileGenerationService:
     ) -> list[SEOCompetitorProfileGenerationRun]:
         self._require_business(business_id)
         self._require_site(business_id=business_id, site_id=site_id)
+        self._reconcile_stale_runs_for_site(business_id=business_id, site_id=site_id)
         return self.seo_competitor_profile_generation_repository.list_runs_for_business_site(
             business_id,
             site_id,
@@ -179,6 +242,7 @@ class SEOCompetitorProfileGenerationService:
     ) -> SEOCompetitorProfileGenerationRunDetail:
         self._require_business(business_id)
         self._require_site(business_id=business_id, site_id=site_id)
+        self._reconcile_stale_runs_for_site(business_id=business_id, site_id=site_id)
         run = self._get_run_for_site(
             business_id=business_id,
             site_id=site_id,
@@ -570,6 +634,91 @@ class SEOCompetitorProfileGenerationService:
             return None
         cleaned = value.strip()
         return cleaned or None
+
+    def reconcile_stale_runs(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+    ) -> int:
+        self._require_business(business_id)
+        self._require_site(business_id=business_id, site_id=site_id)
+        return self._reconcile_stale_runs_for_site(business_id=business_id, site_id=site_id)
+
+    def _reconcile_stale_runs_for_site(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+    ) -> int:
+        now = utc_now()
+        stale_queued_runs = self.seo_competitor_profile_generation_repository.list_stale_runs_for_business_site(
+            business_id,
+            site_id,
+            status="queued",
+            updated_before=now - STALE_QUEUED_RUN_TIMEOUT,
+        )
+        stale_running_runs = self.seo_competitor_profile_generation_repository.list_stale_runs_for_business_site(
+            business_id,
+            site_id,
+            status="running",
+            updated_before=now - STALE_RUNNING_RUN_TIMEOUT,
+        )
+        if not stale_queued_runs and not stale_running_runs:
+            return 0
+
+        for run in stale_queued_runs:
+            self._set_run_failed(run, error_summary=STALE_QUEUED_RUN_ERROR_SUMMARY)
+            logger.warning(
+                "SEO competitor profile generation stale queued run marked failed business_id=%s site_id=%s run_id=%s",
+                business_id,
+                site_id,
+                run.id,
+            )
+        for run in stale_running_runs:
+            self._set_run_failed(run, error_summary=STALE_RUNNING_RUN_ERROR_SUMMARY)
+            logger.warning(
+                "SEO competitor profile generation stale running run marked failed business_id=%s site_id=%s run_id=%s",
+                business_id,
+                site_id,
+                run.id,
+            )
+        self.session.commit()
+        return len(stale_queued_runs) + len(stale_running_runs)
+
+    def _set_run_failed(
+        self,
+        run: SEOCompetitorProfileGenerationRun,
+        *,
+        error_summary: str,
+    ) -> None:
+        run.status = "failed"
+        run.generated_draft_count = 0
+        run.error_summary = error_summary
+        run.completed_at = utc_now()
+        self.seo_competitor_profile_generation_repository.save_run(run)
+
+    def _mark_run_failed(
+        self,
+        *,
+        business_id: str,
+        generation_run_id: str,
+        reason: Exception,
+    ) -> None:
+        logger.warning(
+            "SEO competitor profile generation run failed business_id=%s run_id=%s reason=%s",
+            business_id,
+            generation_run_id,
+            str(reason),
+        )
+        run = self.seo_competitor_profile_generation_repository.get_run_for_business(
+            business_id,
+            generation_run_id,
+        )
+        if run is None:
+            return
+        self._set_run_failed(run, error_summary="Competitor profile generation failed")
+        self.session.commit()
 
     def _commit_with_constraint_handling(self) -> None:
         try:

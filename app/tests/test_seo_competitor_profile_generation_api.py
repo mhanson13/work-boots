@@ -1,18 +1,23 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from datetime import timedelta
 from uuid import uuid4
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from app.api.deps import (
     TenantContext,
     get_db,
     get_seo_competitor_profile_generation_provider,
+    get_seo_competitor_profile_generation_run_executor,
     get_tenant_context,
 )
 from app.api.routes.seo import router as seo_router
 from app.api.routes.seo import router_v1 as seo_v1_router
+from app.core.time import utc_now
 from app.integrations.seo_summary_provider import (
     SEOCompetitorProfileDraftCandidateOutput,
     SEOCompetitorProfileGenerationOutput,
@@ -22,6 +27,19 @@ from app.models.business import Business
 from app.models.seo_competitor_domain import SEOCompetitorDomain
 from app.models.seo_competitor_profile_draft import SEOCompetitorProfileDraft
 from app.models.seo_competitor_profile_generation_run import SEOCompetitorProfileGenerationRun
+from app.repositories.business_repository import BusinessRepository
+from app.repositories.seo_competitor_profile_generation_repository import (
+    SEOCompetitorProfileGenerationRepository,
+)
+from app.repositories.seo_competitor_repository import SEOCompetitorRepository
+from app.repositories.seo_site_repository import SEOSiteRepository
+from app.services.seo_competitor_profile_generation import (
+    STALE_QUEUED_RUN_ERROR_SUMMARY,
+    STALE_QUEUED_RUN_TIMEOUT,
+    STALE_RUNNING_RUN_ERROR_SUMMARY,
+    STALE_RUNNING_RUN_TIMEOUT,
+    SEOCompetitorProfileGenerationService,
+)
 
 
 class _DeterministicCompetitorProfileProvider:
@@ -88,6 +106,79 @@ class _InvalidCompetitorProfileProvider:
         )
 
 
+class _PartiallyInvalidCompetitorProfileProvider:
+    def generate_competitor_profiles(
+        self,
+        *,
+        site,  # noqa: ANN001
+        existing_domains,  # noqa: ANN001
+        candidate_count: int,
+    ) -> SEOCompetitorProfileGenerationOutput:
+        del site, existing_domains, candidate_count
+        return SEOCompetitorProfileGenerationOutput(
+            candidates=[
+                SEOCompetitorProfileDraftCandidateOutput(
+                    suggested_name="Valid Candidate",
+                    suggested_domain="valid-competitor.example",
+                    competitor_type="direct",
+                    summary="valid",
+                    why_competitor="valid",
+                    evidence="valid",
+                    confidence_score=0.8,
+                ),
+                SEOCompetitorProfileDraftCandidateOutput(
+                    suggested_name="Broken Candidate",
+                    suggested_domain="broken",
+                    competitor_type="direct",
+                    summary="broken",
+                    why_competitor="broken",
+                    evidence="broken",
+                    confidence_score=0.4,
+                ),
+            ],
+            provider_name="partial-invalid-provider",
+            model_name="partial-invalid-model",
+            prompt_version="seo-competitor-profile-v1",
+        )
+
+
+class _StatusObservingProvider(_DeterministicCompetitorProfileProvider):
+    def __init__(self, *, db_session: Session, business_id: str, run_id: str) -> None:
+        self._db_session = db_session
+        self._business_id = business_id
+        self._run_id = run_id
+        self.observed_status: str | None = None
+
+    def generate_competitor_profiles(
+        self,
+        *,
+        site,  # noqa: ANN001
+        existing_domains,  # noqa: ANN001
+        candidate_count: int,
+    ) -> SEOCompetitorProfileGenerationOutput:
+        self._db_session.expire_all()
+        run = (
+            self._db_session.query(SEOCompetitorProfileGenerationRun)
+            .filter(SEOCompetitorProfileGenerationRun.business_id == self._business_id)
+            .filter(SEOCompetitorProfileGenerationRun.id == self._run_id)
+            .one_or_none()
+        )
+        self.observed_status = run.status if run is not None else None
+        return super().generate_competitor_profiles(
+            site=site,
+            existing_domains=existing_domains,
+            candidate_count=candidate_count,
+        )
+
+
+class _DeferredRunExecutor:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, str]] = []
+
+    def __call__(self, business_id: str, site_id: str, generation_run_id: str) -> None:
+        self.calls.append((business_id, site_id, generation_run_id))
+
+
 def _override_tenant_context(business_id: str):
     def _resolver() -> TenantContext:
         return TenantContext(
@@ -104,6 +195,7 @@ def _make_client(
     *,
     business_id: str,
     generation_provider: SEOCompetitorProfileGenerationProvider | None = None,
+    run_executor: Callable[[str, str, str], None] | None = None,
 ) -> TestClient:
     app = FastAPI()
     app.include_router(seo_router)
@@ -119,6 +211,8 @@ def _make_client(
     app.dependency_overrides[get_tenant_context] = _override_tenant_context(business_id)
     if generation_provider is not None:
         app.dependency_overrides[get_seo_competitor_profile_generation_provider] = lambda: generation_provider
+    if run_executor is not None:
+        app.dependency_overrides[get_seo_competitor_profile_generation_run_executor] = lambda: run_executor
     return TestClient(app)
 
 
@@ -157,32 +251,146 @@ def _create_generation_run(client: TestClient, business_id: str, site_id: str) -
     return response.json()
 
 
-def test_competitor_profile_generation_run_create_list_detail_and_persistence(db_session, seeded_business) -> None:
+def _execute_generation_run(
+    *,
+    db_session: Session,
+    business_id: str,
+    site_id: str,
+    run_id: str,
+    provider: SEOCompetitorProfileGenerationProvider,
+):
+    service = SEOCompetitorProfileGenerationService(
+        session=db_session,
+        business_repository=BusinessRepository(db_session),
+        seo_site_repository=SEOSiteRepository(db_session),
+        seo_competitor_repository=SEOCompetitorRepository(db_session),
+        seo_competitor_profile_generation_repository=SEOCompetitorProfileGenerationRepository(db_session),
+        provider=provider,
+    )
+    return service.execute_queued_run(
+        business_id=business_id,
+        site_id=site_id,
+        generation_run_id=run_id,
+    )
+
+
+def _complete_generation_run(
+    *,
+    db_session: Session,
+    business_id: str,
+    site_id: str,
+    run_id: str,
+    provider: SEOCompetitorProfileGenerationProvider,
+) -> dict[str, object]:
+    _execute_generation_run(
+        db_session=db_session,
+        business_id=business_id,
+        site_id=site_id,
+        run_id=run_id,
+        provider=provider,
+    )
+    detail = (
+        db_session.query(SEOCompetitorProfileGenerationRun)
+        .filter(SEOCompetitorProfileGenerationRun.business_id == business_id)
+        .filter(SEOCompetitorProfileGenerationRun.id == run_id)
+        .one()
+    )
+    drafts = (
+        db_session.query(SEOCompetitorProfileDraft)
+        .filter(SEOCompetitorProfileDraft.business_id == business_id)
+        .filter(SEOCompetitorProfileDraft.generation_run_id == run_id)
+        .all()
+    )
+    return {
+        "run": detail,
+        "drafts": drafts,
+    }
+
+
+def _set_run_stale(
+    *,
+    db_session: Session,
+    business_id: str,
+    run_id: str,
+    status: str,
+    age: timedelta,
+) -> None:
+    run = (
+        db_session.query(SEOCompetitorProfileGenerationRun)
+        .filter(SEOCompetitorProfileGenerationRun.business_id == business_id)
+        .filter(SEOCompetitorProfileGenerationRun.id == run_id)
+        .one()
+    )
+    run.status = status
+    run.error_summary = None
+    run.completed_at = None
+    run.updated_at = utc_now() - age
+    db_session.add(run)
+    db_session.commit()
+
+
+def test_generate_endpoint_queues_run_and_schedules_executor(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
     client = _make_client(
         db_session,
         business_id=seeded_business.id,
         generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
     )
     site_id = _create_site(client, seeded_business.id)
 
     created = _create_generation_run(client, seeded_business.id, site_id)
-    assert created["run"]["status"] == "completed"
-    assert created["run"]["generated_draft_count"] == 2
-    assert created["total_drafts"] == 2
-    assert {item["review_status"] for item in created["drafts"]} == {"pending"}
-
-    listed = client.get(
-        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs"
-    )
-    assert listed.status_code == 200
-    assert listed.json()["total"] == 1
-    run_id = listed.json()["items"][0]["id"]
+    run_id = created["run"]["id"]
+    assert created["run"]["status"] == "queued"
+    assert created["run"]["generated_draft_count"] == 0
+    assert created["total_drafts"] == 0
+    assert created["drafts"] == []
+    assert deferred_executor.calls == [(seeded_business.id, site_id, run_id)]
 
     detail = client.get(
         f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/{run_id}"
     )
     assert detail.status_code == 200
-    assert detail.json()["total_drafts"] == 2
+    payload = detail.json()
+    assert payload["run"]["status"] == "queued"
+    assert payload["total_drafts"] == 0
+
+
+def test_async_execution_transitions_running_to_completed_and_persists_drafts(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
+    )
+    site_id = _create_site(client, seeded_business.id)
+    created = _create_generation_run(client, seeded_business.id, site_id)
+    run_id = created["run"]["id"]
+
+    observing_provider = _StatusObservingProvider(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        run_id=run_id,
+    )
+    result = _execute_generation_run(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        run_id=run_id,
+        provider=observing_provider,
+    )
+    assert result is not None
+    assert observing_provider.observed_status == "running"
+
+    detail = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/{run_id}"
+    )
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["run"]["status"] == "completed"
+    assert payload["run"]["generated_draft_count"] == 2
+    assert payload["total_drafts"] == 2
 
     persisted_runs = db_session.query(SEOCompetitorProfileGenerationRun).all()
     persisted_drafts = db_session.query(SEOCompetitorProfileDraft).all()
@@ -190,39 +398,166 @@ def test_competitor_profile_generation_run_create_list_detail_and_persistence(db
     assert len(persisted_drafts) == 2
 
 
-def test_competitor_profile_generation_validation_failure_records_failed_run(db_session, seeded_business) -> None:
-    client = _make_client(
-        db_session,
-        business_id=seeded_business.id,
-        generation_provider=_InvalidCompetitorProfileProvider(),
-    )
-    site_id = _create_site(client, seeded_business.id)
-
-    failed = client.post(
-        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs",
-        json={"candidate_count": 1},
-    )
-    assert failed.status_code == 422
-
-    runs = client.get(
-        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs"
-    )
-    assert runs.status_code == 200
-    assert runs.json()["total"] == 1
-    assert runs.json()["items"][0]["status"] == "failed"
-    assert runs.json()["items"][0]["generated_draft_count"] == 0
-
-
-def test_competitor_profile_draft_accept_creates_real_competitor_domain(db_session, seeded_business) -> None:
+def test_async_execution_failure_marks_run_failed_safely(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
     client = _make_client(
         db_session,
         business_id=seeded_business.id,
         generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
     )
     site_id = _create_site(client, seeded_business.id)
     created = _create_generation_run(client, seeded_business.id, site_id)
     run_id = created["run"]["id"]
-    draft_id = created["drafts"][0]["id"]
+
+    _execute_generation_run(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        run_id=run_id,
+        provider=_InvalidCompetitorProfileProvider(),
+    )
+
+    detail = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/{run_id}"
+    )
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["run"]["status"] == "failed"
+    assert payload["run"]["generated_draft_count"] == 0
+    assert payload["run"]["error_summary"] == "Competitor profile generation failed"
+    assert payload["total_drafts"] == 0
+
+
+def test_malformed_provider_output_results_in_failed_run_without_partial_drafts(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
+    )
+    site_id = _create_site(client, seeded_business.id)
+    created = _create_generation_run(client, seeded_business.id, site_id)
+    run_id = created["run"]["id"]
+
+    _execute_generation_run(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        run_id=run_id,
+        provider=_PartiallyInvalidCompetitorProfileProvider(),
+    )
+
+    detail = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/{run_id}"
+    )
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["run"]["status"] == "failed"
+    assert payload["total_drafts"] == 0
+
+
+def test_list_runs_reconciles_stale_queued_and_running_runs(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
+    )
+    site_id = _create_site(client, seeded_business.id)
+    queued_run_id = _create_generation_run(client, seeded_business.id, site_id)["run"]["id"]
+    running_run_id = _create_generation_run(client, seeded_business.id, site_id)["run"]["id"]
+
+    _set_run_stale(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        run_id=queued_run_id,
+        status="queued",
+        age=STALE_QUEUED_RUN_TIMEOUT + timedelta(minutes=1),
+    )
+    _set_run_stale(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        run_id=running_run_id,
+        status="running",
+        age=STALE_RUNNING_RUN_TIMEOUT + timedelta(minutes=1),
+    )
+
+    listed = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs"
+    )
+    assert listed.status_code == 200
+    items = {item["id"]: item for item in listed.json()["items"]}
+    assert items[queued_run_id]["status"] == "failed"
+    assert items[queued_run_id]["error_summary"] == STALE_QUEUED_RUN_ERROR_SUMMARY
+    assert items[running_run_id]["status"] == "failed"
+    assert items[running_run_id]["error_summary"] == STALE_RUNNING_RUN_ERROR_SUMMARY
+
+
+def test_stale_queued_run_marked_failed_is_not_executed(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
+    )
+    site_id = _create_site(client, seeded_business.id)
+    run_id = _create_generation_run(client, seeded_business.id, site_id)["run"]["id"]
+    _set_run_stale(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        run_id=run_id,
+        status="queued",
+        age=STALE_QUEUED_RUN_TIMEOUT + timedelta(minutes=1),
+    )
+
+    # Trigger reconciliation via list endpoint.
+    listed = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs"
+    )
+    assert listed.status_code == 200
+
+    executed = _execute_generation_run(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        run_id=run_id,
+        provider=_DeterministicCompetitorProfileProvider(),
+    )
+    assert executed is None
+
+    detail = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/{run_id}"
+    )
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["run"]["status"] == "failed"
+    assert payload["run"]["error_summary"] == STALE_QUEUED_RUN_ERROR_SUMMARY
+    assert payload["total_drafts"] == 0
+
+
+def test_competitor_profile_draft_accept_creates_real_competitor_domain(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
+    )
+    site_id = _create_site(client, seeded_business.id)
+    created = _create_generation_run(client, seeded_business.id, site_id)
+    run_id = created["run"]["id"]
+    completed = _complete_generation_run(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        run_id=run_id,
+        provider=_DeterministicCompetitorProfileProvider(),
+    )
+    draft_id = completed["drafts"][0].id
 
     accept = client.post(
         f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/{run_id}/drafts/{draft_id}/accept",
@@ -245,15 +580,24 @@ def test_competitor_profile_draft_accept_creates_real_competitor_domain(db_sessi
 
 
 def test_competitor_profile_draft_reject_does_not_create_competitor_domain(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
     client = _make_client(
         db_session,
         business_id=seeded_business.id,
         generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
     )
     site_id = _create_site(client, seeded_business.id)
     created = _create_generation_run(client, seeded_business.id, site_id)
     run_id = created["run"]["id"]
-    draft_id = created["drafts"][1]["id"]
+    completed = _complete_generation_run(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        run_id=run_id,
+        provider=_DeterministicCompetitorProfileProvider(),
+    )
+    draft_id = completed["drafts"][1].id
 
     reject = client.post(
         f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/{run_id}/drafts/{draft_id}/reject",
@@ -273,25 +617,41 @@ def test_competitor_profile_draft_reject_does_not_create_competitor_domain(db_se
 
 
 def test_competitor_profile_draft_accept_prevents_duplicate_domains(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
     client = _make_client(
         db_session,
         business_id=seeded_business.id,
         generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
     )
     site_id = _create_site(client, seeded_business.id)
-    created = _create_generation_run(client, seeded_business.id, site_id)
-    run_id = created["run"]["id"]
-    draft_id = created["drafts"][0]["id"]
 
+    first_created = _create_generation_run(client, seeded_business.id, site_id)
+    first_run_id = first_created["run"]["id"]
+    first_completed = _complete_generation_run(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        run_id=first_run_id,
+        provider=_DeterministicCompetitorProfileProvider(),
+    )
+    first_draft_id = first_completed["drafts"][0].id
     first_accept = client.post(
-        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/{run_id}/drafts/{draft_id}/accept",
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/{first_run_id}/drafts/{first_draft_id}/accept",
         json={},
     )
     assert first_accept.status_code == 200
 
-    second_run = _create_generation_run(client, seeded_business.id, site_id)
-    second_run_id = second_run["run"]["id"]
-    second_draft_id = second_run["drafts"][0]["id"]
+    second_created = _create_generation_run(client, seeded_business.id, site_id)
+    second_run_id = second_created["run"]["id"]
+    second_completed = _complete_generation_run(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        run_id=second_run_id,
+        provider=_DeterministicCompetitorProfileProvider(),
+    )
+    second_draft_id = second_completed["drafts"][0].id
     duplicate_accept = client.post(
         f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/{second_run_id}/drafts/{second_draft_id}/accept",
         json={},
@@ -302,15 +662,24 @@ def test_competitor_profile_draft_accept_prevents_duplicate_domains(db_session, 
 
 def test_competitor_profile_generation_routes_enforce_tenant_scope(db_session, seeded_business) -> None:
     other_business = _seed_other_business(db_session)
+    deferred_executor = _DeferredRunExecutor()
     client = _make_client(
         db_session,
         business_id=seeded_business.id,
         generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
     )
     site_id = _create_site(client, seeded_business.id)
     created = _create_generation_run(client, seeded_business.id, site_id)
     run_id = created["run"]["id"]
-    draft_id = created["drafts"][0]["id"]
+    completed = _complete_generation_run(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        run_id=run_id,
+        provider=_DeterministicCompetitorProfileProvider(),
+    )
+    draft_id = completed["drafts"][0].id
 
     cross_tenant_list = client.get(
         f"/api/businesses/{other_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs"
@@ -329,16 +698,63 @@ def test_competitor_profile_generation_routes_enforce_tenant_scope(db_session, s
     assert cross_tenant_accept.status_code == 404
 
 
-def test_competitor_profile_draft_edit_marks_edited_status(db_session, seeded_business) -> None:
+def test_duplicate_execution_of_same_run_is_prevented(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
     client = _make_client(
         db_session,
         business_id=seeded_business.id,
         generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
     )
     site_id = _create_site(client, seeded_business.id)
     created = _create_generation_run(client, seeded_business.id, site_id)
     run_id = created["run"]["id"]
-    draft_id = created["drafts"][0]["id"]
+
+    first = _execute_generation_run(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        run_id=run_id,
+        provider=_DeterministicCompetitorProfileProvider(),
+    )
+    second = _execute_generation_run(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        run_id=run_id,
+        provider=_DeterministicCompetitorProfileProvider(),
+    )
+    assert first is not None
+    assert second is None
+
+    detail = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/{run_id}"
+    )
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["run"]["status"] == "completed"
+    assert payload["total_drafts"] == 2
+
+
+def test_competitor_profile_draft_edit_marks_edited_status(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
+    )
+    site_id = _create_site(client, seeded_business.id)
+    created = _create_generation_run(client, seeded_business.id, site_id)
+    run_id = created["run"]["id"]
+    completed = _complete_generation_run(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        run_id=run_id,
+        provider=_DeterministicCompetitorProfileProvider(),
+    )
+    draft_id = completed["drafts"][0].id
 
     edit = client.patch(
         f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/{run_id}/drafts/{draft_id}",

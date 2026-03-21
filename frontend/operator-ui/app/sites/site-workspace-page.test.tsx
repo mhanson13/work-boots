@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import SiteWorkspacePage from "./[site_id]/page";
@@ -1035,12 +1035,13 @@ function seedCompetitorProfileGenerationWorkspaceData(): void {
     run: {
       ...run,
       id: "gen-run-2",
+      status: "queued",
       created_at: "2026-03-21T01:15:00Z",
-      completed_at: "2026-03-21T01:16:00Z",
-      updated_at: "2026-03-21T01:16:00Z",
+      completed_at: null,
+      updated_at: "2026-03-21T01:15:00Z",
     },
-    drafts: [draftOne],
-    total_drafts: 1,
+    drafts: [],
+    total_drafts: 0,
   });
   mockAcceptCompetitorProfileDraft.mockResolvedValue({
     ...draftOne,
@@ -1356,13 +1357,103 @@ describe("site workspace ai competitor profile drafts", () => {
     await screen.findByRole("button", { name: "Generate Competitor Profiles" });
     await user.click(screen.getByRole("button", { name: "Generate Competitor Profiles" }));
 
-    await screen.findByText("Competitor profile drafts generated. Review and accept candidates explicitly.");
+    await screen.findByText("Competitor profile generation queued. Drafts will appear after the run completes.");
     expect(mockCreateCompetitorProfileGenerationRun).toHaveBeenCalledWith(
       "token-1",
       "biz-1",
       "site-1",
       { candidate_count: 5 },
     );
+  });
+
+  it("polls queued/running runs and renders drafts after completion", async () => {
+    seedRichWorkspaceData();
+    const runningRun = {
+      id: "gen-run-async-1",
+      business_id: "biz-1",
+      site_id: "site-1",
+      status: "running" as const,
+      requested_candidate_count: 5,
+      generated_draft_count: 0,
+      provider_name: "mock",
+      model_name: "mock-seo-competitor-profile-v1",
+      prompt_version: "seo-competitor-profile-v1",
+      error_summary: null,
+      completed_at: null,
+      created_by_principal_id: "principal-1",
+      created_at: "2026-03-21T01:30:00Z",
+      updated_at: "2026-03-21T01:30:00Z",
+    };
+    const completedRun = {
+      ...runningRun,
+      status: "completed" as const,
+      generated_draft_count: 1,
+      completed_at: "2026-03-21T01:31:30Z",
+      updated_at: "2026-03-21T01:31:30Z",
+    };
+    const completedDraft: CompetitorProfileDraft = {
+      id: "draft-async-1",
+      business_id: "biz-1",
+      site_id: "site-1",
+      generation_run_id: runningRun.id,
+      suggested_name: "Async Competitor",
+      suggested_domain: "async-competitor.example",
+      competitor_type: "direct",
+      summary: "Completed async summary",
+      why_competitor: "Completed async rationale",
+      evidence: "Completed async evidence",
+      confidence_score: 0.74,
+      source: "ai_generated",
+      review_status: "pending",
+      edited_fields_json: null,
+      review_notes: null,
+      reviewed_by_principal_id: null,
+      reviewed_at: null,
+      accepted_competitor_set_id: null,
+      accepted_competitor_domain_id: null,
+      created_at: "2026-03-21T01:31:30Z",
+      updated_at: "2026-03-21T01:31:30Z",
+    };
+
+    mockFetchCompetitorProfileGenerationRuns
+      .mockResolvedValueOnce({ items: [runningRun], total: 1 })
+      .mockResolvedValueOnce({ items: [runningRun], total: 1 })
+      .mockResolvedValue({ items: [completedRun], total: 1 });
+    mockFetchCompetitorProfileGenerationRunDetail
+      .mockResolvedValueOnce({
+        run: runningRun,
+        drafts: [],
+        total_drafts: 0,
+      })
+      .mockResolvedValueOnce({
+        run: runningRun,
+        drafts: [],
+        total_drafts: 0,
+      })
+      .mockResolvedValue({
+        run: completedRun,
+        drafts: [completedDraft],
+        total_drafts: 1,
+      });
+
+    jest.useFakeTimers();
+    try {
+      render(<SiteWorkspacePage />);
+
+      await screen.findByText("Generation is in progress for this run.");
+      await act(async () => {
+        jest.advanceTimersByTime(2100);
+      });
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId("competitor-profile-draft-row")).toHaveLength(1);
+      });
+      await waitFor(() => {
+        expect(screen.queryByText("Generation is in progress for this run.")).not.toBeInTheDocument();
+      });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("accept/reject/edit actions update draft states", async () => {

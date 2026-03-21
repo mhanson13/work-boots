@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from sqlalchemy import Select, select
+from datetime import datetime
+
+from sqlalchemy import Select, select, update
 from sqlalchemy.orm import Session
 
+from app.core.time import utc_now
 from app.models.seo_competitor_profile_draft import SEOCompetitorProfileDraft
 from app.models.seo_competitor_profile_generation_run import SEOCompetitorProfileGenerationRun
 
@@ -54,6 +57,47 @@ class SEOCompetitorProfileGenerationRepository:
             .where(SEOCompetitorProfileGenerationRun.id == generation_run_id)
         )
         return self.session.scalar(stmt)
+
+    def claim_run_for_execution(
+        self,
+        business_id: str,
+        generation_run_id: str,
+    ) -> bool:
+        stmt = (
+            update(SEOCompetitorProfileGenerationRun)
+            .where(SEOCompetitorProfileGenerationRun.business_id == business_id)
+            .where(SEOCompetitorProfileGenerationRun.id == generation_run_id)
+            .where(SEOCompetitorProfileGenerationRun.status == "queued")
+            .values(
+                status="running",
+                error_summary=None,
+                completed_at=None,
+                updated_at=utc_now(),
+            )
+        )
+        result = self.session.execute(stmt)
+        return bool(result.rowcount)
+
+    def list_stale_runs_for_business_site(
+        self,
+        business_id: str,
+        site_id: str,
+        *,
+        status: str,
+        updated_before: datetime,
+    ) -> list[SEOCompetitorProfileGenerationRun]:
+        stmt: Select[tuple[SEOCompetitorProfileGenerationRun]] = (
+            select(SEOCompetitorProfileGenerationRun)
+            .where(SEOCompetitorProfileGenerationRun.business_id == business_id)
+            .where(SEOCompetitorProfileGenerationRun.site_id == site_id)
+            .where(SEOCompetitorProfileGenerationRun.status == status)
+            .where(SEOCompetitorProfileGenerationRun.updated_at < updated_before)
+            .order_by(
+                SEOCompetitorProfileGenerationRun.updated_at.asc(),
+                SEOCompetitorProfileGenerationRun.id.asc(),
+            )
+        )
+        return list(self.session.scalars(stmt))
 
     def create_draft(self, draft: SEOCompetitorProfileDraft) -> SEOCompetitorProfileDraft:
         self.session.add(draft)

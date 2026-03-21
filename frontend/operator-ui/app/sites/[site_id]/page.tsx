@@ -45,6 +45,8 @@ const NARRATIVE_LOOKUP_LIMIT = 5;
 const MAX_TIMELINE_EVENTS = 20;
 const TIMELINE_INITIAL_VISIBLE_COUNT = 10;
 const COMPETITOR_PROFILE_DRAFT_CANDIDATE_COUNT = 5;
+const COMPETITOR_PROFILE_POLL_INTERVAL_MS = 2000;
+const COMPETITOR_PROFILE_POLL_MAX_ATTEMPTS = 30;
 
 type SiteTimelineEventType =
   | "audit_run"
@@ -239,6 +241,10 @@ function safeActionErrorMessage(actionLabel: string, error: unknown): string {
   return `Unable to ${actionLabel} right now. Please try again.`;
 }
 
+function isCompetitorProfileRunTerminalStatus(status: CompetitorProfileGenerationRun["status"]): boolean {
+  return status === "completed" || status === "failed";
+}
+
 function recommendationSourceType(item: Recommendation): string {
   if (item.audit_run_id && item.comparison_run_id) {
     return "mixed";
@@ -335,6 +341,7 @@ export default function SiteWorkspacePage() {
   const [competitorProfileActionError, setCompetitorProfileActionError] = useState<string | null>(null);
   const [competitorProfileActionMessage, setCompetitorProfileActionMessage] = useState<string | null>(null);
   const [generationInFlight, setGenerationInFlight] = useState(false);
+  const [competitorProfilePolling, setCompetitorProfilePolling] = useState(false);
   const [draftActionTargetId, setDraftActionTargetId] = useState<string | null>(null);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const [editFormState, setEditFormState] = useState<DraftEditFormState | null>(null);
@@ -351,6 +358,7 @@ export default function SiteWorkspacePage() {
     () => competitorProfileGenerationRuns[0] || null,
     [competitorProfileGenerationRuns],
   );
+  const latestCompetitorProfileRunStatus = latestCompetitorProfileRun?.status || null;
 
   function toEditFormState(draft: CompetitorProfileDraft): DraftEditFormState {
     return {
@@ -681,7 +689,9 @@ export default function SiteWorkspacePage() {
       });
       setLatestCompetitorProfileRunId(detail.run.id);
       setCompetitorProfileDrafts(detail.drafts);
-      setCompetitorProfileActionMessage("Competitor profile drafts generated. Review and accept candidates explicitly.");
+      setCompetitorProfileActionMessage(
+        "Competitor profile generation queued. Drafts will appear after the run completes.",
+      );
       setEditingDraftId(null);
       setEditFormState(null);
     } catch (error) {
@@ -841,6 +851,7 @@ export default function SiteWorkspacePage() {
       setCompetitorProfileActionError(null);
       setCompetitorProfileActionMessage(null);
       setGenerationInFlight(false);
+      setCompetitorProfilePolling(false);
       setDraftActionTargetId(null);
       setEditingDraftId(null);
       setEditFormState(null);
@@ -857,6 +868,7 @@ export default function SiteWorkspacePage() {
       setCompetitorProfileDrafts([]);
       setCompetitorProfileLoading(false);
       setCompetitorProfileError(null);
+      setCompetitorProfilePolling(false);
       return;
     }
 
@@ -1086,6 +1098,101 @@ export default function SiteWorkspacePage() {
     context.token,
     siteId,
     selectedSite,
+  ]);
+
+  useEffect(() => {
+    if (
+      !context.token ||
+      !context.businessId ||
+      !siteId ||
+      !latestCompetitorProfileRunId ||
+      !latestCompetitorProfileRunStatus ||
+      isCompetitorProfileRunTerminalStatus(latestCompetitorProfileRunStatus)
+    ) {
+      setCompetitorProfilePolling(false);
+      return;
+    }
+
+    let cancelled = false;
+    let inFlight = false;
+    let attempts = 0;
+    setCompetitorProfilePolling(true);
+
+    const pollOnce = async () => {
+      if (cancelled || inFlight) {
+        return;
+      }
+      if (attempts >= COMPETITOR_PROFILE_POLL_MAX_ATTEMPTS) {
+        setCompetitorProfilePolling(false);
+        return;
+      }
+      attempts += 1;
+      inFlight = true;
+      try {
+        const runsResponse = await fetchCompetitorProfileGenerationRuns(
+          context.token,
+          context.businessId,
+          siteId,
+        );
+        if (cancelled) {
+          return;
+        }
+        const sortedRuns = [...runsResponse.items].sort((left, right) =>
+          right.created_at.localeCompare(left.created_at),
+        );
+        setCompetitorProfileGenerationRuns(sortedRuns);
+        const latestRun = sortedRuns[0] || null;
+        setLatestCompetitorProfileRunId(latestRun ? latestRun.id : null);
+        if (!latestRun) {
+          setCompetitorProfileDrafts([]);
+          setCompetitorProfilePolling(false);
+          return;
+        }
+
+        setCompetitorProfileLoading(true);
+        const detail = await fetchCompetitorProfileGenerationRunDetail(
+          context.token,
+          context.businessId,
+          siteId,
+          latestRun.id,
+        );
+        if (cancelled) {
+          return;
+        }
+        setCompetitorProfileDrafts(detail.drafts);
+        setCompetitorProfileError(null);
+        if (isCompetitorProfileRunTerminalStatus(detail.run.status)) {
+          setCompetitorProfilePolling(false);
+        }
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        setCompetitorProfileError(safeSectionErrorMessage("AI competitor profiles", error));
+        setCompetitorProfilePolling(false);
+      } finally {
+        inFlight = false;
+        if (!cancelled) {
+          setCompetitorProfileLoading(false);
+        }
+      }
+    };
+
+    void pollOnce();
+    const intervalId = window.setInterval(() => {
+      void pollOnce();
+    }, COMPETITOR_PROFILE_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [
+    context.businessId,
+    context.token,
+    latestCompetitorProfileRunId,
+    latestCompetitorProfileRunStatus,
+    siteId,
   ]);
 
   if (context.loading) {
@@ -1423,7 +1530,7 @@ export default function SiteWorkspacePage() {
             onClick={() => void handleGenerateCompetitorProfiles()}
             disabled={loadingWorkspace || generationInFlight || competitorProfileLoading}
           >
-            {generationInFlight ? "Generating..." : "Generate Competitor Profiles"}
+            {generationInFlight ? "Queuing..." : "Generate Competitor Profiles"}
           </button>
         </div>
         {latestCompetitorProfileRun ? (
@@ -1439,9 +1546,16 @@ export default function SiteWorkspacePage() {
         {latestCompetitorProfileRun?.error_summary ? (
           <p className="hint warning">{latestCompetitorProfileRun.error_summary}</p>
         ) : null}
-        {competitorProfileLoading ? <p className="hint muted">Loading generated drafts...</p> : null}
+        {competitorProfileLoading || competitorProfilePolling ? (
+          <p className="hint muted">Refreshing generated draft status...</p>
+        ) : null}
+        {latestCompetitorProfileRun &&
+        !isCompetitorProfileRunTerminalStatus(latestCompetitorProfileRun.status) ? (
+          <p className="hint muted">Generation is in progress for this run.</p>
+        ) : null}
         {!competitorProfileLoading &&
         latestCompetitorProfileRun &&
+        isCompetitorProfileRunTerminalStatus(latestCompetitorProfileRun.status) &&
         competitorProfileDrafts.length === 0 ? (
           <p className="hint muted">This run did not produce any reviewable drafts.</p>
         ) : null}

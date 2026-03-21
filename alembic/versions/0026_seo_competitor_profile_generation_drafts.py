@@ -53,25 +53,25 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
-        "ix_seo_competitor_profile_generation_runs_business_id",
+        "ix_scpg_runs_biz",
         "seo_competitor_profile_generation_runs",
         ["business_id"],
         unique=False,
     )
     op.create_index(
-        "ix_seo_competitor_profile_generation_runs_site_id",
+        "ix_scpg_runs_site",
         "seo_competitor_profile_generation_runs",
         ["site_id"],
         unique=False,
     )
     op.create_index(
-        "ix_seo_competitor_profile_generation_runs_business_site_created_at",
+        "ix_scpg_runs_biz_site_created",
         "seo_competitor_profile_generation_runs",
         ["business_id", "site_id", "created_at"],
         unique=False,
     )
     op.create_index(
-        "ix_seo_competitor_profile_generation_runs_business_status",
+        "ix_scpg_runs_biz_status",
         "seo_competitor_profile_generation_runs",
         ["business_id", "status"],
         unique=False,
@@ -141,37 +141,37 @@ def upgrade() -> None:
         ),
     )
     op.create_index(
-        "ix_seo_competitor_profile_drafts_business_id",
+        "ix_scpg_drafts_biz",
         "seo_competitor_profile_drafts",
         ["business_id"],
         unique=False,
     )
     op.create_index(
-        "ix_seo_competitor_profile_drafts_site_id",
+        "ix_scpg_drafts_site",
         "seo_competitor_profile_drafts",
         ["site_id"],
         unique=False,
     )
     op.create_index(
-        "ix_seo_competitor_profile_drafts_generation_run_id",
+        "ix_scpg_drafts_run",
         "seo_competitor_profile_drafts",
         ["generation_run_id"],
         unique=False,
     )
     op.create_index(
-        "ix_seo_competitor_profile_drafts_business_run_created_at",
+        "ix_scpg_drafts_biz_run_created",
         "seo_competitor_profile_drafts",
         ["business_id", "generation_run_id", "created_at"],
         unique=False,
     )
     op.create_index(
-        "ix_seo_competitor_profile_drafts_business_site_created_at",
+        "ix_scpg_drafts_biz_site_created",
         "seo_competitor_profile_drafts",
         ["business_id", "site_id", "created_at"],
         unique=False,
     )
     op.create_index(
-        "ix_seo_competitor_profile_drafts_business_review_status",
+        "ix_scpg_drafts_biz_review_status",
         "seo_competitor_profile_drafts",
         ["business_id", "review_status"],
         unique=False,
@@ -180,39 +180,39 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index(
-        "ix_seo_competitor_profile_drafts_business_review_status",
+        "ix_scpg_drafts_biz_review_status",
         table_name="seo_competitor_profile_drafts",
     )
     op.drop_index(
-        "ix_seo_competitor_profile_drafts_business_site_created_at",
+        "ix_scpg_drafts_biz_site_created",
         table_name="seo_competitor_profile_drafts",
     )
     op.drop_index(
-        "ix_seo_competitor_profile_drafts_business_run_created_at",
+        "ix_scpg_drafts_biz_run_created",
         table_name="seo_competitor_profile_drafts",
     )
     op.drop_index(
-        "ix_seo_competitor_profile_drafts_generation_run_id",
+        "ix_scpg_drafts_run",
         table_name="seo_competitor_profile_drafts",
     )
-    op.drop_index("ix_seo_competitor_profile_drafts_site_id", table_name="seo_competitor_profile_drafts")
-    op.drop_index("ix_seo_competitor_profile_drafts_business_id", table_name="seo_competitor_profile_drafts")
+    op.drop_index("ix_scpg_drafts_site", table_name="seo_competitor_profile_drafts")
+    op.drop_index("ix_scpg_drafts_biz", table_name="seo_competitor_profile_drafts")
     op.drop_table("seo_competitor_profile_drafts")
 
     op.drop_index(
-        "ix_seo_competitor_profile_generation_runs_business_status",
+        "ix_scpg_runs_biz_status",
         table_name="seo_competitor_profile_generation_runs",
     )
     op.drop_index(
-        "ix_seo_competitor_profile_generation_runs_business_site_created_at",
+        "ix_scpg_runs_biz_site_created",
         table_name="seo_competitor_profile_generation_runs",
     )
     op.drop_index(
-        "ix_seo_competitor_profile_generation_runs_site_id",
+        "ix_scpg_runs_site",
         table_name="seo_competitor_profile_generation_runs",
     )
     op.drop_index(
-        "ix_seo_competitor_profile_generation_runs_business_id",
+        "ix_scpg_runs_biz",
         table_name="seo_competitor_profile_generation_runs",
     )
     op.drop_table("seo_competitor_profile_generation_runs")

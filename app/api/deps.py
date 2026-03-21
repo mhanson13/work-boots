@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from dataclasses import dataclass
 import hashlib
 import logging
@@ -13,7 +13,7 @@ from app.core.rate_limit import RateLimiter, get_rate_limiter
 from app.core.session_state import get_session_state_store
 from app.core.session_token import AppSessionTokenError, AppSessionTokenService
 from app.core.token_cipher import FernetTokenCipher
-from app.db.session import get_db_session
+from app.db.session import SessionLocal, get_db_session
 from app.integrations import (
     DevEmailProvider,
     DevSMSProvider,
@@ -383,6 +383,34 @@ def get_seo_competitor_summary_provider() -> SEOCompetitorComparisonSummaryProvi
 
 def get_seo_competitor_profile_generation_provider() -> SEOCompetitorProfileGenerationProvider:
     return MockSEOCompetitorProfileGenerationProvider()
+
+
+SEOCompetitorProfileGenerationRunExecutor = Callable[[str, str, str], None]
+
+
+def get_seo_competitor_profile_generation_run_executor(
+    provider: SEOCompetitorProfileGenerationProvider = Depends(get_seo_competitor_profile_generation_provider),
+) -> SEOCompetitorProfileGenerationRunExecutor:
+    def _execute_generation_run(business_id: str, site_id: str, generation_run_id: str) -> None:
+        session = SessionLocal()
+        try:
+            service = SEOCompetitorProfileGenerationService(
+                session=session,
+                business_repository=BusinessRepository(session),
+                seo_site_repository=SEOSiteRepository(session),
+                seo_competitor_repository=SEOCompetitorRepository(session),
+                seo_competitor_profile_generation_repository=SEOCompetitorProfileGenerationRepository(session),
+                provider=provider,
+            )
+            service.execute_queued_run(
+                business_id=business_id,
+                site_id=site_id,
+                generation_run_id=generation_run_id,
+            )
+        finally:
+            session.close()
+
+    return _execute_generation_run
 
 
 def get_seo_recommendation_narrative_provider() -> SEORecommendationNarrativeProvider:

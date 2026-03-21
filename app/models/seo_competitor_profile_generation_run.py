@@ -13,17 +13,17 @@ class SEOCompetitorProfileGenerationRun(Base):
     __tablename__ = "seo_competitor_profile_generation_runs"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('running', 'completed', 'failed')",
+            "status IN ('queued', 'running', 'completed', 'failed')",
             name="ck_seo_competitor_profile_generation_runs_status",
         ),
         Index(
-            "ix_seo_competitor_profile_generation_runs_business_site_created_at",
+            "ix_scpg_runs_biz_site_created",
             "business_id",
             "site_id",
             "created_at",
         ),
         Index(
-            "ix_seo_competitor_profile_generation_runs_business_status",
+            "ix_scpg_runs_biz_status",
             "business_id",
             "status",
         ),
@@ -42,7 +42,7 @@ class SEOCompetitorProfileGenerationRun(Base):
         nullable=False,
         index=True,
     )
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="running")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="queued")
     requested_candidate_count: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
     generated_draft_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     provider_name: Mapped[str] = mapped_column(String(64), nullable=False, default="unknown")

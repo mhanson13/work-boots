@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 
 from app.api.deps import (
     TenantContext,
+    SEOCompetitorProfileGenerationRunExecutor,
     get_seo_audit_service,
     get_seo_automation_service,
     get_seo_competitor_comparison_service,
+    get_seo_competitor_profile_generation_run_executor,
     get_seo_competitor_profile_generation_service,
     get_seo_competitor_summary_service,
     get_seo_recommendation_narrative_service,
@@ -1357,10 +1359,14 @@ def create_competitor_profile_generation_run(
     business_id: str,
     site_id: str,
     payload: SEOCompetitorProfileGenerationRunCreateRequest,
+    background_tasks: BackgroundTasks,
     tenant_context: TenantContext = Depends(get_tenant_context),
     seo_site_service: SEOSiteService = Depends(get_seo_site_service),
     generation_service: SEOCompetitorProfileGenerationService = Depends(
         get_seo_competitor_profile_generation_service
+    ),
+    generation_run_executor: SEOCompetitorProfileGenerationRunExecutor = Depends(
+        get_seo_competitor_profile_generation_run_executor
     ),
 ) -> SEOCompetitorProfileGenerationRunDetailRead:
     scoped_business_id = resolve_tenant_business_id(
@@ -1382,6 +1388,12 @@ def create_competitor_profile_generation_run(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except SEOCompetitorProfileGenerationValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    background_tasks.add_task(
+        generation_run_executor,
+        scoped_business_id,
+        site_id,
+        result.run.id,
+    )
     return _to_competitor_profile_generation_run_detail_response(
         run=result.run,
         drafts=result.drafts,

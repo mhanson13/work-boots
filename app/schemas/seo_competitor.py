@@ -6,7 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 SEOCompetitorRunStatus = Literal["queued", "running", "completed", "failed"]
-SEOCompetitorProfileGenerationRunStatus = Literal["running", "completed", "failed"]
+SEOCompetitorProfileGenerationRunStatus = Literal["queued", "running", "completed", "failed"]
 SEOCompetitorProfileDraftReviewStatus = Literal["pending", "edited", "accepted", "rejected"]
 SEOSummaryStatus = Literal["completed", "failed"]
 SEOFindingCategory = Literal["SEO", "CONTENT", "STRUCTURE", "TECHNICAL"]

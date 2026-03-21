@@ -37,19 +37,19 @@ class SEOCompetitorProfileDraft(Base):
             name="ck_seo_competitor_profile_drafts_confidence_score",
         ),
         Index(
-            "ix_seo_competitor_profile_drafts_business_run_created_at",
+            "ix_scpg_drafts_biz_run_created",
             "business_id",
             "generation_run_id",
             "created_at",
         ),
         Index(
-            "ix_seo_competitor_profile_drafts_business_site_created_at",
+            "ix_scpg_drafts_biz_site_created",
             "business_id",
             "site_id",
             "created_at",
         ),
         Index(
-            "ix_seo_competitor_profile_drafts_business_review_status",
+            "ix_scpg_drafts_biz_review_status",
             "business_id",
             "review_status",
         ),
