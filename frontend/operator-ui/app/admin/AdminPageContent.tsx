@@ -21,22 +21,39 @@ import {
   updateBusinessSettings,
 } from "../../lib/api/client";
 import type { BusinessSettings, Principal, PrincipalIdentity, PrincipalRole } from "../../lib/api/types";
-
-const CRAWL_PAGE_LIMIT_MIN = 5;
-const CRAWL_PAGE_LIMIT_MAX = 250;
-const COMPETITOR_MIN_RELEVANCE_SCORE_MIN = 0;
-const COMPETITOR_MIN_RELEVANCE_SCORE_MAX = 100;
-const COMPETITOR_BIG_BOX_PENALTY_MIN = 0;
-const COMPETITOR_BIG_BOX_PENALTY_MAX = 50;
-const COMPETITOR_DIRECTORY_PENALTY_MIN = 0;
-const COMPETITOR_DIRECTORY_PENALTY_MAX = 50;
-const COMPETITOR_LOCAL_ALIGNMENT_BONUS_MIN = 0;
-const COMPETITOR_LOCAL_ALIGNMENT_BONUS_MAX = 50;
+import {
+  COMPETITOR_BIG_BOX_PENALTY_MAX,
+  COMPETITOR_BIG_BOX_PENALTY_MIN,
+  COMPETITOR_DIRECTORY_PENALTY_MAX,
+  COMPETITOR_DIRECTORY_PENALTY_MIN,
+  COMPETITOR_LOCAL_ALIGNMENT_BONUS_MAX,
+  COMPETITOR_LOCAL_ALIGNMENT_BONUS_MIN,
+  COMPETITOR_MIN_RELEVANCE_SCORE_MAX,
+  COMPETITOR_MIN_RELEVANCE_SCORE_MIN,
+  CRAWL_PAGE_LIMIT_MAX,
+  CRAWL_PAGE_LIMIT_MIN,
+  DEFAULT_CRAWL_PAGE_LIMIT,
+  NOTIFICATION_EMAIL_REGEX,
+  NOTIFICATION_PHONE_E164_REGEX,
+} from "../../lib/validation/constants";
 
 interface AdminPageLoadResult {
   users: Principal[];
   identities: PrincipalIdentity[];
   identityWarning: string | null;
+}
+
+type SettingsSectionHealthStatus = "valid" | "invalid";
+
+interface SettingsSectionHealth {
+  status: SettingsSectionHealthStatus;
+  message: string | null;
+}
+
+interface SettingsHealthSummary {
+  crawl: SettingsSectionHealth;
+  competitorQuality: SettingsSectionHealth;
+  notifications: SettingsSectionHealth;
 }
 
 function parseBoundedInteger(input: string, bounds: { min: number; max: number }): number | null {
@@ -60,6 +77,85 @@ function parseCrawlPageLimit(input: string): number | null {
     min: CRAWL_PAGE_LIMIT_MIN,
     max: CRAWL_PAGE_LIMIT_MAX,
   });
+}
+
+function isBoundedIntegerValue(value: number, bounds: { min: number; max: number }): boolean {
+  if (!Number.isSafeInteger(value)) {
+    return false;
+  }
+  return value >= bounds.min && value <= bounds.max;
+}
+
+function isValidNotificationPhone(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+  return NOTIFICATION_PHONE_E164_REGEX.test(value.trim());
+}
+
+function isValidNotificationEmail(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+  return NOTIFICATION_EMAIL_REGEX.test(value.trim());
+}
+
+function evaluateSettingsHealth(settings: BusinessSettings | null): SettingsHealthSummary {
+  if (!settings) {
+    return {
+      crawl: { status: "valid", message: null },
+      competitorQuality: { status: "valid", message: null },
+      notifications: { status: "valid", message: null },
+    };
+  }
+
+  const crawlIsValid = isBoundedIntegerValue(settings.seo_audit_crawl_max_pages, {
+    min: CRAWL_PAGE_LIMIT_MIN,
+    max: CRAWL_PAGE_LIMIT_MAX,
+  });
+
+  const competitorQualityIsValid =
+    isBoundedIntegerValue(settings.competitor_candidate_min_relevance_score, {
+      min: COMPETITOR_MIN_RELEVANCE_SCORE_MIN,
+      max: COMPETITOR_MIN_RELEVANCE_SCORE_MAX,
+    }) &&
+    isBoundedIntegerValue(settings.competitor_candidate_big_box_penalty, {
+      min: COMPETITOR_BIG_BOX_PENALTY_MIN,
+      max: COMPETITOR_BIG_BOX_PENALTY_MAX,
+    }) &&
+    isBoundedIntegerValue(settings.competitor_candidate_directory_penalty, {
+      min: COMPETITOR_DIRECTORY_PENALTY_MIN,
+      max: COMPETITOR_DIRECTORY_PENALTY_MAX,
+    }) &&
+    isBoundedIntegerValue(settings.competitor_candidate_local_alignment_bonus, {
+      min: COMPETITOR_LOCAL_ALIGNMENT_BONUS_MIN,
+      max: COMPETITOR_LOCAL_ALIGNMENT_BONUS_MAX,
+    });
+
+  const smsEnabled = settings.sms_enabled;
+  const emailEnabled = settings.email_enabled;
+  const smsChannelUsable = smsEnabled && isValidNotificationPhone(settings.notification_phone);
+  const emailChannelUsable = emailEnabled && isValidNotificationEmail(settings.notification_email);
+  const notificationsAreValid =
+    (!smsEnabled || smsChannelUsable) &&
+    (!emailEnabled || emailChannelUsable) &&
+    (!settings.contractor_alerts_enabled || smsChannelUsable || emailChannelUsable) &&
+    (!settings.customer_auto_ack_enabled || smsEnabled || emailEnabled);
+
+  return {
+    crawl: {
+      status: crawlIsValid ? "valid" : "invalid",
+      message: crawlIsValid ? null : "Saved value is outside the allowed range.",
+    },
+    competitorQuality: {
+      status: competitorQualityIsValid ? "valid" : "invalid",
+      message: competitorQualityIsValid ? null : "One or more saved values need review.",
+    },
+    notifications: {
+      status: notificationsAreValid ? "valid" : "invalid",
+      message: notificationsAreValid ? null : "One or more saved values need review.",
+    },
+  };
 }
 
 function safeAdminPageErrorMessage(error: unknown): string {
@@ -161,6 +257,10 @@ function safeBusinessSettingsErrorMessage(error: unknown): string {
   return "Unable to load business settings right now.";
 }
 
+function apiErrorMessageContains(error: ApiRequestError, token: string): boolean {
+  return error.message.toLowerCase().includes(token.toLowerCase());
+}
+
 function safeBusinessSettingsUpdateErrorMessage(error: unknown): string {
   if (error instanceof ApiRequestError) {
     if (error.status === 401) {
@@ -173,7 +273,10 @@ function safeBusinessSettingsUpdateErrorMessage(error: unknown): string {
       return "Business settings were not found in this tenant scope.";
     }
     if (error.status === 422) {
-      return `Crawl page limit must be between ${CRAWL_PAGE_LIMIT_MIN} and ${CRAWL_PAGE_LIMIT_MAX}.`;
+      if (apiErrorMessageContains(error, "seo_audit_crawl_max_pages")) {
+        return `Crawl page limit must be between ${CRAWL_PAGE_LIMIT_MIN} and ${CRAWL_PAGE_LIMIT_MAX}.`;
+      }
+      return "Unable to save SEO crawl settings. Please review the entered crawl limit.";
     }
   }
   return "Failed to update crawl page limit.";
@@ -191,7 +294,33 @@ function safeCandidateQualitySettingsUpdateErrorMessage(error: unknown): string 
       return "Business settings were not found in this tenant scope.";
     }
     if (error.status === 422) {
-      return "Competitor quality settings must use bounded integer values.";
+      // Section-scoped settings saves should map backend validation to the
+      // relevant section fields and otherwise use a safe fallback.
+      if (apiErrorMessageContains(error, "competitor_candidate_min_relevance_score")) {
+        return (
+          "Minimum relevance score must be an integer between " +
+          `${COMPETITOR_MIN_RELEVANCE_SCORE_MIN} and ${COMPETITOR_MIN_RELEVANCE_SCORE_MAX}.`
+        );
+      }
+      if (apiErrorMessageContains(error, "competitor_candidate_big_box_penalty")) {
+        return (
+          "Big-box mismatch penalty must be an integer between " +
+          `${COMPETITOR_BIG_BOX_PENALTY_MIN} and ${COMPETITOR_BIG_BOX_PENALTY_MAX}.`
+        );
+      }
+      if (apiErrorMessageContains(error, "competitor_candidate_directory_penalty")) {
+        return (
+          "Directory/aggregator penalty must be an integer between " +
+          `${COMPETITOR_DIRECTORY_PENALTY_MIN} and ${COMPETITOR_DIRECTORY_PENALTY_MAX}.`
+        );
+      }
+      if (apiErrorMessageContains(error, "competitor_candidate_local_alignment_bonus")) {
+        return (
+          "Local alignment bonus must be an integer between " +
+          `${COMPETITOR_LOCAL_ALIGNMENT_BONUS_MIN} and ${COMPETITOR_LOCAL_ALIGNMENT_BONUS_MAX}.`
+        );
+      }
+      return "Unable to save this settings section. Please review the entered values.";
     }
   }
   return "Failed to update competitor quality settings.";
@@ -232,16 +361,18 @@ export default function AdminPage() {
   const [identitySubmitSuccess, setIdentitySubmitSuccess] = useState<string | null>(null);
   const [businessSettings, setBusinessSettings] = useState<BusinessSettings | null>(null);
   const [businessSettingsLoading, setBusinessSettingsLoading] = useState(false);
-  const [businessSettingsError, setBusinessSettingsError] = useState<string | null>(null);
-  const [crawlPageLimitInput, setCrawlPageLimitInput] = useState("25");
+  const [businessSettingsLoadError, setBusinessSettingsLoadError] = useState<string | null>(null);
+  const [crawlPageLimitInput, setCrawlPageLimitInput] = useState(String(DEFAULT_CRAWL_PAGE_LIMIT));
   const [crawlPageLimitSubmitting, setCrawlPageLimitSubmitting] = useState(false);
   const [crawlPageLimitMessage, setCrawlPageLimitMessage] = useState<string | null>(null);
+  const [crawlPageLimitError, setCrawlPageLimitError] = useState<string | null>(null);
   const [candidateMinRelevanceScoreInput, setCandidateMinRelevanceScoreInput] = useState("35");
   const [candidateBigBoxPenaltyInput, setCandidateBigBoxPenaltyInput] = useState("20");
   const [candidateDirectoryPenaltyInput, setCandidateDirectoryPenaltyInput] = useState("35");
   const [candidateLocalAlignmentBonusInput, setCandidateLocalAlignmentBonusInput] = useState("10");
   const [candidateQualitySubmitting, setCandidateQualitySubmitting] = useState(false);
   const [candidateQualityMessage, setCandidateQualityMessage] = useState<string | null>(null);
+  const [candidateQualityError, setCandidateQualityError] = useState<string | null>(null);
 
   const isAdmin = principal?.role === "admin";
 
@@ -288,6 +419,10 @@ export default function AdminPage() {
         return !userIdentities || userIdentities.length === 0;
       }).length,
     [identitiesByPrincipalId, users],
+  );
+  const settingsHealth = useMemo(
+    () => evaluateSettingsHealth(businessSettings),
+    [businessSettings],
   );
 
   const normalizedIdentityProvider = useMemo(() => identityProvider.trim().toLowerCase(), [identityProvider]);
@@ -360,7 +495,7 @@ export default function AdminPage() {
 
     async function loadBusinessSettings() {
       setBusinessSettingsLoading(true);
-      setBusinessSettingsError(null);
+      setBusinessSettingsLoadError(null);
       try {
         const settings = await fetchBusinessSettings(context.token, context.businessId);
         if (cancelled) {
@@ -374,7 +509,7 @@ export default function AdminPage() {
         setCandidateLocalAlignmentBonusInput(String(settings.competitor_candidate_local_alignment_bonus));
       } catch (err) {
         if (!cancelled) {
-          setBusinessSettingsError(safeBusinessSettingsErrorMessage(err));
+          setBusinessSettingsLoadError(safeBusinessSettingsErrorMessage(err));
         }
       } finally {
         if (!cancelled) {
@@ -499,11 +634,11 @@ export default function AdminPage() {
   const handleUpdateCrawlPageLimit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setCrawlPageLimitMessage(null);
-    setBusinessSettingsError(null);
+    setCrawlPageLimitError(null);
 
     const parsed = parseCrawlPageLimit(crawlPageLimitInput);
     if (parsed === null) {
-      setBusinessSettingsError(
+      setCrawlPageLimitError(
         `Crawl page limit must be an integer between ${CRAWL_PAGE_LIMIT_MIN} and ${CRAWL_PAGE_LIMIT_MAX}.`,
       );
       return;
@@ -518,7 +653,7 @@ export default function AdminPage() {
       setCrawlPageLimitInput(String(updated.seo_audit_crawl_max_pages));
       setCrawlPageLimitMessage(`SEO crawl page limit updated to ${updated.seo_audit_crawl_max_pages}.`);
     } catch (err) {
-      setBusinessSettingsError(safeBusinessSettingsUpdateErrorMessage(err));
+      setCrawlPageLimitError(safeBusinessSettingsUpdateErrorMessage(err));
     } finally {
       setCrawlPageLimitSubmitting(false);
     }
@@ -526,7 +661,7 @@ export default function AdminPage() {
 
   const handleUpdateCompetitorCandidateQuality = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setBusinessSettingsError(null);
+    setCandidateQualityError(null);
     setCrawlPageLimitMessage(null);
     setCandidateQualityMessage(null);
 
@@ -535,7 +670,7 @@ export default function AdminPage() {
       max: COMPETITOR_MIN_RELEVANCE_SCORE_MAX,
     });
     if (minRelevanceScore === null) {
-      setBusinessSettingsError(
+      setCandidateQualityError(
         (
           "Minimum relevance score must be an integer between " +
           `${COMPETITOR_MIN_RELEVANCE_SCORE_MIN} and ${COMPETITOR_MIN_RELEVANCE_SCORE_MAX}.`
@@ -549,7 +684,7 @@ export default function AdminPage() {
       max: COMPETITOR_BIG_BOX_PENALTY_MAX,
     });
     if (bigBoxPenalty === null) {
-      setBusinessSettingsError(
+      setCandidateQualityError(
         (
           "Big-box mismatch penalty must be an integer between " +
           `${COMPETITOR_BIG_BOX_PENALTY_MIN} and ${COMPETITOR_BIG_BOX_PENALTY_MAX}.`
@@ -563,7 +698,7 @@ export default function AdminPage() {
       max: COMPETITOR_DIRECTORY_PENALTY_MAX,
     });
     if (directoryPenalty === null) {
-      setBusinessSettingsError(
+      setCandidateQualityError(
         (
           "Directory/aggregator penalty must be an integer between " +
           `${COMPETITOR_DIRECTORY_PENALTY_MIN} and ${COMPETITOR_DIRECTORY_PENALTY_MAX}.`
@@ -577,7 +712,7 @@ export default function AdminPage() {
       max: COMPETITOR_LOCAL_ALIGNMENT_BONUS_MAX,
     });
     if (localAlignmentBonus === null) {
-      setBusinessSettingsError(
+      setCandidateQualityError(
         (
           "Local alignment bonus must be an integer between " +
           `${COMPETITOR_LOCAL_ALIGNMENT_BONUS_MIN} and ${COMPETITOR_LOCAL_ALIGNMENT_BONUS_MAX}.`
@@ -601,7 +736,7 @@ export default function AdminPage() {
       setCandidateLocalAlignmentBonusInput(String(updated.competitor_candidate_local_alignment_bonus));
       setCandidateQualityMessage("AI competitor candidate quality settings updated.");
     } catch (err) {
-      setBusinessSettingsError(safeCandidateQualitySettingsUpdateErrorMessage(err));
+      setCandidateQualityError(safeCandidateQualitySettingsUpdateErrorMessage(err));
     } finally {
       setCandidateQualitySubmitting(false);
     }
@@ -863,12 +998,17 @@ export default function AdminPage() {
           <p className="hint muted">
             Admin-controlled crawl page limit used by SEO audits and automation for this business.
           </p>
+          {settingsHealth.crawl.status === "invalid" ? (
+            <p className="hint warning">
+              Settings health: {settingsHealth.crawl.message}
+            </p>
+          ) : null}
           <label htmlFor="seo-audit-crawl-max-pages">Crawl Page Limit</label>
           <input
             id="seo-audit-crawl-max-pages"
             type="number"
-            min={5}
-            max={250}
+            min={CRAWL_PAGE_LIMIT_MIN}
+            max={CRAWL_PAGE_LIMIT_MAX}
             step={1}
             value={crawlPageLimitInput}
             onChange={(event) => setCrawlPageLimitInput(event.target.value)}
@@ -876,8 +1016,8 @@ export default function AdminPage() {
             required
           />
           <p className="hint muted">
-            Allowed range: 5-250. Current value:{" "}
-            <code>{businessSettings ? String(businessSettings.seo_audit_crawl_max_pages) : "25"}</code>.
+            {`Allowed range: ${CRAWL_PAGE_LIMIT_MIN}-${CRAWL_PAGE_LIMIT_MAX}. Current value: `}
+            <code>{businessSettings ? String(businessSettings.seo_audit_crawl_max_pages) : String(DEFAULT_CRAWL_PAGE_LIMIT)}</code>.
           </p>
           <div className="form-actions">
             <button
@@ -890,6 +1030,7 @@ export default function AdminPage() {
           </div>
           {businessSettingsLoading ? <p className="hint muted">Loading business settings...</p> : null}
           {crawlPageLimitMessage ? <p className="hint">{crawlPageLimitMessage}</p> : null}
+          {crawlPageLimitError ? <p className="hint error">{crawlPageLimitError}</p> : null}
         </FormContainer>
 
         <FormContainer onSubmit={(event) => void handleUpdateCompetitorCandidateQuality(event)} noValidate>
@@ -897,6 +1038,11 @@ export default function AdminPage() {
           <p className="hint muted">
             Admin-controlled deterministic tuning for competitor candidate scoring and exclusion at the business scope.
           </p>
+          {settingsHealth.competitorQuality.status === "invalid" ? (
+            <p className="hint warning">
+              Settings health: {settingsHealth.competitorQuality.message}
+            </p>
+          ) : null}
 
           <label htmlFor="competitor-candidate-min-relevance-score">Minimum Relevance Score</label>
           <input
@@ -966,6 +1112,7 @@ export default function AdminPage() {
             </button>
           </div>
           {candidateQualityMessage ? <p className="hint">{candidateQualityMessage}</p> : null}
+          {candidateQualityError ? <p className="hint error">{candidateQualityError}</p> : null}
         </FormContainer>
 
         <div className="message-stack">
@@ -977,7 +1124,12 @@ export default function AdminPage() {
           {actionError ? <p className="hint error">Principal action: {actionError}</p> : null}
           {identityActionSuccess ? <p className="hint">Identity action: {identityActionSuccess}</p> : null}
           {identityActionError ? <p className="hint error">Identity action: {identityActionError}</p> : null}
-          {businessSettingsError ? <p className="hint error">{businessSettingsError}</p> : null}
+          {businessSettingsLoadError ? <p className="hint error">{businessSettingsLoadError}</p> : null}
+          {settingsHealth.notifications.status === "invalid" ? (
+            <p className="hint warning">
+              Notification settings health: {settingsHealth.notifications.message}
+            </p>
+          ) : null}
           {loadingUsers ? <p className="hint muted">Loading users...</p> : null}
           {usersError ? <p className="hint error">{usersError}</p> : null}
           {identityWarning ? <p className="hint warning">{identityWarning}</p> : null}

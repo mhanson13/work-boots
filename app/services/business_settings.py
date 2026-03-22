@@ -10,6 +10,9 @@ from app.schemas.business import BusinessSettingsUpdateRequest
 
 _EMAIL_REGEX = re.compile(r"^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$", re.IGNORECASE)
 _E164_REGEX = re.compile(r"^\+[1-9]\d{9,14}$")
+# Contract guardrail:
+# These bounds must remain aligned with frontend validation constants:
+# frontend/operator-ui/lib/validation/constants.ts
 _SEO_AUDIT_CRAWL_MAX_PAGES_MIN = 5
 _SEO_AUDIT_CRAWL_MAX_PAGES_MAX = 250
 _COMPETITOR_CANDIDATE_MIN_RELEVANCE_SCORE_MIN = 0

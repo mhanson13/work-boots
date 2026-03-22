@@ -1,0 +1,37 @@
+import {
+  COMPETITOR_BIG_BOX_PENALTY_MAX,
+  COMPETITOR_BIG_BOX_PENALTY_MIN,
+  COMPETITOR_DIRECTORY_PENALTY_MAX,
+  COMPETITOR_DIRECTORY_PENALTY_MIN,
+  COMPETITOR_LOCAL_ALIGNMENT_BONUS_MAX,
+  COMPETITOR_LOCAL_ALIGNMENT_BONUS_MIN,
+  COMPETITOR_MIN_RELEVANCE_SCORE_MAX,
+  COMPETITOR_MIN_RELEVANCE_SCORE_MIN,
+  CRAWL_PAGE_LIMIT_MAX,
+  CRAWL_PAGE_LIMIT_MIN,
+  DEFAULT_CRAWL_PAGE_LIMIT,
+} from "./constants";
+
+describe("admin settings validation constants contract", () => {
+  it("keeps crawl page limit bounds stable for admin UI validation", () => {
+    expect(CRAWL_PAGE_LIMIT_MIN).toBe(5);
+    expect(CRAWL_PAGE_LIMIT_MAX).toBe(250);
+    expect(DEFAULT_CRAWL_PAGE_LIMIT).toBe(25);
+    expect(DEFAULT_CRAWL_PAGE_LIMIT).toBeGreaterThanOrEqual(CRAWL_PAGE_LIMIT_MIN);
+    expect(DEFAULT_CRAWL_PAGE_LIMIT).toBeLessThanOrEqual(CRAWL_PAGE_LIMIT_MAX);
+  });
+
+  it("keeps competitor quality bounds stable for admin UI validation", () => {
+    expect(COMPETITOR_MIN_RELEVANCE_SCORE_MIN).toBe(0);
+    expect(COMPETITOR_MIN_RELEVANCE_SCORE_MAX).toBe(100);
+
+    expect(COMPETITOR_BIG_BOX_PENALTY_MIN).toBe(0);
+    expect(COMPETITOR_BIG_BOX_PENALTY_MAX).toBe(50);
+
+    expect(COMPETITOR_DIRECTORY_PENALTY_MIN).toBe(0);
+    expect(COMPETITOR_DIRECTORY_PENALTY_MAX).toBe(50);
+
+    expect(COMPETITOR_LOCAL_ALIGNMENT_BONUS_MIN).toBe(0);
+    expect(COMPETITOR_LOCAL_ALIGNMENT_BONUS_MAX).toBe(50);
+  });
+});

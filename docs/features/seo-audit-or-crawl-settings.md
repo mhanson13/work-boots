@@ -79,3 +79,13 @@ These settings are business-scoped and admin-only, and are enforced server-side 
 - Higher values increase crawl duration and potential load but can improve coverage depth.
 - Lower values reduce runtime/cost and can be useful for rapid iteration.
 - Because the setting is business-scoped, each tenant can tune crawl depth to its own operational constraints without affecting others.
+
+## Admin Settings Health Indicators
+
+- The Admin page evaluates persisted business settings and shows section-level health warnings when saved values are outside allowed bounds or violate channel requirements.
+- Current indicators cover:
+  - SEO Crawl Settings
+  - AI Competitor Candidate Quality
+  - Notification settings channel health
+- Warnings are informational only and do not block unrelated section saves.
+- Backend validation remains authoritative for all bounds and consistency rules when a section is edited.

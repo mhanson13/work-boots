@@ -3,6 +3,14 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import UsersCompatibilityPage from "./page";
 import { ApiRequestError } from "../../lib/api/client";
 import type { BusinessSettings, PrincipalIdentityListResponse, PrincipalListResponse } from "../../lib/api/types";
+import {
+  COMPETITOR_DIRECTORY_PENALTY_MIN,
+  COMPETITOR_DIRECTORY_PENALTY_MAX,
+  COMPETITOR_MIN_RELEVANCE_SCORE_MIN,
+  COMPETITOR_MIN_RELEVANCE_SCORE_MAX,
+  CRAWL_PAGE_LIMIT_MAX,
+  CRAWL_PAGE_LIMIT_MIN,
+} from "../../lib/validation/constants";
 
 type OperatorContextMockValue = {
   loading: boolean;
@@ -23,6 +31,16 @@ const mockDeactivatePrincipal = jest.fn<Promise<unknown>, unknown[]>();
 const mockActivatePrincipal = jest.fn<Promise<unknown>, unknown[]>();
 const mockDeactivatePrincipalIdentity = jest.fn<Promise<unknown>, unknown[]>();
 const mockActivatePrincipalIdentity = jest.fn<Promise<unknown>, unknown[]>();
+const INVALID_CRAWL_BELOW_MIN = CRAWL_PAGE_LIMIT_MIN - 1;
+const INVALID_CRAWL_ABOVE_MAX = CRAWL_PAGE_LIMIT_MAX + 1;
+const INVALID_PERSISTED_CRAWL_VALUE = CRAWL_PAGE_LIMIT_MAX + 50;
+const INVALID_COMPETITOR_MIN_RELEVANCE = COMPETITOR_MIN_RELEVANCE_SCORE_MAX + 1;
+const CRAWL_INPUT_RANGE_ERROR = `Crawl page limit must be an integer between ${CRAWL_PAGE_LIMIT_MIN} and ${CRAWL_PAGE_LIMIT_MAX}.`;
+const CRAWL_BACKEND_RANGE_ERROR = `Crawl page limit must be between ${CRAWL_PAGE_LIMIT_MIN} and ${CRAWL_PAGE_LIMIT_MAX}.`;
+const COMPETITOR_MIN_RELEVANCE_INPUT_RANGE_ERROR =
+  `Minimum relevance score must be an integer between ${COMPETITOR_MIN_RELEVANCE_SCORE_MIN} and ${COMPETITOR_MIN_RELEVANCE_SCORE_MAX}.`;
+const COMPETITOR_DIRECTORY_INPUT_RANGE_ERROR =
+  `Directory/aggregator penalty must be an integer between ${COMPETITOR_DIRECTORY_PENALTY_MIN} and ${COMPETITOR_DIRECTORY_PENALTY_MAX}.`;
 
 jest.mock("../../components/useOperatorContext", () => ({
   useOperatorContext: () => mockUseOperatorContext(),
@@ -498,12 +516,12 @@ describe("admin page compatibility route", () => {
     await screen.findByText("SEO crawl page limit updated to 80.");
   });
 
-  it("accepts crawl page limit at lower bound (5)", async () => {
+  it(`accepts crawl page limit at lower bound (${CRAWL_PAGE_LIMIT_MIN})`, async () => {
     mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
     mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
     mockUpdateBusinessSettings.mockResolvedValueOnce(
       buildBusinessSettings({
-        seo_audit_crawl_max_pages: 5,
+        seo_audit_crawl_max_pages: CRAWL_PAGE_LIMIT_MIN,
         updated_at: "2026-03-22T00:00:00Z",
       }),
     );
@@ -511,23 +529,25 @@ describe("admin page compatibility route", () => {
     render(<UsersCompatibilityPage />);
 
     await screen.findByText("operator-1");
-    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), {
+      target: { value: String(CRAWL_PAGE_LIMIT_MIN) },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save Crawl Limit" }));
 
     await waitFor(() =>
       expect(mockUpdateBusinessSettings).toHaveBeenCalledWith("token-1", "biz-1", {
-        seo_audit_crawl_max_pages: 5,
+        seo_audit_crawl_max_pages: CRAWL_PAGE_LIMIT_MIN,
       }),
     );
-    await screen.findByText("SEO crawl page limit updated to 5.");
+    await screen.findByText(`SEO crawl page limit updated to ${CRAWL_PAGE_LIMIT_MIN}.`);
   });
 
-  it("accepts crawl page limit at upper bound (250)", async () => {
+  it(`accepts crawl page limit at upper bound (${CRAWL_PAGE_LIMIT_MAX})`, async () => {
     mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
     mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
     mockUpdateBusinessSettings.mockResolvedValueOnce(
       buildBusinessSettings({
-        seo_audit_crawl_max_pages: 250,
+        seo_audit_crawl_max_pages: CRAWL_PAGE_LIMIT_MAX,
         updated_at: "2026-03-22T00:00:00Z",
       }),
     );
@@ -535,15 +555,17 @@ describe("admin page compatibility route", () => {
     render(<UsersCompatibilityPage />);
 
     await screen.findByText("operator-1");
-    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), { target: { value: "250" } });
+    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), {
+      target: { value: String(CRAWL_PAGE_LIMIT_MAX) },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save Crawl Limit" }));
 
     await waitFor(() =>
       expect(mockUpdateBusinessSettings).toHaveBeenCalledWith("token-1", "biz-1", {
-        seo_audit_crawl_max_pages: 250,
+        seo_audit_crawl_max_pages: CRAWL_PAGE_LIMIT_MAX,
       }),
     );
-    await screen.findByText("SEO crawl page limit updated to 250.");
+    await screen.findByText(`SEO crawl page limit updated to ${CRAWL_PAGE_LIMIT_MAX}.`);
   });
 
   it("saves crawl limit even when competitor quality inputs are currently invalid", async () => {
@@ -551,7 +573,7 @@ describe("admin page compatibility route", () => {
     mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
     mockUpdateBusinessSettings.mockResolvedValueOnce(
       buildBusinessSettings({
-        seo_audit_crawl_max_pages: 250,
+        seo_audit_crawl_max_pages: CRAWL_PAGE_LIMIT_MAX,
         updated_at: "2026-03-22T00:00:00Z",
       }),
     );
@@ -559,48 +581,101 @@ describe("admin page compatibility route", () => {
     render(<UsersCompatibilityPage />);
 
     await screen.findByText("operator-1");
-    fireEvent.change(screen.getByLabelText("Minimum Relevance Score"), { target: { value: "101" } });
-    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), { target: { value: "250" } });
+    fireEvent.change(screen.getByLabelText("Minimum Relevance Score"), {
+      target: { value: String(INVALID_COMPETITOR_MIN_RELEVANCE) },
+    });
+    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), {
+      target: { value: String(CRAWL_PAGE_LIMIT_MAX) },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save Crawl Limit" }));
 
     await waitFor(() =>
       expect(mockUpdateBusinessSettings).toHaveBeenCalledWith("token-1", "biz-1", {
-        seo_audit_crawl_max_pages: 250,
+        seo_audit_crawl_max_pages: CRAWL_PAGE_LIMIT_MAX,
       }),
     );
-    await screen.findByText("SEO crawl page limit updated to 250.");
+    await screen.findByText(`SEO crawl page limit updated to ${CRAWL_PAGE_LIMIT_MAX}.`);
   });
 
-  it("rejects crawl page limit below minimum (4)", async () => {
+  it(`rejects crawl page limit below minimum (${INVALID_CRAWL_BELOW_MIN})`, async () => {
     mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
     mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
 
     render(<UsersCompatibilityPage />);
 
     await screen.findByText("operator-1");
-    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), { target: { value: "4" } });
+    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), {
+      target: { value: String(INVALID_CRAWL_BELOW_MIN) },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save Crawl Limit" }));
 
     expect(mockUpdateBusinessSettings).not.toHaveBeenCalled();
     expect(
-      screen.getByText("Crawl page limit must be an integer between 5 and 250."),
+      screen.getByText(CRAWL_INPUT_RANGE_ERROR),
     ).toBeInTheDocument();
   });
 
-  it("rejects crawl page limit above maximum (251)", async () => {
+  it(`rejects crawl page limit above maximum (${INVALID_CRAWL_ABOVE_MAX})`, async () => {
     mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
     mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
 
     render(<UsersCompatibilityPage />);
 
     await screen.findByText("operator-1");
-    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), { target: { value: "251" } });
+    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), {
+      target: { value: String(INVALID_CRAWL_ABOVE_MAX) },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save Crawl Limit" }));
 
     expect(mockUpdateBusinessSettings).not.toHaveBeenCalled();
     expect(
-      screen.getByText("Crawl page limit must be an integer between 5 and 250."),
+      screen.getByText(CRAWL_INPUT_RANGE_ERROR),
     ).toBeInTheDocument();
+  });
+
+  it("shows crawl-specific backend validation errors in the crawl section", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockUpdateBusinessSettings.mockRejectedValueOnce(
+      new ApiRequestError(`seo_audit_crawl_max_pages must be between ${CRAWL_PAGE_LIMIT_MIN} and ${CRAWL_PAGE_LIMIT_MAX}.`, {
+        status: 422,
+        detail: null,
+      }),
+    );
+
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), {
+      target: { value: String(CRAWL_PAGE_LIMIT_MAX) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Crawl Limit" }));
+
+    await screen.findByText(CRAWL_BACKEND_RANGE_ERROR);
+    expect(
+      screen.queryByText("Unable to save this settings section. Please review the entered values."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("uses a safe fallback message for unexpected crawl validation failures", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockUpdateBusinessSettings.mockRejectedValueOnce(
+      new ApiRequestError("validation failed", {
+        status: 422,
+        detail: null,
+      }),
+    );
+
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), {
+      target: { value: String(CRAWL_PAGE_LIMIT_MAX) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Crawl Limit" }));
+
+    await screen.findByText("Unable to save SEO crawl settings. Please review the entered crawl limit.");
   });
 
   it("shows competitor quality tuning values from business settings", async () => {
@@ -622,6 +697,53 @@ describe("admin page compatibility route", () => {
     expect(screen.getByLabelText("Big-Box Mismatch Penalty")).toHaveValue(18);
     expect(screen.getByLabelText("Directory/Aggregator Penalty")).toHaveValue(31);
     expect(screen.getByLabelText("Local Alignment Bonus")).toHaveValue(12);
+  });
+
+  it("shows a crawl settings health warning for invalid persisted crawl values", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockFetchBusinessSettings.mockResolvedValueOnce(
+      buildBusinessSettings({
+        seo_audit_crawl_max_pages: INVALID_PERSISTED_CRAWL_VALUE,
+      }),
+    );
+
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    expect(screen.getByText("Settings health: Saved value is outside the allowed range.")).toBeInTheDocument();
+  });
+
+  it("shows no settings health warnings when persisted values are valid", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockFetchBusinessSettings.mockResolvedValueOnce(buildBusinessSettings());
+
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    expect(screen.queryByText("Settings health: Saved value is outside the allowed range.")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Notification settings health: One or more saved values need review."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows notification settings health warning for invalid persisted notification values", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockFetchBusinessSettings.mockResolvedValueOnce(
+      buildBusinessSettings({
+        sms_enabled: true,
+        notification_phone: null,
+      }),
+    );
+
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    expect(
+      screen.getByText("Notification settings health: One or more saved values need review."),
+    ).toBeInTheDocument();
   });
 
   it("updates competitor candidate quality settings for admins", async () => {
@@ -657,6 +779,36 @@ describe("admin page compatibility route", () => {
     await screen.findByText("AI competitor candidate quality settings updated.");
   });
 
+  it("does not block crawl saves when competitor quality persisted values are invalid", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockFetchBusinessSettings.mockResolvedValueOnce(
+      buildBusinessSettings({
+        competitor_candidate_min_relevance_score: INVALID_COMPETITOR_MIN_RELEVANCE,
+      }),
+    );
+    mockUpdateBusinessSettings.mockResolvedValueOnce(
+      buildBusinessSettings({
+        seo_audit_crawl_max_pages: 50,
+        competitor_candidate_min_relevance_score: INVALID_COMPETITOR_MIN_RELEVANCE,
+      }),
+    );
+
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    expect(screen.getByText("Settings health: One or more saved values need review.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), { target: { value: "50" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Crawl Limit" }));
+
+    await waitFor(() =>
+      expect(mockUpdateBusinessSettings).toHaveBeenCalledWith("token-1", "biz-1", {
+        seo_audit_crawl_max_pages: 50,
+      }),
+    );
+    await screen.findByText("SEO crawl page limit updated to 50.");
+  });
+
   it("rejects competitor quality values outside allowed bounds", async () => {
     mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
     mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
@@ -664,13 +816,105 @@ describe("admin page compatibility route", () => {
     render(<UsersCompatibilityPage />);
 
     await screen.findByText("operator-1");
-    fireEvent.change(screen.getByLabelText("Minimum Relevance Score"), { target: { value: "101" } });
+    fireEvent.change(screen.getByLabelText("Minimum Relevance Score"), {
+      target: { value: String(INVALID_COMPETITOR_MIN_RELEVANCE) },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save Candidate Quality Settings" }));
 
     expect(mockUpdateBusinessSettings).not.toHaveBeenCalled();
     expect(
-      screen.getByText("Minimum relevance score must be an integer between 0 and 100."),
+      screen.getByText(COMPETITOR_MIN_RELEVANCE_INPUT_RANGE_ERROR),
     ).toBeInTheDocument();
+  });
+
+  it("shows competitor-quality field-specific backend validation errors in the competitor section", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockUpdateBusinessSettings.mockRejectedValueOnce(
+      new ApiRequestError(
+        `competitor_candidate_directory_penalty must be between ${COMPETITOR_DIRECTORY_PENALTY_MIN} and ${COMPETITOR_DIRECTORY_PENALTY_MAX}.`,
+        {
+        status: 422,
+        detail: null,
+        },
+      ),
+    );
+
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    fireEvent.change(screen.getByLabelText("Minimum Relevance Score"), { target: { value: "45" } });
+    fireEvent.change(screen.getByLabelText("Big-Box Mismatch Penalty"), { target: { value: "25" } });
+    fireEvent.change(screen.getByLabelText("Directory/Aggregator Penalty"), { target: { value: "30" } });
+    fireEvent.change(screen.getByLabelText("Local Alignment Bonus"), { target: { value: "15" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Candidate Quality Settings" }));
+
+    await screen.findByText(COMPETITOR_DIRECTORY_INPUT_RANGE_ERROR);
+    expect(screen.queryByText(CRAWL_BACKEND_RANGE_ERROR)).not.toBeInTheDocument();
+  });
+
+  it("clears crawl-section error after a subsequent valid crawl save", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockUpdateBusinessSettings
+      .mockRejectedValueOnce(
+        new ApiRequestError("validation failed", {
+          status: 422,
+          detail: null,
+        }),
+      )
+      .mockResolvedValueOnce(
+        buildBusinessSettings({
+          seo_audit_crawl_max_pages: CRAWL_PAGE_LIMIT_MAX,
+          updated_at: "2026-03-22T00:00:00Z",
+        }),
+      );
+
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), {
+      target: { value: String(CRAWL_PAGE_LIMIT_MAX) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Crawl Limit" }));
+    await screen.findByText("Unable to save SEO crawl settings. Please review the entered crawl limit.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Crawl Limit" }));
+    await screen.findByText(`SEO crawl page limit updated to ${CRAWL_PAGE_LIMIT_MAX}.`);
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Unable to save SEO crawl settings. Please review the entered crawl limit."),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it("clears crawl settings health warning after saving a valid crawl value", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockFetchBusinessSettings.mockResolvedValueOnce(
+      buildBusinessSettings({
+        seo_audit_crawl_max_pages: INVALID_PERSISTED_CRAWL_VALUE,
+      }),
+    );
+    mockUpdateBusinessSettings.mockResolvedValueOnce(
+      buildBusinessSettings({
+        seo_audit_crawl_max_pages: 80,
+      }),
+    );
+
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    expect(screen.getByText("Settings health: Saved value is outside the allowed range.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), { target: { value: "80" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Crawl Limit" }));
+
+    await screen.findByText("SEO crawl page limit updated to 80.");
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Settings health: Saved value is outside the allowed range."),
+      ).not.toBeInTheDocument(),
+    );
   });
 
   it("saves competitor quality settings even when crawl input is currently invalid", async () => {
@@ -690,7 +934,9 @@ describe("admin page compatibility route", () => {
     render(<UsersCompatibilityPage />);
 
     await screen.findByText("operator-1");
-    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), { target: { value: "251" } });
+    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), {
+      target: { value: String(INVALID_CRAWL_ABOVE_MAX) },
+    });
     fireEvent.change(screen.getByLabelText("Minimum Relevance Score"), { target: { value: "45" } });
     fireEvent.change(screen.getByLabelText("Big-Box Mismatch Penalty"), { target: { value: "25" } });
     fireEvent.change(screen.getByLabelText("Directory/Aggregator Penalty"), { target: { value: "30" } });
