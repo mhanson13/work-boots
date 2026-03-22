@@ -16,6 +16,12 @@ SEORecommendationDecision = Literal["accept", "dismiss", "snooze", "resolve", "r
 SEORecommendationSourceType = Literal["audit", "comparison", "mixed"]
 SEORecommendationSortBy = Literal["priority_score", "priority_band", "severity", "created_at", "updated_at", "due_at"]
 SortOrder = Literal["asc", "desc"]
+RecommendationTuningSetting = Literal[
+    "competitor_candidate_min_relevance_score",
+    "competitor_candidate_big_box_penalty",
+    "competitor_candidate_directory_penalty",
+    "competitor_candidate_local_alignment_bonus",
+]
 
 _CATEGORIES = {"SEO", "CONTENT", "STRUCTURE", "TECHNICAL"}
 _SEVERITIES = {"INFO", "WARNING", "CRITICAL"}
@@ -368,6 +374,82 @@ class SEORecommendationNarrativeRead(BaseModel):
 class SEORecommendationNarrativeListResponse(BaseModel):
     items: list[SEORecommendationNarrativeRead]
     total: int
+
+
+class SEORecommendationTuningValuesPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    competitor_candidate_min_relevance_score: int | None = Field(default=None, ge=0, le=100)
+    competitor_candidate_big_box_penalty: int | None = Field(default=None, ge=0, le=50)
+    competitor_candidate_directory_penalty: int | None = Field(default=None, ge=0, le=50)
+    competitor_candidate_local_alignment_bonus: int | None = Field(default=None, ge=0, le=50)
+
+
+class SEORecommendationTuningValuesRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    competitor_candidate_min_relevance_score: int = Field(ge=0, le=100)
+    competitor_candidate_big_box_penalty: int = Field(ge=0, le=50)
+    competitor_candidate_directory_penalty: int = Field(ge=0, le=50)
+    competitor_candidate_local_alignment_bonus: int = Field(ge=0, le=50)
+
+
+class SEORecommendationTuningImpactPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_values: SEORecommendationTuningValuesPatch | None = None
+    proposed_values: SEORecommendationTuningValuesPatch
+    recommendation_run_id: str | None = Field(default=None, min_length=1, max_length=36)
+    narrative_id: str | None = Field(default=None, min_length=1, max_length=36)
+
+    @field_validator("recommendation_run_id", "narrative_id", mode="before")
+    @classmethod
+    def normalize_optional_ids(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        return _strip_or_none(str(value))
+
+    @model_validator(mode="after")
+    def require_proposed_values(self) -> "SEORecommendationTuningImpactPreviewRequest":
+        if not self.proposed_values.model_dump(exclude_none=True):
+            raise ValueError("At least one proposed tuning value is required")
+        return self
+
+
+class SEORecommendationTuningTelemetryWindowRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lookback_days: int = Field(ge=1)
+    total_runs: int = Field(ge=0)
+    total_raw_candidate_count: int = Field(ge=0)
+    total_included_candidate_count: int = Field(ge=0)
+    total_excluded_candidate_count: int = Field(ge=0)
+    exclusion_counts_by_reason: dict[str, int] = Field(default_factory=dict)
+
+
+class SEORecommendationTuningImpactEstimateRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    insufficient_data: bool
+    estimated_included_candidate_delta: int
+    estimated_excluded_candidate_delta: int
+    estimated_exclusion_reason_deltas: dict[str, int] = Field(default_factory=dict)
+    summary: str
+    risk_flags: list[str] = Field(default_factory=list)
+
+
+class SEORecommendationTuningImpactPreviewRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    business_id: str
+    site_id: str
+    source_recommendation_run_id: str | None
+    source_narrative_id: str | None
+    current_values: SEORecommendationTuningValuesRead
+    proposed_values: SEORecommendationTuningValuesRead
+    telemetry_window: SEORecommendationTuningTelemetryWindowRead
+    estimated_impact: SEORecommendationTuningImpactEstimateRead
+    caveat: str
 
 
 class SEORecommendationListQuery(BaseModel):

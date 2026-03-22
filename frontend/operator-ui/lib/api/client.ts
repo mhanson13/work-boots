@@ -37,6 +37,8 @@ import type {
   RecommendationRunReport,
   RecommendationNarrative,
   RecommendationNarrativeListResponse,
+  RecommendationTuningImpactPreview,
+  RecommendationTuningImpactPreviewRequest,
   CompetitorSnapshotRun,
   CompetitorSnapshotRunListResponse,
   Recommendation,
@@ -634,6 +636,22 @@ export async function fetchRecommendationNarrative(
   return apiRequest<RecommendationNarrative>(
     `/api/businesses/${businessId}/seo/sites/${siteId}/recommendation-narratives/${narrativeId}`,
     { token },
+  );
+}
+
+export async function previewRecommendationTuningImpact(
+  token: string,
+  businessId: string,
+  siteId: string,
+  payload: RecommendationTuningImpactPreviewRequest,
+): Promise<RecommendationTuningImpactPreview> {
+  return apiRequest<RecommendationTuningImpactPreview>(
+    `/api/businesses/${businessId}/seo/sites/${siteId}/recommendations/tuning-preview`,
+    {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+    },
   );
 }
 

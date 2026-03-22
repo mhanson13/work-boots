@@ -15,6 +15,7 @@ import type {
   CompetitorSnapshotRunListResponse,
   RecommendationListResponse,
   RecommendationNarrative,
+  RecommendationTuningImpactPreview,
   RecommendationRunListResponse,
   SEOAuditRunListResponse,
   SEOSite,
@@ -48,6 +49,7 @@ const mockFetchSiteCompetitorComparisonRuns = jest.fn<
 const mockFetchRecommendations = jest.fn<Promise<RecommendationListResponse>, unknown[]>();
 const mockFetchRecommendationRuns = jest.fn<Promise<RecommendationRunListResponse>, unknown[]>();
 const mockFetchLatestRecommendationRunNarrative = jest.fn<Promise<RecommendationNarrative>, unknown[]>();
+const mockPreviewRecommendationTuningImpact = jest.fn<Promise<RecommendationTuningImpactPreview>, unknown[]>();
 const mockFetchCompetitorProfileGenerationRuns = jest.fn<
   Promise<CompetitorProfileGenerationRunListResponse>,
   unknown[]
@@ -93,6 +95,7 @@ jest.mock("../../lib/api/client", () => {
     fetchRecommendationRuns: (...args: unknown[]) => mockFetchRecommendationRuns(...args),
     fetchLatestRecommendationRunNarrative: (...args: unknown[]) =>
       mockFetchLatestRecommendationRunNarrative(...args),
+    previewRecommendationTuningImpact: (...args: unknown[]) => mockPreviewRecommendationTuningImpact(...args),
     fetchCompetitorProfileGenerationRuns: (...args: unknown[]) =>
       mockFetchCompetitorProfileGenerationRuns(...args),
     fetchCompetitorProfileGenerationRunDetail: (...args: unknown[]) =>
@@ -1393,7 +1396,58 @@ describe("site workspace timeline controls", () => {
 
   it("renders bounded recommendation narrative tuning suggestions in the workspace narrative section", async () => {
     seedRichWorkspaceData();
+    const user = userEvent.setup();
     mockFetchLatestRecommendationRunNarrative.mockReset();
+    mockPreviewRecommendationTuningImpact.mockReset();
+    mockPreviewRecommendationTuningImpact.mockResolvedValue({
+      business_id: "biz-1",
+      site_id: "site-1",
+      source_recommendation_run_id: "run-1",
+      source_narrative_id: "narrative-1",
+      current_values: {
+        competitor_candidate_min_relevance_score: 35,
+        competitor_candidate_big_box_penalty: 20,
+        competitor_candidate_directory_penalty: 35,
+        competitor_candidate_local_alignment_bonus: 10,
+      },
+      proposed_values: {
+        competitor_candidate_min_relevance_score: 30,
+        competitor_candidate_big_box_penalty: 20,
+        competitor_candidate_directory_penalty: 35,
+        competitor_candidate_local_alignment_bonus: 10,
+      },
+      telemetry_window: {
+        lookback_days: 30,
+        total_runs: 4,
+        total_raw_candidate_count: 10,
+        total_included_candidate_count: 4,
+        total_excluded_candidate_count: 6,
+        exclusion_counts_by_reason: {
+          duplicate: 1,
+          low_relevance: 3,
+          directory_or_aggregator: 1,
+          big_box_mismatch: 1,
+          existing_domain_match: 0,
+          invalid_candidate: 0,
+        },
+      },
+      estimated_impact: {
+        insufficient_data: false,
+        estimated_included_candidate_delta: 2,
+        estimated_excluded_candidate_delta: -2,
+        estimated_exclusion_reason_deltas: {
+          duplicate: 0,
+          low_relevance: -2,
+          directory_or_aggregator: 0,
+          big_box_mismatch: 0,
+          existing_domain_match: 0,
+          invalid_candidate: 0,
+        },
+        summary: "Estimated increase of 2 included candidates over the last 30 days of telemetry.",
+        risk_flags: ["Lower minimum relevance score may increase weak or noisy candidates."],
+      },
+      caveat: "Preview only.",
+    });
     mockFetchLatestRecommendationRunNarrative
       .mockResolvedValueOnce({
         id: "narrative-1",
@@ -1471,6 +1525,135 @@ describe("site workspace timeline controls", () => {
         "Minimum relevance score: 35 -> 30 (High low_relevance exclusions indicate threshold is too strict.)",
       ),
     ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Preview Impact" }));
+    await screen.findByText(/Estimated increase of 2 included candidates over the last 30 days of telemetry\./);
+    expect(screen.getByText(/Included delta: \+2; excluded delta: -2/)).toBeInTheDocument();
+    expect(mockPreviewRecommendationTuningImpact).toHaveBeenCalledWith("token-1", "biz-1", "site-1", {
+      recommendation_run_id: "run-1",
+      narrative_id: "narrative-1",
+      current_values: { competitor_candidate_min_relevance_score: 35 },
+      proposed_values: { competitor_candidate_min_relevance_score: 30 },
+    });
+  });
+
+  it("renders insufficient-data tuning preview state safely", async () => {
+    seedRichWorkspaceData();
+    const user = userEvent.setup();
+    mockFetchRecommendationRuns.mockResolvedValue({
+      items: [
+        {
+          id: "run-1",
+          business_id: "biz-1",
+          site_id: "site-1",
+          audit_run_id: "audit-1",
+          comparison_run_id: "comparison-1",
+          status: "completed",
+          total_recommendations: 1,
+          critical_recommendations: 0,
+          warning_recommendations: 1,
+          info_recommendations: 0,
+          category_counts_json: {},
+          effort_bucket_counts_json: {},
+          started_at: "2026-03-21T00:29:00Z",
+          completed_at: "2026-03-21T00:30:00Z",
+          duration_ms: 60000,
+          error_summary: null,
+          created_by_principal_id: "principal-1",
+          created_at: "2026-03-21T00:29:00Z",
+          updated_at: "2026-03-21T00:30:00Z",
+        },
+      ],
+      total: 1,
+    });
+    mockFetchLatestRecommendationRunNarrative.mockReset();
+    mockPreviewRecommendationTuningImpact.mockReset();
+    mockFetchLatestRecommendationRunNarrative.mockResolvedValue({
+      id: "narrative-1",
+      business_id: "biz-1",
+      site_id: "site-1",
+      recommendation_run_id: "run-1",
+      version: 2,
+      status: "completed",
+      narrative_text: "Narrative for run 1.",
+      top_themes_json: ["titles"],
+      sections_json: {
+        summary: "one",
+        tuning_suggestions: [
+          {
+            setting: "competitor_candidate_min_relevance_score",
+            current_value: 35,
+            recommended_value: 30,
+            reason: "Low relevance exclusions are high.",
+            linked_recommendation_ids: ["rec-1"],
+            confidence: "medium",
+          },
+        ],
+      },
+      provider_name: "provider",
+      model_name: "model",
+      prompt_version: "v2",
+      error_message: null,
+      created_by_principal_id: "principal-1",
+      created_at: "2026-03-21T00:33:00Z",
+      updated_at: "2026-03-21T00:33:00Z",
+    });
+    mockPreviewRecommendationTuningImpact.mockResolvedValue({
+      business_id: "biz-1",
+      site_id: "site-1",
+      source_recommendation_run_id: "run-1",
+      source_narrative_id: "narrative-1",
+      current_values: {
+        competitor_candidate_min_relevance_score: 35,
+        competitor_candidate_big_box_penalty: 20,
+        competitor_candidate_directory_penalty: 35,
+        competitor_candidate_local_alignment_bonus: 10,
+      },
+      proposed_values: {
+        competitor_candidate_min_relevance_score: 30,
+        competitor_candidate_big_box_penalty: 20,
+        competitor_candidate_directory_penalty: 35,
+        competitor_candidate_local_alignment_bonus: 10,
+      },
+      telemetry_window: {
+        lookback_days: 30,
+        total_runs: 0,
+        total_raw_candidate_count: 0,
+        total_included_candidate_count: 0,
+        total_excluded_candidate_count: 0,
+        exclusion_counts_by_reason: {
+          duplicate: 0,
+          low_relevance: 0,
+          directory_or_aggregator: 0,
+          big_box_mismatch: 0,
+          existing_domain_match: 0,
+          invalid_candidate: 0,
+        },
+      },
+      estimated_impact: {
+        insufficient_data: true,
+        estimated_included_candidate_delta: 0,
+        estimated_excluded_candidate_delta: 0,
+        estimated_exclusion_reason_deltas: {
+          duplicate: 0,
+          low_relevance: 0,
+          directory_or_aggregator: 0,
+          big_box_mismatch: 0,
+          existing_domain_match: 0,
+          invalid_candidate: 0,
+        },
+        summary: "Insufficient recent competitor telemetry for deterministic impact estimation.",
+        risk_flags: [],
+      },
+      caveat: "Preview only.",
+    });
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("heading", { name: "Recommendation Runs and Narratives" });
+    await screen.findByRole("link", { name: "run-1" });
+    await user.click(screen.getByRole("button", { name: "Preview Impact" }));
+    await screen.findByText(/Insufficient recent competitor telemetry for deterministic impact estimation\./);
+    expect(screen.getByText(/Included delta: 0; excluded delta: 0/)).toBeInTheDocument();
   });
 
   it("keeps loading and warning timeline regression behavior", async () => {

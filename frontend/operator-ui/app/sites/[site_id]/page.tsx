@@ -20,6 +20,7 @@ import {
   fetchCompetitorSets,
   fetchCompetitorSnapshotRuns,
   fetchLatestRecommendationRunNarrative,
+  previewRecommendationTuningImpact,
   fetchRecommendationRuns,
   fetchRecommendations,
   fetchSiteCompetitorComparisonRuns,
@@ -36,6 +37,7 @@ import type {
   Recommendation,
   RecommendationListResponse,
   RecommendationNarrative,
+  RecommendationTuningImpactPreview,
   RecommendationRun,
   RecommendationTuningSuggestion,
   SEOAuditRun,
@@ -262,6 +264,20 @@ function formatTuningSettingLabel(setting: RecommendationTuningSuggestion["setti
   }
 }
 
+function formatSignedDelta(value: number): string {
+  if (value > 0) {
+    return `+${value}`;
+  }
+  return String(value);
+}
+
+function buildTuningPreviewKey(
+  recommendationRunId: string,
+  suggestion: RecommendationTuningSuggestion,
+): string {
+  return `${recommendationRunId}:${suggestion.setting}:${suggestion.current_value}:${suggestion.recommended_value}`;
+}
+
 function parseNarrativeTuningSuggestions(
   sections: RecommendationNarrative["sections_json"],
 ): RecommendationTuningSuggestion[] {
@@ -425,6 +441,9 @@ export default function SiteWorkspacePage() {
   const [recommendationRunError, setRecommendationRunError] = useState<string | null>(null);
   const [latestNarrativesByRunId, setLatestNarrativesByRunId] = useState<Record<string, RecommendationNarrative>>({});
   const [narrativeLookupError, setNarrativeLookupError] = useState<string | null>(null);
+  const [tuningPreviewByKey, setTuningPreviewByKey] = useState<Record<string, RecommendationTuningImpactPreview>>({});
+  const [tuningPreviewErrorByKey, setTuningPreviewErrorByKey] = useState<Record<string, string>>({});
+  const [tuningPreviewLoadingKey, setTuningPreviewLoadingKey] = useState<string | null>(null);
 
   const [competitorProfileGenerationRuns, setCompetitorProfileGenerationRuns] = useState<CompetitorProfileGenerationRun[]>([]);
   const [competitorProfileSummary, setCompetitorProfileSummary] =
@@ -838,6 +857,51 @@ export default function SiteWorkspacePage() {
     }
   }
 
+  async function handlePreviewTuningSuggestion(
+    recommendationRunId: string,
+    narrativeId: string | null,
+    suggestion: RecommendationTuningSuggestion,
+  ): Promise<void> {
+    if (!context.token || !context.businessId || !siteId) {
+      return;
+    }
+    const previewKey = buildTuningPreviewKey(recommendationRunId, suggestion);
+    setTuningPreviewLoadingKey(previewKey);
+    setTuningPreviewErrorByKey((current) => {
+      if (!current[previewKey]) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[previewKey];
+      return next;
+    });
+    try {
+      const preview = await previewRecommendationTuningImpact(
+        context.token,
+        context.businessId,
+        siteId,
+        {
+          recommendation_run_id: recommendationRunId,
+          narrative_id: narrativeId || undefined,
+          current_values: {
+            [suggestion.setting]: suggestion.current_value,
+          },
+          proposed_values: {
+            [suggestion.setting]: suggestion.recommended_value,
+          },
+        },
+      );
+      setTuningPreviewByKey((current) => ({ ...current, [previewKey]: preview }));
+    } catch (error) {
+      setTuningPreviewErrorByKey((current) => ({
+        ...current,
+        [previewKey]: safeActionErrorMessage("preview tuning impact", error),
+      }));
+    } finally {
+      setTuningPreviewLoadingKey((current) => (current === previewKey ? null : current));
+    }
+  }
+
   async function handleRejectCompetitorProfileDraft(draftId: string): Promise<void> {
     if (!context.token || !context.businessId || !siteId || !latestCompetitorProfileRunId) {
       return;
@@ -980,6 +1044,9 @@ export default function SiteWorkspacePage() {
       setRecommendationRunError(null);
       setLatestNarrativesByRunId({});
       setNarrativeLookupError(null);
+      setTuningPreviewByKey({});
+      setTuningPreviewErrorByKey({});
+      setTuningPreviewLoadingKey(null);
       setCompetitorProfileGenerationRuns([]);
       setCompetitorProfileSummary(null);
       setLatestCompetitorProfileRunId(null);
@@ -1025,6 +1092,9 @@ export default function SiteWorkspacePage() {
       setQueueError(null);
       setRecommendationRunError(null);
       setNarrativeLookupError(null);
+      setTuningPreviewByKey({});
+      setTuningPreviewErrorByKey({});
+      setTuningPreviewLoadingKey(null);
       setCompetitorProfileSummaryError(null);
 
       const [
@@ -1164,6 +1234,9 @@ export default function SiteWorkspacePage() {
             }
           }
           setLatestNarrativesByRunId(nextNarrativesByRunId);
+          setTuningPreviewByKey({});
+          setTuningPreviewErrorByKey({});
+          setTuningPreviewLoadingKey(null);
           if (narrativeErrors.length > 0) {
             setNarrativeLookupError(safeSectionErrorMessage("narrative metadata", narrativeErrors[0]));
           } else {
@@ -1172,10 +1245,16 @@ export default function SiteWorkspacePage() {
         } else {
           setLatestNarrativesByRunId({});
           setNarrativeLookupError(null);
+          setTuningPreviewByKey({});
+          setTuningPreviewErrorByKey({});
+          setTuningPreviewLoadingKey(null);
         }
       } else {
         setRecommendationRuns([]);
         setLatestNarrativesByRunId({});
+        setTuningPreviewByKey({});
+        setTuningPreviewErrorByKey({});
+        setTuningPreviewLoadingKey(null);
         setRecommendationRunError(safeSectionErrorMessage("recommendation runs", recommendationRunsResult.reason));
       }
 
@@ -2129,14 +2208,56 @@ export default function SiteWorkspacePage() {
                               <span className="hint muted">Tuning Suggestions</span>
                               {tuningSuggestions.length > 0 ? (
                                 tuningSuggestions.map((suggestion) => (
-                                  <span
+                                  <Fragment
                                     key={`${run.id}-${suggestion.setting}-${suggestion.recommended_value}`}
-                                    className="hint muted"
                                   >
-                                    {formatTuningSettingLabel(suggestion.setting)}: {suggestion.current_value}
-                                    {" -> "}
-                                    {suggestion.recommended_value} ({suggestion.reason})
-                                  </span>
+                                    <span className="hint muted">
+                                      {formatTuningSettingLabel(suggestion.setting)}: {suggestion.current_value}
+                                      {" -> "}
+                                      {suggestion.recommended_value} ({suggestion.reason})
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="button button-tertiary"
+                                      onClick={() =>
+                                        handlePreviewTuningSuggestion(
+                                          run.id,
+                                          latestNarrative.id,
+                                          suggestion,
+                                        )
+                                      }
+                                      disabled={
+                                        tuningPreviewLoadingKey === buildTuningPreviewKey(run.id, suggestion)
+                                      }
+                                    >
+                                      {tuningPreviewLoadingKey === buildTuningPreviewKey(run.id, suggestion)
+                                        ? "Previewing..."
+                                        : "Preview Impact"}
+                                    </button>
+                                    {tuningPreviewErrorByKey[buildTuningPreviewKey(run.id, suggestion)] ? (
+                                      <span className="hint warning">
+                                        {tuningPreviewErrorByKey[buildTuningPreviewKey(run.id, suggestion)]}
+                                      </span>
+                                    ) : null}
+                                    {tuningPreviewByKey[buildTuningPreviewKey(run.id, suggestion)] ? (
+                                      <span className="hint muted">
+                                        {
+                                          tuningPreviewByKey[buildTuningPreviewKey(run.id, suggestion)].estimated_impact
+                                            .summary
+                                        }{" "}
+                                        Included delta:{" "}
+                                        {formatSignedDelta(
+                                          tuningPreviewByKey[buildTuningPreviewKey(run.id, suggestion)].estimated_impact
+                                            .estimated_included_candidate_delta,
+                                        )}
+                                        ; excluded delta:{" "}
+                                        {formatSignedDelta(
+                                          tuningPreviewByKey[buildTuningPreviewKey(run.id, suggestion)].estimated_impact
+                                            .estimated_excluded_candidate_delta,
+                                        )}
+                                      </span>
+                                    ) : null}
+                                  </Fragment>
                                 ))
                               ) : (
                                 <span className="hint muted">No tuning suggestions</span>

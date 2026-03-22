@@ -19,6 +19,7 @@ from app.integrations.seo_summary_provider import (
     SEORecommendationNarrativeOutput,
     SEORecommendationNarrativeProvider,
 )
+from app.models.seo_competitor_profile_generation_run import SEOCompetitorProfileGenerationRun
 from app.models.business import Business
 from app.models.seo_audit_finding import SEOAuditFinding
 from app.models.seo_audit_run import SEOAuditRun
@@ -248,6 +249,40 @@ def _create_completed_recommendation_run(client: TestClient, db_session, busines
     )
     assert create_run.status_code == 201
     return site_id, create_run.json()["id"]
+
+
+def _seed_competitor_generation_telemetry_run(
+    db_session,
+    *,
+    business_id: str,
+    site_id: str,
+    raw_candidate_count: int,
+    included_candidate_count: int,
+    excluded_candidate_count: int,
+    exclusion_counts_by_reason: dict[str, int],
+) -> str:
+    run = SEOCompetitorProfileGenerationRun(
+        id=str(uuid4()),
+        business_id=business_id,
+        site_id=site_id,
+        parent_run_id=None,
+        status="completed",
+        requested_candidate_count=max(1, raw_candidate_count),
+        generated_draft_count=max(0, included_candidate_count),
+        raw_candidate_count=max(0, raw_candidate_count),
+        included_candidate_count=max(0, included_candidate_count),
+        excluded_candidate_count=max(0, excluded_candidate_count),
+        exclusion_counts_by_reason=exclusion_counts_by_reason,
+        provider_name="mock",
+        model_name="mock-seo-competitor-profile-v1",
+        prompt_version="seo-competitor-profile-v1",
+        failure_category=None,
+        raw_output=None,
+        error_summary=None,
+    )
+    db_session.add(run)
+    db_session.commit()
+    return run.id
 
 
 def test_recommendation_narrative_manual_trigger_success_and_retrieval(db_session, seeded_business) -> None:
@@ -486,6 +521,140 @@ def test_phase3c_v1_site_scoped_narrative_routes(db_session, seeded_business) ->
         f"/api/v1/businesses/{seeded_business.id}/seo/sites/{uuid4()}/recommendation-narratives/{narrative_id}"
     )
     assert wrong_site.status_code == 404
+
+
+def test_recommendation_tuning_preview_returns_deterministic_estimate(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id, run_id = _create_completed_recommendation_run(client, db_session, seeded_business.id)
+    _seed_competitor_generation_telemetry_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        raw_candidate_count=10,
+        included_candidate_count=4,
+        excluded_candidate_count=6,
+        exclusion_counts_by_reason={
+            "duplicate": 1,
+            "low_relevance": 3,
+            "directory_or_aggregator": 1,
+            "big_box_mismatch": 1,
+            "existing_domain_match": 0,
+            "invalid_candidate": 0,
+        },
+    )
+
+    response = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/tuning-preview",
+        json={
+            "recommendation_run_id": run_id,
+            "current_values": {"competitor_candidate_min_relevance_score": 35},
+            "proposed_values": {"competitor_candidate_min_relevance_score": 40},
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["business_id"] == seeded_business.id
+    assert payload["site_id"] == site_id
+    assert payload["source_recommendation_run_id"] == run_id
+    assert payload["current_values"]["competitor_candidate_min_relevance_score"] == 35
+    assert payload["proposed_values"]["competitor_candidate_min_relevance_score"] == 40
+    assert payload["telemetry_window"]["total_raw_candidate_count"] == 10
+    assert payload["estimated_impact"]["insufficient_data"] is False
+    assert payload["estimated_impact"]["estimated_excluded_candidate_delta"] > 0
+    assert payload["estimated_impact"]["estimated_included_candidate_delta"] < 0
+    assert "estimate" in payload["caveat"].lower()
+
+    v1_response = client.post(
+        f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/tuning-preview",
+        json={
+            "recommendation_run_id": run_id,
+            "current_values": {"competitor_candidate_min_relevance_score": 35},
+            "proposed_values": {"competitor_candidate_min_relevance_score": 40},
+        },
+    )
+    assert v1_response.status_code == 200
+    assert v1_response.json()["source_recommendation_run_id"] == run_id
+
+
+def test_recommendation_tuning_preview_rejects_invalid_payload(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id, _ = _create_completed_recommendation_run(client, db_session, seeded_business.id)
+
+    invalid_setting = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/tuning-preview",
+        json={
+            "proposed_values": {"unknown_setting": 42},
+        },
+    )
+    assert invalid_setting.status_code == 422
+
+    invalid_bounds = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/tuning-preview",
+        json={
+            "proposed_values": {"competitor_candidate_min_relevance_score": 101},
+        },
+    )
+    assert invalid_bounds.status_code == 422
+
+
+def test_recommendation_tuning_preview_isolation_and_no_mutation(db_session, seeded_business) -> None:
+    other_business = _seed_other_business(db_session)
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id, run_id = _create_completed_recommendation_run(client, db_session, seeded_business.id)
+
+    business_before = db_session.query(Business).filter(Business.id == seeded_business.id).one()
+    before_values = (
+        business_before.competitor_candidate_min_relevance_score,
+        business_before.competitor_candidate_big_box_penalty,
+        business_before.competitor_candidate_directory_penalty,
+        business_before.competitor_candidate_local_alignment_bonus,
+    )
+
+    preview = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/tuning-preview",
+        json={
+            "recommendation_run_id": run_id,
+            "proposed_values": {"competitor_candidate_directory_penalty": 30},
+        },
+    )
+    assert preview.status_code == 200
+
+    business_after = db_session.query(Business).filter(Business.id == seeded_business.id).one()
+    after_values = (
+        business_after.competitor_candidate_min_relevance_score,
+        business_after.competitor_candidate_big_box_penalty,
+        business_after.competitor_candidate_directory_penalty,
+        business_after.competitor_candidate_local_alignment_bonus,
+    )
+    assert before_values == after_values
+
+    cross_tenant = client.post(
+        f"/api/businesses/{other_business.id}/seo/sites/{site_id}/recommendations/tuning-preview",
+        json={
+            "recommendation_run_id": run_id,
+            "proposed_values": {"competitor_candidate_directory_penalty": 30},
+        },
+    )
+    assert cross_tenant.status_code == 404
+
+
+def test_recommendation_tuning_preview_handles_no_telemetry_safely(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id, run_id = _create_completed_recommendation_run(client, db_session, seeded_business.id)
+
+    response = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/tuning-preview",
+        json={
+            "recommendation_run_id": run_id,
+            "proposed_values": {"competitor_candidate_local_alignment_bonus": 15},
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["estimated_impact"]["insufficient_data"] is True
+    assert payload["estimated_impact"]["estimated_included_candidate_delta"] == 0
+    assert payload["estimated_impact"]["estimated_excluded_candidate_delta"] == 0
+    assert payload["telemetry_window"]["total_runs"] == 0
 
 
 def test_recommendation_narrative_endpoints_not_found_behaviors(db_session, seeded_business) -> None:

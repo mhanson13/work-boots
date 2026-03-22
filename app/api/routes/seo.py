@@ -77,6 +77,8 @@ from app.schemas.seo_recommendation import (
     SEORecommendationFilteredSummary,
     SEORecommendationListQuery,
     SEORecommendationListResponse,
+    SEORecommendationTuningImpactPreviewRead,
+    SEORecommendationTuningImpactPreviewRequest,
     SEORecommendationPrioritizedReportRead,
     SEORecommendationRead,
     SEORecommendationNarrativeListResponse,
@@ -1048,6 +1050,48 @@ def get_seo_recommendation_narrative(
     ) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return SEORecommendationNarrativeRead.model_validate(narrative)
+
+
+@router.post(
+    "/sites/{site_id}/recommendations/tuning-preview",
+    response_model=SEORecommendationTuningImpactPreviewRead,
+)
+@router_v1.post(
+    "/sites/{site_id}/recommendations/tuning-preview",
+    response_model=SEORecommendationTuningImpactPreviewRead,
+)
+def preview_seo_recommendation_tuning_impact(
+    business_id: str,
+    site_id: str,
+    payload: SEORecommendationTuningImpactPreviewRequest,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    recommendation_narrative_service: SEORecommendationNarrativeService = Depends(
+        get_seo_recommendation_narrative_service
+    ),
+) -> SEORecommendationTuningImpactPreviewRead:
+    scoped_business_id = resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        result = recommendation_narrative_service.preview_tuning_impact(
+            business_id=scoped_business_id,
+            site_id=site_id,
+            current_values_overrides=(payload.current_values.model_dump(exclude_none=True) if payload.current_values else {}),
+            proposed_values_overrides=payload.proposed_values.model_dump(exclude_none=True),
+            recommendation_run_id=payload.recommendation_run_id,
+            narrative_id=payload.narrative_id,
+        )
+    except (
+        SEOSiteNotFoundError,
+        SEORecommendationNarrativeNotFoundError,
+    ) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except SEORecommendationNarrativeValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    return SEORecommendationTuningImpactPreviewRead.model_validate(result.__dict__)
 
 
 @router.post(

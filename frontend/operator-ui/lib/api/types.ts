@@ -558,6 +558,14 @@ export interface RecommendationNarrative {
   updated_at: string;
 }
 
+export type CompetitorCandidateExclusionReason =
+  | "duplicate"
+  | "low_relevance"
+  | "directory_or_aggregator"
+  | "big_box_mismatch"
+  | "existing_domain_match"
+  | "invalid_candidate";
+
 export type RecommendationTuningSuggestionSetting =
   | "competitor_candidate_min_relevance_score"
   | "competitor_candidate_big_box_penalty"
@@ -573,6 +581,55 @@ export interface RecommendationTuningSuggestion {
   reason: string;
   linked_recommendation_ids: string[];
   confidence: RecommendationTuningSuggestionConfidence;
+}
+
+export interface RecommendationTuningValuesPatch {
+  competitor_candidate_min_relevance_score?: number;
+  competitor_candidate_big_box_penalty?: number;
+  competitor_candidate_directory_penalty?: number;
+  competitor_candidate_local_alignment_bonus?: number;
+}
+
+export interface RecommendationTuningValues {
+  competitor_candidate_min_relevance_score: number;
+  competitor_candidate_big_box_penalty: number;
+  competitor_candidate_directory_penalty: number;
+  competitor_candidate_local_alignment_bonus: number;
+}
+
+export interface RecommendationTuningImpactPreviewRequest {
+  current_values?: RecommendationTuningValuesPatch;
+  proposed_values: RecommendationTuningValuesPatch;
+  recommendation_run_id?: string;
+  narrative_id?: string;
+}
+
+export interface RecommendationTuningImpactEstimate {
+  insufficient_data: boolean;
+  estimated_included_candidate_delta: number;
+  estimated_excluded_candidate_delta: number;
+  estimated_exclusion_reason_deltas: Record<CompetitorCandidateExclusionReason, number>;
+  summary: string;
+  risk_flags: string[];
+}
+
+export interface RecommendationTuningImpactPreview {
+  business_id: string;
+  site_id: string;
+  source_recommendation_run_id: string | null;
+  source_narrative_id: string | null;
+  current_values: RecommendationTuningValues;
+  proposed_values: RecommendationTuningValues;
+  telemetry_window: {
+    lookback_days: number;
+    total_runs: number;
+    total_raw_candidate_count: number;
+    total_included_candidate_count: number;
+    total_excluded_candidate_count: number;
+    exclusion_counts_by_reason: Record<CompetitorCandidateExclusionReason, number>;
+  };
+  estimated_impact: RecommendationTuningImpactEstimate;
+  caveat: string;
 }
 
 export interface RecommendationNarrativeListResponse {

@@ -4,6 +4,7 @@
 This feature produces deterministic SEO recommendations from persisted audit/comparison evidence, then optionally generates an AI narrative over those persisted recommendation artifacts.
 
 Deterministic recommendation records remain canonical. AI output is advisory explanation only.
+Tuning impact preview is deterministic and advisory only.
 
 ## Why This Exists
 - Deterministic rules provide stable, auditable recommendation artifacts.
@@ -25,9 +26,14 @@ Deterministic recommendation records remain canonical. AI output is advisory exp
    - Structured narrative sections can include `tuning_suggestions` (max 4), each constrained to allowed setting keys, bounded integer values, and valid linked recommendation IDs.
 4. Narrative retrieval:
    - list/latest/by-id narrative endpoints return persisted narrative versions.
-5. UI:
+5. Deterministic tuning impact preview:
+   - `POST /api/businesses/{business_id}/seo/sites/{site_id}/recommendations/tuning-preview`
+   - Uses persisted competitor telemetry and bounded rule-based heuristics to estimate impact of proposed tuning changes.
+   - Preview returns estimated deltas and caveats only; no settings are mutated.
+6. UI:
    - Recommendation queue and run detail pages render deterministic recommendation data.
    - Narrative views render AI explanation when available.
+   - Site workspace can preview suggested tuning deltas before any manual settings update.
 
 ## Data Model
 - `seo_recommendation_runs`: deterministic run lineage/status/rollups.
@@ -45,6 +51,7 @@ Deterministic recommendation records remain canonical. AI output is advisory exp
 - AI never mutates business settings or workflow state.
 - Narrative generation is grounded in persisted recommendation artifacts only.
 - Tuning suggestions are advisory only and never auto-applied.
+- Tuning impact preview is deterministic, uses persisted telemetry only, and never auto-applies settings.
 - Tuning suggestions are strictly bounded to:
   - `competitor_candidate_min_relevance_score` (`0..100`)
   - `competitor_candidate_big_box_penalty` (`0..50`)
@@ -72,6 +79,7 @@ Behavior:
 - Failure isolation: recommendation run/recommendation records are not mutated by narrative failures.
 - Provider/model/prompt metadata is persisted for auditability.
 - Tuning suggestions are suppressed when competitor telemetry indicates a balanced candidate set (no excluded candidates in telemetry window).
+- Preview endpoint returns bounded estimated deltas from deterministic heuristics over persisted telemetry and includes a non-guarantee caveat.
 
 ## Failure Modes
 - Timeout/provider request/auth/config/schema/parse failures are normalized to safe errors.
@@ -82,6 +90,7 @@ Behavior:
 - Raw provider credentials are not exposed in API responses.
 - Prompt context is treated as data; output is schema-validated before persistence.
 - AI output remains advisory and cannot bypass review/workflow controls.
+- Preview responses expose aggregate telemetry-derived estimates only; no raw candidate payloads are returned.
 
 ## Future Extensions
 - Provider expansion behind the existing provider abstraction.
