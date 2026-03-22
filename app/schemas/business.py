@@ -4,7 +4,7 @@ from datetime import datetime
 import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, EmailStr, TypeAdapter, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, TypeAdapter, ValidationError, field_validator
 
 _EMAIL_FALLBACK_REGEX = re.compile(r"^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$", re.IGNORECASE)
 _E164_REGEX = re.compile(r"^\+[1-9]\d{9,14}$")
@@ -21,6 +21,7 @@ class BusinessSettingsRead(BaseModel):
     email_enabled: bool
     customer_auto_ack_enabled: bool
     contractor_alerts_enabled: bool
+    seo_audit_crawl_max_pages: int
     timezone: str
     created_at: datetime
     updated_at: datetime
@@ -33,6 +34,7 @@ class BusinessSettingsUpdateRequest(BaseModel):
     email_enabled: bool | None = None
     customer_auto_ack_enabled: bool | None = None
     contractor_alerts_enabled: bool | None = None
+    seo_audit_crawl_max_pages: int | None = Field(default=None, ge=5, le=250)
     timezone: str | None = None
 
     @field_validator("notification_email", mode="before")

@@ -15,10 +15,12 @@ import {
   createPrincipal,
   deactivatePrincipalIdentity,
   deactivatePrincipal,
+  fetchBusinessSettings,
   fetchPrincipalIdentities,
   fetchPrincipals,
+  updateBusinessSettings,
 } from "../../lib/api/client";
-import type { Principal, PrincipalIdentity, PrincipalRole } from "../../lib/api/types";
+import type { BusinessSettings, Principal, PrincipalIdentity, PrincipalRole } from "../../lib/api/types";
 
 interface UsersLoadResult {
   users: Principal[];
@@ -110,6 +112,39 @@ function safeCreateIdentityErrorMessage(error: unknown): string {
   return "Failed to create sign-in identity.";
 }
 
+function safeBusinessSettingsErrorMessage(error: unknown): string {
+  if (error instanceof ApiRequestError) {
+    if (error.status === 401) {
+      return "Session expired. Sign in again.";
+    }
+    if (error.status === 403) {
+      return "You are not authorized to view business settings.";
+    }
+    if (error.status === 404) {
+      return "Business settings were not found in this tenant scope.";
+    }
+  }
+  return "Unable to load business settings right now.";
+}
+
+function safeBusinessSettingsUpdateErrorMessage(error: unknown): string {
+  if (error instanceof ApiRequestError) {
+    if (error.status === 401) {
+      return "Session expired. Sign in again.";
+    }
+    if (error.status === 403) {
+      return "Only admin principals can update crawl settings.";
+    }
+    if (error.status === 404) {
+      return "Business settings were not found in this tenant scope.";
+    }
+    if (error.status === 422) {
+      return "Crawl page limit must be between 5 and 250.";
+    }
+  }
+  return "Failed to update crawl page limit.";
+}
+
 function formatIdentityLabel(identity: PrincipalIdentity): string {
   return identity.email || `${identity.provider}:${identity.provider_subject}`;
 }
@@ -143,6 +178,12 @@ export default function UsersPage() {
   const [identitySubmitting, setIdentitySubmitting] = useState(false);
   const [identitySubmitError, setIdentitySubmitError] = useState<string | null>(null);
   const [identitySubmitSuccess, setIdentitySubmitSuccess] = useState<string | null>(null);
+  const [businessSettings, setBusinessSettings] = useState<BusinessSettings | null>(null);
+  const [businessSettingsLoading, setBusinessSettingsLoading] = useState(false);
+  const [businessSettingsError, setBusinessSettingsError] = useState<string | null>(null);
+  const [crawlPageLimitInput, setCrawlPageLimitInput] = useState("25");
+  const [crawlPageLimitSubmitting, setCrawlPageLimitSubmitting] = useState(false);
+  const [crawlPageLimitMessage, setCrawlPageLimitMessage] = useState<string | null>(null);
 
   const isAdmin = principal?.role === "admin";
 
@@ -253,6 +294,40 @@ export default function UsersPage() {
   }, [context.error, context.loading, isAdmin, loadUsersData]);
 
   useEffect(() => {
+    if (context.loading || context.error || !isAdmin) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadBusinessSettings() {
+      setBusinessSettingsLoading(true);
+      setBusinessSettingsError(null);
+      try {
+        const settings = await fetchBusinessSettings(context.token, context.businessId);
+        if (cancelled) {
+          return;
+        }
+        setBusinessSettings(settings);
+        setCrawlPageLimitInput(String(settings.seo_audit_crawl_max_pages));
+      } catch (err) {
+        if (!cancelled) {
+          setBusinessSettingsError(safeBusinessSettingsErrorMessage(err));
+        }
+      } finally {
+        if (!cancelled) {
+          setBusinessSettingsLoading(false);
+        }
+      }
+    }
+
+    void loadBusinessSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, [context.businessId, context.error, context.loading, context.token, isAdmin]);
+
+  useEffect(() => {
     if (users.length === 0) {
       if (identityPrincipalId !== "") {
         setIdentityPrincipalId("");
@@ -356,6 +431,32 @@ export default function UsersPage() {
       setIdentitySubmitError(safeCreateIdentityErrorMessage(err));
     } finally {
       setIdentitySubmitting(false);
+    }
+  };
+
+  const handleUpdateCrawlPageLimit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setCrawlPageLimitMessage(null);
+    setBusinessSettingsError(null);
+
+    const parsed = Number.parseInt(crawlPageLimitInput.trim(), 10);
+    if (!Number.isFinite(parsed) || parsed < 5 || parsed > 250) {
+      setBusinessSettingsError("Crawl page limit must be an integer between 5 and 250.");
+      return;
+    }
+
+    setCrawlPageLimitSubmitting(true);
+    try {
+      const updated = await updateBusinessSettings(context.token, context.businessId, {
+        seo_audit_crawl_max_pages: parsed,
+      });
+      setBusinessSettings(updated);
+      setCrawlPageLimitInput(String(updated.seo_audit_crawl_max_pages));
+      setCrawlPageLimitMessage(`SEO crawl page limit updated to ${updated.seo_audit_crawl_max_pages}.`);
+    } catch (err) {
+      setBusinessSettingsError(safeBusinessSettingsUpdateErrorMessage(err));
+    } finally {
+      setCrawlPageLimitSubmitting(false);
     }
   };
 
@@ -608,6 +709,41 @@ export default function UsersPage() {
               {identitySubmitting ? "Creating and Linking..." : "Create and Link Identity"}
             </button>
           </div>
+        </FormContainer>
+
+        <FormContainer onSubmit={(event) => void handleUpdateCrawlPageLimit(event)}>
+          <h2>SEO Crawl Settings</h2>
+          <p className="hint muted">
+            Admin-controlled crawl page limit used by SEO audits and automation for this business.
+          </p>
+          <label htmlFor="seo-audit-crawl-max-pages">Crawl Page Limit</label>
+          <input
+            id="seo-audit-crawl-max-pages"
+            type="number"
+            min={5}
+            max={250}
+            step={1}
+            value={crawlPageLimitInput}
+            onChange={(event) => setCrawlPageLimitInput(event.target.value)}
+            disabled={businessSettingsLoading || crawlPageLimitSubmitting}
+            required
+          />
+          <p className="hint muted">
+            Allowed range: 5-250. Current value:{" "}
+            <code>{businessSettings ? String(businessSettings.seo_audit_crawl_max_pages) : "25"}</code>.
+          </p>
+          <div className="form-actions">
+            <button
+              className="primary"
+              type="submit"
+              disabled={businessSettingsLoading || crawlPageLimitSubmitting}
+            >
+              {crawlPageLimitSubmitting ? "Saving..." : "Save Crawl Limit"}
+            </button>
+          </div>
+          {businessSettingsLoading ? <p className="hint muted">Loading business settings...</p> : null}
+          {crawlPageLimitMessage ? <p className="hint">{crawlPageLimitMessage}</p> : null}
+          {businessSettingsError ? <p className="hint error">{businessSettingsError}</p> : null}
         </FormContainer>
 
         <div className="message-stack">

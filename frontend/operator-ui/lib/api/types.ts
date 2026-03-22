@@ -70,6 +70,32 @@ export interface AuthExchangeResponse {
   principal: AuthPrincipal;
 }
 
+export interface BusinessSettings {
+  id: string;
+  name: string;
+  notification_phone: string | null;
+  notification_email: string | null;
+  sms_enabled: boolean;
+  email_enabled: boolean;
+  customer_auto_ack_enabled: boolean;
+  contractor_alerts_enabled: boolean;
+  seo_audit_crawl_max_pages: number;
+  timezone: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BusinessSettingsUpdateRequest {
+  notification_phone?: string | null;
+  notification_email?: string | null;
+  sms_enabled?: boolean;
+  email_enabled?: boolean;
+  customer_auto_ack_enabled?: boolean;
+  contractor_alerts_enabled?: boolean;
+  seo_audit_crawl_max_pages?: number;
+  timezone?: string | null;
+}
+
 export interface SEOSite {
   id: string;
   business_id: string;

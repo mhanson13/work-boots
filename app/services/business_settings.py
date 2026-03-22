@@ -10,6 +10,8 @@ from app.schemas.business import BusinessSettingsUpdateRequest
 
 _EMAIL_REGEX = re.compile(r"^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$", re.IGNORECASE)
 _E164_REGEX = re.compile(r"^\+[1-9]\d{9,14}$")
+_SEO_AUDIT_CRAWL_MAX_PAGES_MIN = 5
+_SEO_AUDIT_CRAWL_MAX_PAGES_MAX = 250
 
 
 class BusinessSettingsNotFoundError(ValueError):
@@ -54,6 +56,10 @@ class BusinessSettingsService:
             "email_enabled": updates.get("email_enabled", business.email_enabled),
             "customer_auto_ack_enabled": updates.get("customer_auto_ack_enabled", business.customer_auto_ack_enabled),
             "contractor_alerts_enabled": updates.get("contractor_alerts_enabled", business.contractor_alerts_enabled),
+            "seo_audit_crawl_max_pages": updates.get(
+                "seo_audit_crawl_max_pages",
+                business.seo_audit_crawl_max_pages,
+            ),
             "timezone": updates.get("timezone", business.timezone),
         }
 
@@ -83,6 +89,15 @@ class BusinessSettingsService:
         if effective["customer_auto_ack_enabled"] and not (sms_enabled or email_enabled):
             raise BusinessSettingsValidationError(
                 "At least one channel (sms or email) must be enabled when customer_auto_ack_enabled is true."
+            )
+
+        crawl_max_pages = int(effective["seo_audit_crawl_max_pages"])
+        if crawl_max_pages < _SEO_AUDIT_CRAWL_MAX_PAGES_MIN or crawl_max_pages > _SEO_AUDIT_CRAWL_MAX_PAGES_MAX:
+            raise BusinessSettingsValidationError(
+                (
+                    "seo_audit_crawl_max_pages must be between "
+                    f"{_SEO_AUDIT_CRAWL_MAX_PAGES_MIN} and {_SEO_AUDIT_CRAWL_MAX_PAGES_MAX}."
+                )
             )
 
     def _is_valid_email(self, value: str | None) -> bool:

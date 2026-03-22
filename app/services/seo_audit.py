@@ -8,6 +8,7 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
+from app.models.business import Business
 from app.models.seo_audit_finding import SEOAuditFinding
 from app.models.seo_audit_page import SEOAuditPage
 from app.models.seo_audit_run import SEOAuditRun, SEOAuditRunStatus
@@ -26,6 +27,9 @@ logger = logging.getLogger(__name__)
 SEVERITY_LEVELS = ("CRITICAL", "WARNING", "INFO")
 CATEGORY_LEVELS = ("SEO", "CONTENT", "STRUCTURE", "TECHNICAL")
 HEALTH_SCORE_BASE = 100
+SEO_AUDIT_CRAWL_MAX_PAGES_DEFAULT = 25
+SEO_AUDIT_CRAWL_MAX_PAGES_MIN = 5
+SEO_AUDIT_CRAWL_MAX_PAGES_MAX = 250
 HEALTH_SCORE_PENALTIES = {
     "missing_title": 12,
     "missing_meta_description": 8,
@@ -101,17 +105,19 @@ class SEOAuditService:
         payload: SEOAuditRunCreateRequest,
         created_by_principal_id: str | None,
     ) -> AuditRunResult:
-        self._require_business(business_id)
+        business = self._get_business(business_id)
         site = self.seo_site_repository.get_for_business(business_id, site_id)
         if site is None:
             raise SEOAuditNotFoundError("SEO site not found")
+        effective_max_pages = self._resolve_effective_max_pages(business=business)
 
         run = SEOAuditRun(
             id=str(uuid4()),
             business_id=business_id,
             site_id=site_id,
             status=SEOAuditRunStatus.QUEUED.value,
-            max_pages=payload.max_pages,
+            max_pages=effective_max_pages,
+            crawl_max_pages_used=effective_max_pages,
             max_depth=payload.max_depth,
             created_by_principal_id=created_by_principal_id,
         )
@@ -130,14 +136,14 @@ class SEOAuditService:
             site_id,
             run.id,
             run.status,
-            payload.max_pages,
+            effective_max_pages,
             payload.max_depth,
         )
 
         try:
             crawl_pages = self.crawler.crawl(
                 base_url=site.base_url,
-                max_pages=payload.max_pages,
+                max_pages=effective_max_pages,
                 max_depth=payload.max_depth,
                 same_domain_only=True,
             )
@@ -370,9 +376,21 @@ class SEOAuditService:
         return persisted
 
     def _require_business(self, business_id: str) -> None:
+        self._get_business(business_id)
+
+    def _get_business(self, business_id: str) -> Business:
         business = self.business_repository.get(business_id)
         if business is None:
             raise SEOAuditNotFoundError("Business not found")
+        return business
+
+    def _resolve_effective_max_pages(self, *, business: Business) -> int:
+        effective_max_pages = int(
+            getattr(business, "seo_audit_crawl_max_pages", None) or SEO_AUDIT_CRAWL_MAX_PAGES_DEFAULT
+        )
+        if not (SEO_AUDIT_CRAWL_MAX_PAGES_MIN <= effective_max_pages <= SEO_AUDIT_CRAWL_MAX_PAGES_MAX):
+            raise ValueError("Invalid crawl page limit configuration")
+        return effective_max_pages
 
     def _fail_run(
         self,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String
+from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.time import utc_now
@@ -22,6 +22,7 @@ class Business(Base):
     email_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     customer_auto_ack_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     contractor_alerts_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    seo_audit_crawl_max_pages: Mapped[int] = mapped_column(Integer, default=25, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False

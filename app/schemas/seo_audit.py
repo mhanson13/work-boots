@@ -6,7 +6,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class SEOAuditRunCreateRequest(BaseModel):
-    max_pages: int = Field(default=25, ge=1, le=100)
+    # DEPRECATED: max_pages is ignored.
+    # Crawl limit is controlled via business settings only.
+    max_pages: int = Field(default=25, ge=5, le=250)
     max_depth: int = Field(default=2, ge=0, le=5)
 
 
@@ -20,6 +22,7 @@ class SEOAuditRunRead(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     max_pages: int
+    crawl_max_pages_used: int
     max_depth: int
     pages_discovered: int
     pages_crawled: int

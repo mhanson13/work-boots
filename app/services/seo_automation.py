@@ -524,7 +524,7 @@ class SEOAutomationService:
         result = self.seo_audit_service.run_audit(
             business_id=business_id,
             site_id=site_id,
-            payload=SEOAuditRunCreateRequest(max_pages=25, max_depth=2),
+            payload=SEOAuditRunCreateRequest(max_depth=2),
             created_by_principal_id=created_by_principal_id,
         )
         if result.run.status != "completed":

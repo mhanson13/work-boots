@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import pytest
+
 from app.models.seo_site import SEOSite
 from app.repositories.business_repository import BusinessRepository
 from app.repositories.seo_audit_repository import SEOAuditRepository
@@ -80,6 +82,8 @@ def test_audit_service_persists_pages_findings_and_run_status(db_session, seeded
     )
 
     assert result.run.status == "completed"
+    assert result.run.max_pages == seeded_business.seo_audit_crawl_max_pages
+    assert result.run.crawl_max_pages_used == seeded_business.seo_audit_crawl_max_pages
     assert result.run.pages_discovered >= 2
     assert result.run.pages_crawled >= 2
     assert result.run.pages_skipped >= 0
@@ -111,3 +115,47 @@ def test_audit_service_persists_pages_findings_and_run_status(db_session, seeded
     assert "CONTENT" in categories
     assert "STRUCTURE" in categories
     assert "TECHNICAL" in categories
+
+
+def test_audit_service_rejects_out_of_bounds_business_crawl_limit(db_session, seeded_business) -> None:
+    seeded_business.seo_audit_crawl_max_pages = 1000
+    db_session.add(seeded_business)
+    db_session.commit()
+
+    site = SEOSite(
+        id=str(uuid4()),
+        business_id=seeded_business.id,
+        display_name="Main Site",
+        base_url="https://example.com/",
+        normalized_domain="example.com",
+        is_active=True,
+        is_primary=True,
+    )
+    db_session.add(site)
+    db_session.commit()
+
+    service = SEOAuditService(
+        session=db_session,
+        business_repository=BusinessRepository(db_session),
+        seo_site_repository=SEOSiteRepository(db_session),
+        seo_audit_repository=SEOAuditRepository(db_session),
+        crawler=_FakeCrawler(
+            pages={
+                "https://example.com/": FetchResponse(
+                    final_url="https://example.com/",
+                    status_code=200,
+                    body="<html><body>ok</body></html>",
+                ),
+            }
+        ),
+        extractor=SEOExtractor(),
+        finding_rules=SEOFindingRules(thin_content_min_words=20),
+    )
+
+    with pytest.raises(ValueError, match="Invalid crawl page limit configuration"):
+        service.run_audit(
+            business_id=seeded_business.id,
+            site_id=site.id,
+            payload=SEOAuditRunCreateRequest(max_pages=10, max_depth=1),
+            created_by_principal_id="test-principal",
+        )

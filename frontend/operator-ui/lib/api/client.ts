@@ -1,6 +1,8 @@
 import { apiBaseUrl } from "../config";
 import type {
   AuthExchangeResponse,
+  BusinessSettings,
+  BusinessSettingsUpdateRequest,
   SEOAuditRun,
   SEOAuditRunCreateRequest,
   SEOAuditRunSummary,
@@ -139,6 +141,25 @@ export async function createSite(
 ): Promise<SEOSite> {
   return apiRequest<SEOSite>(`/api/businesses/${businessId}/seo/sites`, {
     method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchBusinessSettings(
+  token: string,
+  businessId: string,
+): Promise<BusinessSettings> {
+  return apiRequest<BusinessSettings>(`/api/businesses/${businessId}`, { token });
+}
+
+export async function updateBusinessSettings(
+  token: string,
+  businessId: string,
+  payload: BusinessSettingsUpdateRequest,
+): Promise<BusinessSettings> {
+  return apiRequest<BusinessSettings>(`/api/businesses/${businessId}/settings`, {
+    method: "PATCH",
     token,
     body: JSON.stringify(payload),
   });

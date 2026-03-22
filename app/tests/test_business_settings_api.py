@@ -80,6 +80,7 @@ def test_get_business_settings_endpoint(db_session, seeded_business) -> None:
     assert payload["email_enabled"] is True
     assert payload["customer_auto_ack_enabled"] is True
     assert payload["contractor_alerts_enabled"] is True
+    assert payload["seo_audit_crawl_max_pages"] == 25
 
 
 def test_patch_business_settings_valid_partial_update_succeeds(db_session, seeded_business) -> None:
@@ -90,6 +91,7 @@ def test_patch_business_settings_valid_partial_update_succeeds(db_session, seede
         json={
             "notification_email": "  OWNER+ALERTS@TMFIRE.EXAMPLE  ",
             "timezone": "America/Chicago",
+            "seo_audit_crawl_max_pages": 60,
         },
     )
 
@@ -97,6 +99,7 @@ def test_patch_business_settings_valid_partial_update_succeeds(db_session, seede
     payload = response.json()
     assert payload["notification_email"] == "owner+alerts@tmfire.example"
     assert payload["timezone"] == "America/Chicago"
+    assert payload["seo_audit_crawl_max_pages"] == 60
     assert payload["sms_enabled"] is True
 
 
@@ -227,3 +230,39 @@ def test_patch_business_settings_requires_admin_principal_role(
     )
 
     assert response.status_code == 403
+
+
+def test_patch_business_settings_rejects_crawl_page_limit_below_minimum(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+
+    response = client.patch(
+        f"/api/businesses/{seeded_business.id}/settings",
+        json={"seo_audit_crawl_max_pages": 4},
+    )
+
+    assert response.status_code == 422
+    assert _detail_contains_field(response.json()["detail"], "seo_audit_crawl_max_pages")
+
+
+def test_patch_business_settings_rejects_crawl_page_limit_above_maximum(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+
+    response = client.patch(
+        f"/api/businesses/{seeded_business.id}/settings",
+        json={"seo_audit_crawl_max_pages": 251},
+    )
+
+    assert response.status_code == 422
+    assert _detail_contains_field(response.json()["detail"], "seo_audit_crawl_max_pages")
+
+
+def test_patch_business_settings_rejects_extreme_crawl_page_limit(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+
+    response = client.patch(
+        f"/api/businesses/{seeded_business.id}/settings",
+        json={"seo_audit_crawl_max_pages": 1000},
+    )
+
+    assert response.status_code == 422
+    assert _detail_contains_field(response.json()["detail"], "seo_audit_crawl_max_pages")

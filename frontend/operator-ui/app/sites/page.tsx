@@ -320,7 +320,6 @@ export default function SitesPage() {
 
     try {
       const run = await createAuditRun(context.token, context.businessId, site.id, {
-        max_pages: 25,
         max_depth: 2,
       });
       await context.refreshSites();

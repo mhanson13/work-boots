@@ -37,6 +37,7 @@ class SEOAuditRun(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     max_pages: Mapped[int] = mapped_column(Integer, nullable=False, default=25)
+    crawl_max_pages_used: Mapped[int] = mapped_column(Integer, nullable=False, default=25)
     max_depth: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     pages_discovered: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     pages_crawled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

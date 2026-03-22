@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import UsersPage from "./page";
 import { ApiRequestError } from "../../lib/api/client";
-import type { PrincipalIdentityListResponse, PrincipalListResponse } from "../../lib/api/types";
+import type { BusinessSettings, PrincipalIdentityListResponse, PrincipalListResponse } from "../../lib/api/types";
 
 type OperatorContextMockValue = {
   loading: boolean;
@@ -15,6 +15,8 @@ const mockUseOperatorContext = jest.fn<OperatorContextMockValue, []>();
 const mockUseAuth = jest.fn();
 const mockFetchPrincipals = jest.fn<Promise<PrincipalListResponse>, unknown[]>();
 const mockFetchPrincipalIdentities = jest.fn<Promise<PrincipalIdentityListResponse>, unknown[]>();
+const mockFetchBusinessSettings = jest.fn<Promise<BusinessSettings>, unknown[]>();
+const mockUpdateBusinessSettings = jest.fn<Promise<BusinessSettings>, unknown[]>();
 const mockCreatePrincipal = jest.fn<Promise<unknown>, unknown[]>();
 const mockCreatePrincipalIdentity = jest.fn<Promise<unknown>, unknown[]>();
 const mockDeactivatePrincipal = jest.fn<Promise<unknown>, unknown[]>();
@@ -36,6 +38,8 @@ jest.mock("../../lib/api/client", () => {
     ...actual,
     fetchPrincipals: (...args: unknown[]) => mockFetchPrincipals(...args),
     fetchPrincipalIdentities: (...args: unknown[]) => mockFetchPrincipalIdentities(...args),
+    fetchBusinessSettings: (...args: unknown[]) => mockFetchBusinessSettings(...args),
+    updateBusinessSettings: (...args: unknown[]) => mockUpdateBusinessSettings(...args),
     createPrincipal: (...args: unknown[]) => mockCreatePrincipal(...args),
     createPrincipalIdentity: (...args: unknown[]) => mockCreatePrincipalIdentity(...args),
     deactivatePrincipal: (...args: unknown[]) => mockDeactivatePrincipal(...args),
@@ -66,6 +70,20 @@ beforeEach(() => {
       role: "admin",
       is_active: true,
     },
+  });
+  mockFetchBusinessSettings.mockResolvedValue({
+    id: "biz-1",
+    name: "Business One",
+    notification_phone: "+13035550100",
+    notification_email: "owner@example.com",
+    sms_enabled: true,
+    email_enabled: true,
+    customer_auto_ack_enabled: true,
+    contractor_alerts_enabled: true,
+    seo_audit_crawl_max_pages: 25,
+    timezone: "America/Denver",
+    created_at: "2026-03-20T00:00:00Z",
+    updated_at: "2026-03-20T00:00:00Z",
   });
 });
 
@@ -445,5 +463,37 @@ describe("users page completeness", () => {
     expect(screen.queryByText("Create User")).not.toBeInTheDocument();
     expect(screen.queryByText("Create and Link Identity")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Deactivate Identity" })).not.toBeInTheDocument();
+  });
+
+  it("updates the SEO crawl page limit for admins", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockUpdateBusinessSettings.mockResolvedValueOnce({
+      id: "biz-1",
+      name: "Business One",
+      notification_phone: "+13035550100",
+      notification_email: "owner@example.com",
+      sms_enabled: true,
+      email_enabled: true,
+      customer_auto_ack_enabled: true,
+      contractor_alerts_enabled: true,
+      seo_audit_crawl_max_pages: 80,
+      timezone: "America/Denver",
+      created_at: "2026-03-20T00:00:00Z",
+      updated_at: "2026-03-22T00:00:00Z",
+    });
+
+    render(<UsersPage />);
+
+    await screen.findByText("operator-1");
+    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), { target: { value: "80" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Crawl Limit" }));
+
+    await waitFor(() =>
+      expect(mockUpdateBusinessSettings).toHaveBeenCalledWith("token-1", "biz-1", {
+        seo_audit_crawl_max_pages: 80,
+      }),
+    );
+    await screen.findByText("SEO crawl page limit updated to 80.");
   });
 });

@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.api.deps import TenantContext, get_db, get_seo_crawler, get_tenant_context
 from app.api.routes.seo import router as seo_router
 from app.models.business import Business
+from app.models.seo_audit_run import SEOAuditRun
 from app.services.seo_crawler import FetchResponse, SEOCrawler
 
 
@@ -97,6 +98,7 @@ def test_audit_run_endpoints_persist_and_retrieve_findings(db_session, seeded_bu
     assert run_payload["errors_encountered"] >= 0
     assert run_payload["duplicate_urls_skipped"] >= 0
     assert run_payload["crawl_duration_ms"] is not None
+    assert run_payload["crawl_max_pages_used"] == run_payload["max_pages"]
     run_id = run_payload["id"]
 
     list_runs = client.get(f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/audit-runs")
@@ -131,3 +133,31 @@ def test_audit_run_endpoints_persist_and_retrieve_findings(db_session, seeded_bu
     assert cross_tenant.status_code == 404
     cross_tenant_summary = client.get(f"/api/businesses/{other_business.id}/seo/audit-runs/{run_id}/summary")
     assert cross_tenant_summary.status_code == 404
+
+
+def test_audit_run_uses_business_configured_crawl_page_limit(db_session, seeded_business) -> None:
+    seeded_business.seo_audit_crawl_max_pages = 50
+    db_session.add(seeded_business)
+    db_session.commit()
+
+    client = _make_client(db_session, business_id=seeded_business.id)
+    create_site = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites",
+        json={"display_name": "Main", "base_url": "https://example.com/"},
+    )
+    assert create_site.status_code == 201
+    site_id = create_site.json()["id"]
+
+    run_response = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/audit-runs",
+        json={"max_pages": 10, "max_depth": 2},
+    )
+    assert run_response.status_code == 201
+    run_payload = run_response.json()
+    assert run_payload["max_pages"] == 50
+    assert run_payload["crawl_max_pages_used"] == 50
+
+    persisted_run = db_session.get(SEOAuditRun, run_payload["id"])
+    assert persisted_run is not None
+    assert persisted_run.max_pages == 50
+    assert persisted_run.crawl_max_pages_used == 50

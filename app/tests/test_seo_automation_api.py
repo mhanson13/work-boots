@@ -297,3 +297,27 @@ def test_phase4_v1_automation_surface(db_session, seeded_business) -> None:
 
     status = client.get(f"/api/v1/businesses/{seeded_business.id}/seo/sites/{site_id}/automation-status")
     assert status.status_code == 200
+
+
+def test_phase4_automation_audit_step_uses_business_crawl_page_limit(db_session, seeded_business) -> None:
+    seeded_business.seo_audit_crawl_max_pages = 55
+    db_session.add(seeded_business)
+    db_session.commit()
+
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id)
+    _create_config(client, seeded_business.id, site_id, trigger_audit_summary=False, trigger_recommendations=False)
+
+    triggered = client.post(f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/automation-runs")
+    assert triggered.status_code == 201
+    payload = triggered.json()
+    assert payload["status"] == "completed"
+
+    steps = _steps_by_name(payload)
+    audit_run_id = steps["audit_run"]["linked_output_id"]
+    assert isinstance(audit_run_id, str)
+
+    audit_run_detail = client.get(f"/api/businesses/{seeded_business.id}/seo/audit-runs/{audit_run_id}")
+    assert audit_run_detail.status_code == 200
+    assert audit_run_detail.json()["max_pages"] == 55
+    assert audit_run_detail.json()["crawl_max_pages_used"] == 55
