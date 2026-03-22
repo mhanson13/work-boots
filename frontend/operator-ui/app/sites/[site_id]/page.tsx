@@ -37,6 +37,7 @@ import type {
   RecommendationListResponse,
   RecommendationNarrative,
   RecommendationRun,
+  RecommendationTuningSuggestion,
   SEOAuditRun,
 } from "../../../lib/api/types";
 
@@ -50,6 +51,18 @@ const TIMELINE_INITIAL_VISIBLE_COUNT = 10;
 const COMPETITOR_PROFILE_DRAFT_CANDIDATE_COUNT = 5;
 const COMPETITOR_PROFILE_POLL_INTERVAL_MS = 2000;
 const COMPETITOR_PROFILE_POLL_MAX_ATTEMPTS = 30;
+const MAX_TUNING_SUGGESTIONS_DISPLAY = 4;
+const TUNING_SUGGESTION_SETTINGS = new Set<RecommendationTuningSuggestion["setting"]>([
+  "competitor_candidate_min_relevance_score",
+  "competitor_candidate_big_box_penalty",
+  "competitor_candidate_directory_penalty",
+  "competitor_candidate_local_alignment_bonus",
+]);
+const TUNING_SUGGESTION_CONFIDENCE = new Set<RecommendationTuningSuggestion["confidence"]>([
+  "low",
+  "medium",
+  "high",
+]);
 
 type SiteTimelineEventType =
   | "audit_run"
@@ -232,6 +245,75 @@ function formatFailureCategory(value: string | null | undefined): string {
     return "-";
   }
   return normalized.replace(/_/g, " ");
+}
+
+function formatTuningSettingLabel(setting: RecommendationTuningSuggestion["setting"]): string {
+  switch (setting) {
+    case "competitor_candidate_min_relevance_score":
+      return "Minimum relevance score";
+    case "competitor_candidate_big_box_penalty":
+      return "Big-box mismatch penalty";
+    case "competitor_candidate_directory_penalty":
+      return "Directory penalty";
+    case "competitor_candidate_local_alignment_bonus":
+      return "Local alignment bonus";
+    default:
+      return setting;
+  }
+}
+
+function parseNarrativeTuningSuggestions(
+  sections: RecommendationNarrative["sections_json"],
+): RecommendationTuningSuggestion[] {
+  if (!sections || typeof sections !== "object" || Array.isArray(sections)) {
+    return [];
+  }
+  const rawSuggestions = (sections as Record<string, unknown>).tuning_suggestions;
+  if (!Array.isArray(rawSuggestions)) {
+    return [];
+  }
+  const parsed: RecommendationTuningSuggestion[] = [];
+  for (const item of rawSuggestions) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      continue;
+    }
+    const asRecord = item as Record<string, unknown>;
+    const setting = String(asRecord.setting || "").trim() as RecommendationTuningSuggestion["setting"];
+    const currentValue = Number.parseInt(String(asRecord.current_value), 10);
+    const recommendedValue = Number.parseInt(String(asRecord.recommended_value), 10);
+    const reason = String(asRecord.reason || "").trim();
+    const confidence = String(asRecord.confidence || "").trim().toLowerCase() as RecommendationTuningSuggestion["confidence"];
+    const linkedIdsRaw = asRecord.linked_recommendation_ids;
+    if (
+      !setting ||
+      !TUNING_SUGGESTION_SETTINGS.has(setting) ||
+      !Number.isFinite(currentValue) ||
+      !Number.isFinite(recommendedValue) ||
+      !reason ||
+      !TUNING_SUGGESTION_CONFIDENCE.has(confidence) ||
+      !Array.isArray(linkedIdsRaw)
+    ) {
+      continue;
+    }
+    const linkedRecommendationIds = linkedIdsRaw
+      .map((value) => String(value || "").trim())
+      .filter((value) => value.length > 0);
+    if (linkedRecommendationIds.length === 0) {
+      continue;
+    }
+    parsed.push({
+      setting,
+      current_value: currentValue,
+      recommended_value: recommendedValue,
+      reason,
+      linked_recommendation_ids: linkedRecommendationIds,
+      confidence,
+    });
+    if (parsed.length >= MAX_TUNING_SUGGESTIONS_DISPLAY) {
+      break;
+    }
+  }
+  return parsed;
 }
 
 function safeActionErrorMessage(actionLabel: string, error: unknown): string {
@@ -2022,6 +2104,9 @@ export default function SiteWorkspacePage() {
               <tbody>
                 {recommendationRuns.map((run) => {
                   const latestNarrative = latestNarrativesByRunId[run.id] || null;
+                  const tuningSuggestions = latestNarrative
+                    ? parseNarrativeTuningSuggestions(latestNarrative.sections_json)
+                    : [];
                   return (
                     <tr key={run.id}>
                       <td>
@@ -2035,11 +2120,28 @@ export default function SiteWorkspacePage() {
                         <div className="stack">
                           <Link href={buildNarrativeHistoryHref(run.id, selectedSite.id)}>History</Link>
                           {latestNarrative ? (
-                            <Link
-                              href={buildNarrativeDetailHref(run.id, latestNarrative.id, selectedSite.id)}
-                            >
-                              Latest v{latestNarrative.version} ({latestNarrative.status})
-                            </Link>
+                            <>
+                              <Link
+                                href={buildNarrativeDetailHref(run.id, latestNarrative.id, selectedSite.id)}
+                              >
+                                Latest v{latestNarrative.version} ({latestNarrative.status})
+                              </Link>
+                              <span className="hint muted">Tuning Suggestions</span>
+                              {tuningSuggestions.length > 0 ? (
+                                tuningSuggestions.map((suggestion) => (
+                                  <span
+                                    key={`${run.id}-${suggestion.setting}-${suggestion.recommended_value}`}
+                                    className="hint muted"
+                                  >
+                                    {formatTuningSettingLabel(suggestion.setting)}: {suggestion.current_value}
+                                    {" -> "}
+                                    {suggestion.recommended_value} ({suggestion.reason})
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="hint muted">No tuning suggestions</span>
+                              )}
+                            </>
                           ) : (
                             <span className="hint muted">No narrative yet</span>
                           )}

@@ -11,6 +11,16 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from app.integrations.seo_summary_provider import SEORecommendationNarrativeOutput
 from app.models.seo_recommendation import SEORecommendation
 from app.models.seo_recommendation_run import SEORecommendationRun
+from app.services.seo_competitor_profile_candidate_quality import (
+    BIG_BOX_PENALTY_MAX,
+    BIG_BOX_PENALTY_MIN,
+    DIRECTORY_PENALTY_MAX,
+    DIRECTORY_PENALTY_MIN,
+    LOCAL_ALIGNMENT_BONUS_MAX,
+    LOCAL_ALIGNMENT_BONUS_MIN,
+    MIN_RELEVANCE_SCORE_MAX,
+    MIN_RELEVANCE_SCORE_MIN,
+)
 from app.services.seo_recommendation_narrative_prompt import (
     SEO_RECOMMENDATION_NARRATIVE_PROMPT_VERSION,
     build_seo_recommendation_narrative_prompt,
@@ -31,6 +41,29 @@ _MAX_SECTION_TEXT_LENGTH = 1200
 _MAX_NEXT_ACTION_LENGTH = 220
 _MAX_NEXT_ACTIONS = 10
 _MAX_RECOMMENDATION_REFERENCES = 25
+_MAX_TUNING_SUGGESTIONS = 4
+_MAX_TUNING_REASON_LENGTH = 320
+_MAX_TUNING_LINKED_RECOMMENDATION_IDS = 8
+
+_ALLOWED_TUNING_SETTINGS_BOUNDS: dict[str, tuple[int, int]] = {
+    "competitor_candidate_min_relevance_score": (
+        MIN_RELEVANCE_SCORE_MIN,
+        MIN_RELEVANCE_SCORE_MAX,
+    ),
+    "competitor_candidate_big_box_penalty": (
+        BIG_BOX_PENALTY_MIN,
+        BIG_BOX_PENALTY_MAX,
+    ),
+    "competitor_candidate_directory_penalty": (
+        DIRECTORY_PENALTY_MIN,
+        DIRECTORY_PENALTY_MAX,
+    ),
+    "competitor_candidate_local_alignment_bonus": (
+        LOCAL_ALIGNMENT_BONUS_MIN,
+        LOCAL_ALIGNMENT_BONUS_MAX,
+    ),
+}
+_ALLOWED_TUNING_CONFIDENCE = {"low", "medium", "high"}
 
 
 @dataclass(frozen=True)
@@ -71,8 +104,21 @@ class MisconfiguredSEORecommendationNarrativeProvider:
         by_effort_bucket: dict[str, int],
         by_priority_band: dict[str, int],
         backlog: list[SEORecommendation],
+        competitor_telemetry_summary: dict[str, object],
+        current_tuning_values: dict[str, int],
     ) -> SEORecommendationNarrativeOutput:
-        del run, recommendations, by_status, by_category, by_severity, by_effort_bucket, by_priority_band, backlog
+        del (
+            run,
+            recommendations,
+            by_status,
+            by_category,
+            by_severity,
+            by_effort_bucket,
+            by_priority_band,
+            backlog,
+            competitor_telemetry_summary,
+            current_tuning_values,
+        )
         raise SEORecommendationNarrativeProviderError(
             code=_PROVIDER_ERROR_AUTH_CONFIG,
             safe_message=self.safe_message,
@@ -116,6 +162,8 @@ class OpenAISEORecommendationNarrativeProvider:
         by_effort_bucket: dict[str, int],
         by_priority_band: dict[str, int],
         backlog: list[SEORecommendation],
+        competitor_telemetry_summary: dict[str, object],
+        current_tuning_values: dict[str, int],
     ) -> SEORecommendationNarrativeOutput:
         prompt = build_seo_recommendation_narrative_prompt(
             run=run,
@@ -126,6 +174,8 @@ class OpenAISEORecommendationNarrativeProvider:
             by_effort_bucket=by_effort_bucket,
             by_priority_band=by_priority_band,
             backlog=backlog,
+            competitor_telemetry_summary=competitor_telemetry_summary,
+            current_tuning_values=current_tuning_values,
             prompt_version=self.prompt_version,
             prompt_text_recommendation=self.prompt_text_recommendation,
         )
@@ -165,6 +215,8 @@ class OpenAISEORecommendationNarrativeProvider:
         sections = self._normalize_sections(
             parsed.sections,
             allowed_recommendation_ids=allowed_recommendation_ids,
+            competitor_telemetry_summary=competitor_telemetry_summary,
+            current_tuning_values=current_tuning_values,
             by_status=by_status,
             by_category=by_category,
             by_severity=by_severity,
@@ -350,6 +402,8 @@ class OpenAISEORecommendationNarrativeProvider:
         sections: _OpenAIRecommendationNarrativeSections | None,
         *,
         allowed_recommendation_ids: set[str],
+        competitor_telemetry_summary: dict[str, object],
+        current_tuning_values: dict[str, int],
         by_status: dict[str, int],
         by_category: dict[str, int],
         by_severity: dict[str, int],
@@ -365,6 +419,7 @@ class OpenAISEORecommendationNarrativeProvider:
 
         next_actions: list[str] = []
         references: list[str] = []
+        tuning_suggestions: list[dict[str, object]] = []
         if sections is not None:
             for value in sections.next_actions:
                 normalized = _clean_optional_value(value)
@@ -388,17 +443,113 @@ class OpenAISEORecommendationNarrativeProvider:
                 if len(references) >= _MAX_RECOMMENDATION_REFERENCES:
                     break
 
+            if self._telemetry_supports_tuning_suggestions(competitor_telemetry_summary):
+                for suggestion in sections.tuning_suggestions:
+                    setting = _clean_optional_value(suggestion.setting)
+                    if not setting or setting not in _ALLOWED_TUNING_SETTINGS_BOUNDS:
+                        raise self._provider_error(
+                            code=_PROVIDER_ERROR_SCHEMA_VALIDATION,
+                            safe_message="Recommendation narrative returned invalid structured output.",
+                        )
+
+                    linked_recommendation_ids: list[str] = []
+                    for recommendation_id in suggestion.linked_recommendation_ids:
+                        normalized_id = _clean_optional_value(recommendation_id)
+                        if not normalized_id:
+                            continue
+                        if normalized_id not in allowed_recommendation_ids:
+                            raise self._provider_error(
+                                code=_PROVIDER_ERROR_SCHEMA_VALIDATION,
+                                safe_message="Recommendation narrative returned invalid structured output.",
+                            )
+                        if normalized_id not in linked_recommendation_ids:
+                            linked_recommendation_ids.append(normalized_id)
+                        if len(linked_recommendation_ids) >= _MAX_TUNING_LINKED_RECOMMENDATION_IDS:
+                            break
+                    if not linked_recommendation_ids:
+                        raise self._provider_error(
+                            code=_PROVIDER_ERROR_SCHEMA_VALIDATION,
+                            safe_message="Recommendation narrative returned invalid structured output.",
+                        )
+
+                    current_value = self._coerce_tuning_value(
+                        setting=setting,
+                        value=current_tuning_values.get(setting, suggestion.current_value),
+                    )
+                    recommended_value = self._coerce_tuning_value(
+                        setting=setting,
+                        value=suggestion.recommended_value,
+                    )
+                    reason = _clean_optional_value(suggestion.reason)
+                    if not reason:
+                        raise self._provider_error(
+                            code=_PROVIDER_ERROR_SCHEMA_VALIDATION,
+                            safe_message="Recommendation narrative returned invalid structured output.",
+                        )
+                    if len(reason) > _MAX_TUNING_REASON_LENGTH:
+                        reason = reason[:_MAX_TUNING_REASON_LENGTH]
+
+                    confidence = _clean_optional_value(suggestion.confidence)
+                    normalized_confidence = (confidence or "").lower()
+                    if normalized_confidence not in _ALLOWED_TUNING_CONFIDENCE:
+                        raise self._provider_error(
+                            code=_PROVIDER_ERROR_SCHEMA_VALIDATION,
+                            safe_message="Recommendation narrative returned invalid structured output.",
+                        )
+                    tuning_suggestions.append(
+                        {
+                            "setting": setting,
+                            "current_value": current_value,
+                            "recommended_value": recommended_value,
+                            "reason": reason,
+                            "linked_recommendation_ids": linked_recommendation_ids,
+                            "confidence": normalized_confidence,
+                        }
+                    )
+                    if len(tuning_suggestions) >= _MAX_TUNING_SUGGESTIONS:
+                        break
+
         return {
             "summary": summary,
             "priority_rationale": priority_rationale,
             "next_actions": next_actions,
             "recommendation_references": references,
+            "tuning_suggestions": tuning_suggestions,
             "status_rollup": _normalize_int_map(by_status),
             "category_rollup": _normalize_int_map(by_category),
             "severity_rollup": _normalize_int_map(by_severity),
             "effort_rollup": _normalize_int_map(by_effort_bucket),
             "priority_band_rollup": _normalize_int_map(by_priority_band),
         }
+
+    def _telemetry_supports_tuning_suggestions(self, telemetry_summary: dict[str, object]) -> bool:
+        raw_count = self._coerce_non_negative_int(telemetry_summary.get("total_raw_candidate_count"))
+        excluded_count = self._coerce_non_negative_int(telemetry_summary.get("total_excluded_candidate_count"))
+        return raw_count > 0 and excluded_count > 0
+
+    def _coerce_tuning_value(self, *, setting: str, value: object) -> int:
+        minimum, maximum = _ALLOWED_TUNING_SETTINGS_BOUNDS[setting]
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError) as exc:
+            raise self._provider_error(
+                code=_PROVIDER_ERROR_SCHEMA_VALIDATION,
+                safe_message="Recommendation narrative returned invalid structured output.",
+            ) from exc
+        if parsed < minimum or parsed > maximum:
+            raise self._provider_error(
+                code=_PROVIDER_ERROR_SCHEMA_VALIDATION,
+                safe_message="Recommendation narrative returned invalid structured output.",
+            )
+        return parsed
+
+    @staticmethod
+    def _coerce_non_negative_int(value: object) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return 0
+        return max(0, parsed)
 
     def _provider_error(
         self,
@@ -424,6 +575,10 @@ class _OpenAIRecommendationNarrativeSections(BaseModel):
     priority_rationale: str | None = None
     next_actions: list[str] = Field(default_factory=list, max_length=_MAX_NEXT_ACTIONS)
     recommendation_references: list[str] = Field(default_factory=list, max_length=_MAX_RECOMMENDATION_REFERENCES)
+    tuning_suggestions: list["_OpenAIRecommendationNarrativeTuningSuggestion"] = Field(
+        default_factory=list,
+        max_length=_MAX_TUNING_SUGGESTIONS,
+    )
 
     @field_validator("summary", "priority_rationale", mode="before")
     @classmethod
@@ -462,6 +617,97 @@ class _OpenAIRecommendationNarrativeSections(BaseModel):
         return normalized
 
 
+class _OpenAIRecommendationNarrativeTuningSuggestion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    setting: str
+    current_value: int
+    recommended_value: int
+    reason: str
+    linked_recommendation_ids: list[str] = Field(default_factory=list, max_length=_MAX_TUNING_LINKED_RECOMMENDATION_IDS)
+    confidence: str
+
+    @field_validator("setting", mode="before")
+    @classmethod
+    def _normalize_setting(cls, value: object) -> str:
+        normalized = str(value or "").strip()
+        if normalized not in _ALLOWED_TUNING_SETTINGS_BOUNDS:
+            raise ValueError("setting is not allowed")
+        return normalized
+
+    @field_validator("current_value", "recommended_value", mode="before")
+    @classmethod
+    def _normalize_int_value(cls, value: object) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("value must be an integer") from exc
+
+    @field_validator("recommended_value")
+    @classmethod
+    def _validate_recommended_value_bounds(
+        cls,
+        value: int,
+        info,
+    ) -> int:
+        setting = str(info.data.get("setting") or "").strip()
+        bounds = _ALLOWED_TUNING_SETTINGS_BOUNDS.get(setting)
+        if bounds is None:
+            raise ValueError("setting is required")
+        if value < bounds[0] or value > bounds[1]:
+            raise ValueError("recommended_value is out of bounds")
+        return value
+
+    @field_validator("current_value")
+    @classmethod
+    def _validate_current_value_bounds(
+        cls,
+        value: int,
+        info,
+    ) -> int:
+        setting = str(info.data.get("setting") or "").strip()
+        bounds = _ALLOWED_TUNING_SETTINGS_BOUNDS.get(setting)
+        if bounds is None:
+            raise ValueError("setting is required")
+        if value < bounds[0] or value > bounds[1]:
+            raise ValueError("current_value is out of bounds")
+        return value
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def _normalize_reason(cls, value: object) -> str:
+        normalized = str(value or "").strip()
+        if not normalized:
+            raise ValueError("reason is required")
+        if len(normalized) > _MAX_TUNING_REASON_LENGTH:
+            return normalized[:_MAX_TUNING_REASON_LENGTH]
+        return normalized
+
+    @field_validator("linked_recommendation_ids", mode="before")
+    @classmethod
+    def _normalize_linked_recommendation_ids(cls, value: object) -> list[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise TypeError("linked_recommendation_ids must be a list")
+        normalized: list[str] = []
+        for item in value:
+            text = str(item).strip()
+            if text:
+                normalized.append(text)
+        if not normalized:
+            raise ValueError("linked_recommendation_ids is required")
+        return normalized
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _normalize_confidence(cls, value: object) -> str:
+        normalized = str(value or "").strip().lower()
+        if normalized not in _ALLOWED_TUNING_CONFIDENCE:
+            raise ValueError("confidence must be low, medium, or high")
+        return normalized
+
+
 class _OpenAIRecommendationNarrativeResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -492,6 +738,9 @@ class _OpenAIRecommendationNarrativeResponse(BaseModel):
         return normalized
 
 
+_OpenAIRecommendationNarrativeSections.model_rebuild()
+
+
 def _build_narrative_json_schema() -> dict[str, object]:
     return {
         "type": "object",
@@ -512,6 +761,7 @@ def _build_narrative_json_schema() -> dict[str, object]:
                     "priority_rationale",
                     "next_actions",
                     "recommendation_references",
+                    "tuning_suggestions",
                 ],
                 "properties": {
                     "summary": {"type": ["string", "null"]},
@@ -525,6 +775,34 @@ def _build_narrative_json_schema() -> dict[str, object]:
                         "type": "array",
                         "maxItems": _MAX_RECOMMENDATION_REFERENCES,
                         "items": {"type": "string"},
+                    },
+                    "tuning_suggestions": {
+                        "type": "array",
+                        "maxItems": _MAX_TUNING_SUGGESTIONS,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": [
+                                "setting",
+                                "current_value",
+                                "recommended_value",
+                                "reason",
+                                "linked_recommendation_ids",
+                                "confidence",
+                            ],
+                            "properties": {
+                                "setting": {"type": "string"},
+                                "current_value": {"type": "integer"},
+                                "recommended_value": {"type": "integer"},
+                                "reason": {"type": "string"},
+                                "linked_recommendation_ids": {
+                                    "type": "array",
+                                    "maxItems": _MAX_TUNING_LINKED_RECOMMENDATION_IDS,
+                                    "items": {"type": "string"},
+                                },
+                                "confidence": {"type": "string"},
+                            },
+                        },
                     },
                 },
             },

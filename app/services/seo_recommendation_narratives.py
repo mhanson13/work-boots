@@ -2,22 +2,33 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from datetime import timedelta
 import logging
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
+from app.core.time import utc_now
 from app.integrations.seo_recommendation_narrative_provider import SEORecommendationNarrativeProviderError
 from app.integrations.seo_summary_provider import SEORecommendationNarrativeProvider
+from app.models.business import Business
 from app.models.seo_recommendation import SEORecommendation
 from app.models.seo_recommendation_narrative import SEORecommendationNarrative
 from app.repositories.business_repository import BusinessRepository
+from app.repositories.seo_competitor_profile_generation_repository import (
+    SEOCompetitorProfileGenerationRepository,
+)
 from app.repositories.seo_recommendation_narrative_repository import SEORecommendationNarrativeRepository
 from app.repositories.seo_recommendation_repository import SEORecommendationRepository
+from app.services.seo_competitor_profile_candidate_quality import (
+    EXCLUSION_REASON_KEYS,
+    default_exclusion_reason_counts,
+)
 from app.services.seo_recommendation_narrative_prompt import SEO_RECOMMENDATION_NARRATIVE_PROMPT_VERSION
 
 
 logger = logging.getLogger(__name__)
+_COMPETITOR_TELEMETRY_LOOKBACK_DAYS = 30
 
 
 class SEORecommendationNarrativeNotFoundError(ValueError):
@@ -41,12 +52,14 @@ class SEORecommendationNarrativeService:
         business_repository: BusinessRepository,
         seo_recommendation_repository: SEORecommendationRepository,
         seo_recommendation_narrative_repository: SEORecommendationNarrativeRepository,
+        seo_competitor_profile_generation_repository: SEOCompetitorProfileGenerationRepository,
         provider: SEORecommendationNarrativeProvider,
     ) -> None:
         self.session = session
         self.business_repository = business_repository
         self.seo_recommendation_repository = seo_recommendation_repository
         self.seo_recommendation_narrative_repository = seo_recommendation_narrative_repository
+        self.seo_competitor_profile_generation_repository = seo_competitor_profile_generation_repository
         self.provider = provider
 
     def summarize_run(
@@ -57,7 +70,7 @@ class SEORecommendationNarrativeService:
         recommendation_run_id: str,
         created_by_principal_id: str | None,
     ) -> SEORecommendationNarrativeResult:
-        self._require_business(business_id)
+        business = self._require_business(business_id)
         run = self._get_run_for_business(
             business_id=business_id,
             site_id=site_id,
@@ -74,6 +87,11 @@ class SEORecommendationNarrativeService:
         )
         by_status, by_category, by_severity, by_effort_bucket, by_priority_band = self._summarize(recommendations)
         backlog = self._build_backlog(recommendations)
+        competitor_telemetry_summary = self._build_competitor_telemetry_summary(
+            business_id=business_id,
+            site_id=site_id,
+        )
+        current_tuning_values = self._build_current_tuning_values(business)
 
         version = self.seo_recommendation_narrative_repository.next_version(
             business_id,
@@ -90,6 +108,8 @@ class SEORecommendationNarrativeService:
                 by_effort_bucket=by_effort_bucket,
                 by_priority_band=by_priority_band,
                 backlog=backlog,
+                competitor_telemetry_summary=competitor_telemetry_summary,
+                current_tuning_values=current_tuning_values,
             )
             narrative = SEORecommendationNarrative(
                 id=str(uuid4()),
@@ -228,10 +248,11 @@ class SEORecommendationNarrativeService:
             raise SEORecommendationNarrativeNotFoundError("SEO recommendation run not found")
         return run
 
-    def _require_business(self, business_id: str) -> None:
+    def _require_business(self, business_id: str) -> Business:
         business = self.business_repository.get(business_id)
         if business is None:
             raise SEORecommendationNarrativeNotFoundError("Business not found")
+        return business
 
     def _summarize(
         self,
@@ -279,3 +300,49 @@ class SEORecommendationNarrativeService:
             or SEO_RECOMMENDATION_NARRATIVE_PROMPT_VERSION
         )
         return provider_name, model_name, prompt_version
+
+    def _build_current_tuning_values(self, business: Business) -> dict[str, int]:
+        return {
+            "competitor_candidate_min_relevance_score": int(
+                business.competitor_candidate_min_relevance_score
+            ),
+            "competitor_candidate_big_box_penalty": int(business.competitor_candidate_big_box_penalty),
+            "competitor_candidate_directory_penalty": int(business.competitor_candidate_directory_penalty),
+            "competitor_candidate_local_alignment_bonus": int(business.competitor_candidate_local_alignment_bonus),
+        }
+
+    def _build_competitor_telemetry_summary(self, *, business_id: str, site_id: str) -> dict[str, object]:
+        window_start = utc_now() - timedelta(days=_COMPETITOR_TELEMETRY_LOOKBACK_DAYS)
+        (
+            total_runs,
+            total_raw_candidate_count,
+            total_included_candidate_count,
+            total_excluded_candidate_count,
+        ) = self.seo_competitor_profile_generation_repository.summarize_candidate_telemetry_totals(
+            business_id=business_id,
+            site_id=site_id,
+            created_after=window_start,
+        )
+        exclusion_reason_records = (
+            self.seo_competitor_profile_generation_repository.list_exclusion_reason_counts_for_business_site_created_after(
+                business_id=business_id,
+                site_id=site_id,
+                created_after=window_start,
+            )
+        )
+        exclusion_counts_by_reason = default_exclusion_reason_counts()
+        for record in exclusion_reason_records:
+            for reason in EXCLUSION_REASON_KEYS:
+                try:
+                    exclusion_counts_by_reason[reason] += max(0, int(record.get(reason, 0)))
+                except (TypeError, ValueError, AttributeError):
+                    continue
+
+        return {
+            "lookback_days": _COMPETITOR_TELEMETRY_LOOKBACK_DAYS,
+            "total_runs": int(total_runs),
+            "total_raw_candidate_count": int(total_raw_candidate_count),
+            "total_included_candidate_count": int(total_included_candidate_count),
+            "total_excluded_candidate_count": int(total_excluded_candidate_count),
+            "exclusion_counts_by_reason": exclusion_counts_by_reason,
+        }

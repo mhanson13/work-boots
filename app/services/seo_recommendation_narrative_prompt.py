@@ -5,9 +5,24 @@ import json
 
 from app.models.seo_recommendation import SEORecommendation
 from app.models.seo_recommendation_run import SEORecommendationRun
+from app.services.seo_competitor_profile_candidate_quality import (
+    BIG_BOX_PENALTY_MAX,
+    BIG_BOX_PENALTY_MIN,
+    DEFAULT_BIG_BOX_PENALTY,
+    DEFAULT_DIRECTORY_PENALTY,
+    DEFAULT_LOCAL_ALIGNMENT_BONUS,
+    DEFAULT_MIN_RELEVANCE_SCORE,
+    DIRECTORY_PENALTY_MAX,
+    DIRECTORY_PENALTY_MIN,
+    EXCLUSION_REASON_KEYS,
+    LOCAL_ALIGNMENT_BONUS_MAX,
+    LOCAL_ALIGNMENT_BONUS_MIN,
+    MIN_RELEVANCE_SCORE_MAX,
+    MIN_RELEVANCE_SCORE_MIN,
+)
 
 
-SEO_RECOMMENDATION_NARRATIVE_PROMPT_VERSION = "seo-recommendation-narrative-v1"
+SEO_RECOMMENDATION_NARRATIVE_PROMPT_VERSION = "seo-recommendation-narrative-v2"
 
 _MAX_PROMPT_TEXT_RECOMMENDATION_LENGTH = 2000
 _MAX_ID_LENGTH = 64
@@ -22,6 +37,32 @@ _MAX_RATIONALE_EXCERPT_LENGTH = 320
 _MAX_RECOMMENDATIONS_IN_PROMPT = 30
 _MAX_ALLOWED_RECOMMENDATION_IDS = 200
 _MAX_BACKLOG_IDS = 25
+_MAX_TELEMETRY_LOOKBACK_DAYS = 365
+
+_TUNING_SETTING_BOUNDS: dict[str, tuple[int, int]] = {
+    "competitor_candidate_min_relevance_score": (
+        MIN_RELEVANCE_SCORE_MIN,
+        MIN_RELEVANCE_SCORE_MAX,
+    ),
+    "competitor_candidate_big_box_penalty": (
+        BIG_BOX_PENALTY_MIN,
+        BIG_BOX_PENALTY_MAX,
+    ),
+    "competitor_candidate_directory_penalty": (
+        DIRECTORY_PENALTY_MIN,
+        DIRECTORY_PENALTY_MAX,
+    ),
+    "competitor_candidate_local_alignment_bonus": (
+        LOCAL_ALIGNMENT_BONUS_MIN,
+        LOCAL_ALIGNMENT_BONUS_MAX,
+    ),
+}
+_DEFAULT_TUNING_VALUES: dict[str, int] = {
+    "competitor_candidate_min_relevance_score": DEFAULT_MIN_RELEVANCE_SCORE,
+    "competitor_candidate_big_box_penalty": DEFAULT_BIG_BOX_PENALTY,
+    "competitor_candidate_directory_penalty": DEFAULT_DIRECTORY_PENALTY,
+    "competitor_candidate_local_alignment_bonus": DEFAULT_LOCAL_ALIGNMENT_BONUS,
+}
 
 
 @dataclass(frozen=True)
@@ -42,6 +83,8 @@ def build_seo_recommendation_narrative_prompt(
     by_effort_bucket: dict[str, int],
     by_priority_band: dict[str, int],
     backlog: list[SEORecommendation],
+    competitor_telemetry_summary: dict[str, object] | None = None,
+    current_tuning_values: dict[str, int] | None = None,
     prompt_version: str = SEO_RECOMMENDATION_NARRATIVE_PROMPT_VERSION,
     prompt_text_recommendation: str = "",
 ) -> SEORecommendationNarrativePrompt:
@@ -57,6 +100,11 @@ def build_seo_recommendation_narrative_prompt(
             if item.get("id")
         }
     )
+
+    normalized_competitor_telemetry_summary = _normalize_competitor_telemetry_summary(
+        competitor_telemetry_summary
+    )
+    normalized_current_tuning_values = _normalize_current_tuning_values(current_tuning_values)
 
     context: dict[str, object] = {
         "business_id": _sanitize_required(run.business_id, max_length=_MAX_ID_LENGTH, fallback="unknown-business"),
@@ -79,6 +127,16 @@ def build_seo_recommendation_narrative_prompt(
         "top_recommendations": normalized_recommendations[:_MAX_RECOMMENDATIONS_IN_PROMPT],
         "backlog_recommendation_ids": normalized_backlog_ids,
         "allowed_recommendation_ids": allowed_recommendation_ids,
+        "recommendation_distribution": {
+            "status_counts": _normalize_count_map(by_status),
+            "category_counts": _normalize_count_map(by_category),
+            "severity_counts": _normalize_count_map(by_severity),
+            "effort_counts": _normalize_count_map(by_effort_bucket),
+            "priority_band_counts": _normalize_count_map(by_priority_band),
+        },
+        "competitor_candidate_telemetry": normalized_competitor_telemetry_summary,
+        "current_candidate_quality_tuning": normalized_current_tuning_values,
+        "allowed_tuning_settings": _allowed_tuning_settings_schema(),
     }
     context_json = json.dumps(context, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
 
@@ -97,6 +155,7 @@ def build_seo_recommendation_narrative_prompt(
         "2. Never invent recommendation IDs, counts, statuses, or rule keys.\n"
         "3. Keep explanation advisory only. No auto-apply actions.\n"
         "4. recommendation_references must only include IDs present in allowed_recommendation_ids.\n"
+        "5. You may suggest adjustments to scoring parameters ONLY if justified by provided recommendation and telemetry data.\n"
         "RESPONSE_SCHEMA:\n"
         "{\n"
         '  "narrative_text": "string",\n'
@@ -105,14 +164,27 @@ def build_seo_recommendation_narrative_prompt(
         '    "summary": "string or null",\n'
         '    "priority_rationale": "string or null",\n'
         '    "next_actions": ["string"],\n'
-        '    "recommendation_references": ["recommendation_id"]\n'
+        '    "recommendation_references": ["recommendation_id"],\n'
+        '    "tuning_suggestions": [\n'
+        "      {\n"
+        '        "setting": "competitor_candidate_min_relevance_score | competitor_candidate_big_box_penalty | competitor_candidate_directory_penalty | competitor_candidate_local_alignment_bonus",\n'
+        '        "current_value": 0,\n'
+        '        "recommended_value": 0,\n'
+        '        "reason": "string",\n'
+        '        "linked_recommendation_ids": ["recommendation_id"],\n'
+        '        "confidence": "low | medium | high"\n'
+        "      }\n"
+        "    ]\n"
         "  }\n"
         "}\n"
         "RESPONSE_RULES:\n"
         "1. narrative_text must be concise and operator-oriented.\n"
         "2. top_themes should contain short, concrete phrases.\n"
         "3. next_actions should be bounded and practical for manual workflow.\n"
-        "4. If evidence is insufficient, say so explicitly.\n"
+        "4. tuning_suggestions must include at most 4 items.\n"
+        "5. Use only allowed tuning setting names and integer values in allowed bounds.\n"
+        "6. Each tuning suggestion must reference at least one ID from allowed_recommendation_ids.\n"
+        "7. If telemetry is balanced or evidence is insufficient, return tuning_suggestions as an empty array.\n"
         "RECOMMENDATION_CONTEXT_JSON:\n"
         f"{context_json}"
     )
@@ -185,6 +257,98 @@ def _normalize_count_map(raw: dict[str, int]) -> dict[str, int]:
         except (TypeError, ValueError):
             continue
     return normalized
+
+
+def _normalize_competitor_telemetry_summary(raw: dict[str, object] | None) -> dict[str, object]:
+    telemetry = raw if isinstance(raw, dict) else {}
+    total_runs = _coerce_non_negative_int(telemetry.get("total_runs"), default=0)
+    total_raw_candidate_count = _coerce_non_negative_int(
+        telemetry.get("total_raw_candidate_count"),
+        default=0,
+    )
+    total_included_candidate_count = _coerce_non_negative_int(
+        telemetry.get("total_included_candidate_count"),
+        default=0,
+    )
+    total_excluded_candidate_count = _coerce_non_negative_int(
+        telemetry.get("total_excluded_candidate_count"),
+        default=0,
+    )
+    lookback_days = _coerce_bounded_int(
+        telemetry.get("lookback_days"),
+        minimum=1,
+        maximum=_MAX_TELEMETRY_LOOKBACK_DAYS,
+        default=30,
+    )
+
+    raw_reason_counts = telemetry.get("exclusion_counts_by_reason")
+    exclusion_counts_by_reason: dict[str, int] = {}
+    for reason in EXCLUSION_REASON_KEYS:
+        value = 0
+        if isinstance(raw_reason_counts, dict):
+            value = _coerce_non_negative_int(raw_reason_counts.get(reason), default=0)
+        exclusion_counts_by_reason[reason] = value
+
+    excluded_rate = 0.0
+    if total_raw_candidate_count > 0:
+        excluded_rate = round(total_excluded_candidate_count / total_raw_candidate_count, 4)
+
+    return {
+        "lookback_days": lookback_days,
+        "total_runs": total_runs,
+        "total_raw_candidate_count": total_raw_candidate_count,
+        "total_included_candidate_count": total_included_candidate_count,
+        "total_excluded_candidate_count": total_excluded_candidate_count,
+        "excluded_rate": excluded_rate,
+        "exclusion_counts_by_reason": exclusion_counts_by_reason,
+    }
+
+
+def _normalize_current_tuning_values(raw: dict[str, int] | None) -> dict[str, int]:
+    tuning = raw if isinstance(raw, dict) else {}
+    normalized: dict[str, int] = {}
+    for setting, (min_value, max_value) in _TUNING_SETTING_BOUNDS.items():
+        default_value = _DEFAULT_TUNING_VALUES[setting]
+        normalized[setting] = _coerce_bounded_int(
+            tuning.get(setting),
+            minimum=min_value,
+            maximum=max_value,
+            default=default_value,
+        )
+    return normalized
+
+
+def _allowed_tuning_settings_schema() -> dict[str, dict[str, int]]:
+    return {
+        key: {"min": bounds[0], "max": bounds[1]}
+        for key, bounds in sorted(_TUNING_SETTING_BOUNDS.items())
+    }
+
+
+def _coerce_non_negative_int(value: object, *, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(0, parsed)
+
+
+def _coerce_bounded_int(
+    value: object,
+    *,
+    minimum: int,
+    maximum: int,
+    default: int,
+) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    if parsed < minimum:
+        return minimum
+    if parsed > maximum:
+        return maximum
+    return parsed
 
 
 def _sanitize_required(value: str | None, *, max_length: int, fallback: str) -> str:

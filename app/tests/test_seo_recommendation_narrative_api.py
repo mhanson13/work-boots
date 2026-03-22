@@ -15,6 +15,7 @@ from app.api.routes.seo import router as seo_router
 from app.api.routes.seo import router_v1 as seo_v1_router
 from app.integrations.seo_recommendation_narrative_provider import SEORecommendationNarrativeProviderError
 from app.integrations.seo_summary_provider import (
+    MockSEORecommendationNarrativeProvider,
     SEORecommendationNarrativeOutput,
     SEORecommendationNarrativeProvider,
 )
@@ -23,7 +24,6 @@ from app.models.seo_audit_finding import SEOAuditFinding
 from app.models.seo_audit_run import SEOAuditRun
 from app.models.seo_recommendation import SEORecommendation
 from app.models.seo_recommendation_narrative import SEORecommendationNarrative
-from app.models.seo_recommendation_run import SEORecommendationRun
 
 
 NARRATIVE_RESPONSE_KEYS = {
@@ -58,7 +58,7 @@ class _StructuredOutputFailingNarrativeProvider:
             safe_message="Recommendation narrative returned invalid structured output.",
             provider_name="openai",
             model_name="gpt-4o-mini",
-            prompt_version="seo-recommendation-narrative-v1",
+            prompt_version="seo-recommendation-narrative-v2",
             raw_output='{"bad":"payload"}',
         )
 
@@ -78,6 +78,8 @@ class _CapturingRecommendationNarrativeProvider:
         by_effort_bucket,
         by_priority_band,
         backlog,
+        competitor_telemetry_summary,
+        current_tuning_values,
     ) -> SEORecommendationNarrativeOutput:
         self.calls.append(
             {
@@ -90,6 +92,8 @@ class _CapturingRecommendationNarrativeProvider:
                 "by_priority_band": dict(by_priority_band),
                 "backlog_count": len(backlog),
                 "backlog_rule_keys": [item.rule_key for item in backlog],
+                "competitor_telemetry_summary": dict(competitor_telemetry_summary),
+                "current_tuning_values": dict(current_tuning_values),
             }
         )
         return SEORecommendationNarrativeOutput(
@@ -98,10 +102,11 @@ class _CapturingRecommendationNarrativeProvider:
             sections={
                 "status": dict(by_status),
                 "priority_band": dict(by_priority_band),
+                "tuning_suggestions": [],
             },
             provider_name="capturing-test-provider",
             model_name="capturing-test-model",
-            prompt_version="seo-recommendation-narrative-v1",
+            prompt_version="seo-recommendation-narrative-v2",
         )
 
 
@@ -134,8 +139,15 @@ def _make_client(
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_tenant_context] = _override_tenant_context(business_id)
-    if narrative_provider is not None:
-        app.dependency_overrides[get_seo_recommendation_narrative_provider] = lambda: narrative_provider
+    # Keep contract tests deterministic across CI/runtime env variants:
+    # success-path tests should use a mock provider unless a test explicitly
+    # overrides provider behavior (e.g., failure/structured-output cases).
+    provider = narrative_provider or MockSEORecommendationNarrativeProvider(
+        provider_name="mock",
+        model_name="mock-seo-recommendation-narrative-v1",
+        prompt_version="seo-recommendation-narrative-v2",
+    )
+    app.dependency_overrides[get_seo_recommendation_narrative_provider] = lambda: provider
     return TestClient(app)
 
 
@@ -359,7 +371,7 @@ def test_recommendation_narrative_structured_output_failure_is_safe_and_auditabl
     assert narratives[0].status == "failed"
     assert narratives[0].provider_name == "openai"
     assert narratives[0].model_name == "gpt-4o-mini"
-    assert narratives[0].prompt_version == "seo-recommendation-narrative-v1"
+    assert narratives[0].prompt_version == "seo-recommendation-narrative-v2"
     assert narratives[0].error_message == "Recommendation narrative returned invalid structured output."
 
     recs_after = client.get(
@@ -440,6 +452,8 @@ def test_recommendation_narrative_is_grounded_in_persisted_recommendation_artifa
     assert call["recommendation_count"] >= 1
     assert call["by_status"].get("in_progress", 0) >= 1
     assert call["by_priority_band"].get("critical", 0) >= 1
+    assert call["competitor_telemetry_summary"]["lookback_days"] == 30
+    assert "competitor_candidate_min_relevance_score" in call["current_tuning_values"]
 
 
 def test_phase3c_v1_site_scoped_narrative_routes(db_session, seeded_business) -> None:

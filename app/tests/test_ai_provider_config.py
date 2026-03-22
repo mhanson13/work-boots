@@ -233,6 +233,20 @@ def test_recommendation_narrative_provider_factory_missing_key_in_production_is_
             by_effort_bucket={"LOW": 1},
             by_priority_band={"high": 1},
             backlog=[_recommendation()],
+            competitor_telemetry_summary={
+                "lookback_days": 30,
+                "total_runs": 0,
+                "total_raw_candidate_count": 0,
+                "total_included_candidate_count": 0,
+                "total_excluded_candidate_count": 0,
+                "exclusion_counts_by_reason": {},
+            },
+            current_tuning_values={
+                "competitor_candidate_min_relevance_score": 35,
+                "competitor_candidate_big_box_penalty": 20,
+                "competitor_candidate_directory_penalty": 35,
+                "competitor_candidate_local_alignment_bonus": 10,
+            },
         )
     assert exc_info.value.code == "provider_auth_config"
     assert "credentials are not configured" in exc_info.value.safe_message.lower()
@@ -272,6 +286,20 @@ def test_recommendation_narrative_provider_factory_invalid_provider_is_safe_erro
             by_effort_bucket={"LOW": 1},
             by_priority_band={"high": 1},
             backlog=[_recommendation()],
+            competitor_telemetry_summary={
+                "lookback_days": 30,
+                "total_runs": 0,
+                "total_raw_candidate_count": 0,
+                "total_included_candidate_count": 0,
+                "total_excluded_candidate_count": 0,
+                "exclusion_counts_by_reason": {},
+            },
+            current_tuning_values={
+                "competitor_candidate_min_relevance_score": 35,
+                "competitor_candidate_big_box_penalty": 20,
+                "competitor_candidate_directory_penalty": 35,
+                "competitor_candidate_local_alignment_bonus": 10,
+            },
         )
     assert exc_info.value.code == "provider_auth_config"
     assert "selection is invalid" in exc_info.value.safe_message.lower()

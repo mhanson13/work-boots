@@ -1391,6 +1391,88 @@ describe("site workspace timeline controls", () => {
     expect(rows[4]).toHaveTextContent("Audit audit-4");
   });
 
+  it("renders bounded recommendation narrative tuning suggestions in the workspace narrative section", async () => {
+    seedRichWorkspaceData();
+    mockFetchLatestRecommendationRunNarrative.mockReset();
+    mockFetchLatestRecommendationRunNarrative
+      .mockResolvedValueOnce({
+        id: "narrative-1",
+        business_id: "biz-1",
+        site_id: "site-1",
+        recommendation_run_id: "run-1",
+        version: 2,
+        status: "completed",
+        narrative_text: "Narrative for run 1.",
+        top_themes_json: ["titles"],
+        sections_json: {
+          summary: "one",
+          tuning_suggestions: [
+            {
+              setting: "competitor_candidate_min_relevance_score",
+              current_value: 35,
+              recommended_value: 30,
+              reason: "High low_relevance exclusions indicate threshold is too strict.",
+              linked_recommendation_ids: ["rec-1"],
+              confidence: "medium",
+            },
+          ],
+        },
+        provider_name: "provider",
+        model_name: "model",
+        prompt_version: "v2",
+        error_message: null,
+        created_by_principal_id: "principal-1",
+        created_at: "2026-03-21T00:33:00Z",
+        updated_at: "2026-03-21T00:33:00Z",
+      })
+      .mockResolvedValueOnce({
+        id: "narrative-2",
+        business_id: "biz-1",
+        site_id: "site-1",
+        recommendation_run_id: "run-2",
+        version: 1,
+        status: "failed",
+        narrative_text: null,
+        top_themes_json: [],
+        sections_json: null,
+        provider_name: "provider",
+        model_name: "model",
+        prompt_version: "v2",
+        error_message: "provider failed",
+        created_by_principal_id: "principal-1",
+        created_at: "2026-03-21T00:31:00Z",
+        updated_at: "2026-03-21T00:31:00Z",
+      })
+      .mockResolvedValueOnce({
+        id: "narrative-3",
+        business_id: "biz-1",
+        site_id: "site-1",
+        recommendation_run_id: "run-3",
+        version: 1,
+        status: "completed",
+        narrative_text: "Narrative for run 3.",
+        top_themes_json: ["technical"],
+        sections_json: { summary: "three" },
+        provider_name: "provider",
+        model_name: "model",
+        prompt_version: "v2",
+        error_message: null,
+        created_by_principal_id: "principal-1",
+        created_at: "2026-03-21T00:29:30Z",
+        updated_at: "2026-03-21T00:29:30Z",
+      });
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("heading", { name: "Recommendation Runs and Narratives" });
+    await screen.findByRole("link", { name: "run-1" });
+    expect(
+      screen.getByText(
+        "Minimum relevance score: 35 -> 30 (High low_relevance exclusions indicate threshold is too strict.)",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("keeps loading and warning timeline regression behavior", async () => {
     mockUseOperatorContext.mockReturnValue(baseContext({ loading: true }));
     const { rerender } = render(<SiteWorkspacePage />);

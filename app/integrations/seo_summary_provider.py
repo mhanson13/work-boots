@@ -101,6 +101,8 @@ class SEORecommendationNarrativeProvider(Protocol):
         by_effort_bucket: dict[str, int],
         by_priority_band: dict[str, int],
         backlog: list[SEORecommendation],
+        competitor_telemetry_summary: dict[str, object],
+        current_tuning_values: dict[str, int],
     ) -> SEORecommendationNarrativeOutput: ...
 
 
@@ -271,7 +273,7 @@ class MockSEORecommendationNarrativeProvider:
         *,
         provider_name: str = "mock",
         model_name: str = "mock-seo-recommendation-narrative-v1",
-        prompt_version: str = "seo-recommendation-narrative-v1",
+        prompt_version: str = "seo-recommendation-narrative-v2",
     ) -> None:
         self.provider_name = provider_name
         self.model_name = model_name
@@ -288,7 +290,10 @@ class MockSEORecommendationNarrativeProvider:
         by_effort_bucket: dict[str, int],
         by_priority_band: dict[str, int],
         backlog: list[SEORecommendation],
+        competitor_telemetry_summary: dict[str, object],
+        current_tuning_values: dict[str, int],
     ) -> SEORecommendationNarrativeOutput:
+        del competitor_telemetry_summary, current_tuning_values
         total = len(recommendations)
         backlog_total = len(backlog)
         dominant_category = max(by_category.items(), key=lambda item: item[1])[0] if by_category else "TECHNICAL"
@@ -313,6 +318,7 @@ class MockSEORecommendationNarrativeProvider:
             "effort_rollup": by_effort_bucket,
             "priority_band_rollup": by_priority_band,
             "backlog_rule_keys": [item.rule_key for item in backlog[:10]],
+            "tuning_suggestions": [],
         }
         return SEORecommendationNarrativeOutput(
             narrative_text=narrative,

@@ -9,6 +9,7 @@ Deterministic recommendation records remain canonical. AI output is advisory exp
 - Deterministic rules provide stable, auditable recommendation artifacts.
 - Operators still need fast, human-readable context on priorities and backlog.
 - AI narrative generation improves explainability without turning AI into the source of truth.
+- Bounded AI tuning suggestions provide controlled operator guidance for competitor candidate quality settings using persisted telemetry.
 
 ## Architecture / Flow
 1. Deterministic run creation:
@@ -19,8 +20,9 @@ Deterministic recommendation records remain canonical. AI output is advisory exp
    - Recommendation rows stored in `seo_recommendations`
 3. AI narrative generation (manual trigger or automation step):
    - `POST /api/businesses/{business_id}/seo/sites/{site_id}/recommendation-runs/{recommendation_run_id}/narratives`
-   - Prompt is built from persisted recommendation artifacts and rollups.
+   - Prompt is built from persisted recommendation artifacts, recommendation rollups, competitor candidate telemetry rollups, and current business tuning values.
    - Provider output is schema-validated before persistence.
+   - Structured narrative sections can include `tuning_suggestions` (max 4), each constrained to allowed setting keys, bounded integer values, and valid linked recommendation IDs.
 4. Narrative retrieval:
    - list/latest/by-id narrative endpoints return persisted narrative versions.
 5. UI:
@@ -42,6 +44,12 @@ Deterministic recommendation records remain canonical. AI output is advisory exp
 - AI never creates canonical recommendation artifacts.
 - AI never mutates business settings or workflow state.
 - Narrative generation is grounded in persisted recommendation artifacts only.
+- Tuning suggestions are advisory only and never auto-applied.
+- Tuning suggestions are strictly bounded to:
+  - `competitor_candidate_min_relevance_score` (`0..100`)
+  - `competitor_candidate_big_box_penalty` (`0..50`)
+  - `competitor_candidate_directory_penalty` (`0..50`)
+  - `competitor_candidate_local_alignment_bonus` (`0..50`)
 - Business/site scoping is enforced in routes, services, and repositories.
 
 ## Configuration
@@ -63,6 +71,7 @@ Behavior:
 - Provider failures persist a `failed` narrative version with safe `error_message`.
 - Failure isolation: recommendation run/recommendation records are not mutated by narrative failures.
 - Provider/model/prompt metadata is persisted for auditability.
+- Tuning suggestions are suppressed when competitor telemetry indicates a balanced candidate set (no excluded candidates in telemetry window).
 
 ## Failure Modes
 - Timeout/provider request/auth/config/schema/parse failures are normalized to safe errors.

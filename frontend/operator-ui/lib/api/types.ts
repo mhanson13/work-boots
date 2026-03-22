@@ -558,6 +558,23 @@ export interface RecommendationNarrative {
   updated_at: string;
 }
 
+export type RecommendationTuningSuggestionSetting =
+  | "competitor_candidate_min_relevance_score"
+  | "competitor_candidate_big_box_penalty"
+  | "competitor_candidate_directory_penalty"
+  | "competitor_candidate_local_alignment_bonus";
+
+export type RecommendationTuningSuggestionConfidence = "low" | "medium" | "high";
+
+export interface RecommendationTuningSuggestion {
+  setting: RecommendationTuningSuggestionSetting;
+  current_value: number;
+  recommended_value: number;
+  reason: string;
+  linked_recommendation_ids: string[];
+  confidence: RecommendationTuningSuggestionConfidence;
+}
+
 export interface RecommendationNarrativeListResponse {
   items: RecommendationNarrative[];
   total: number;

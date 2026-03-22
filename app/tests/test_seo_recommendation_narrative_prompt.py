@@ -76,6 +76,27 @@ def test_prompt_contains_grounded_deterministic_context() -> None:
         by_effort_bucket={"HIGH": 1, "LOW": 1},
         by_priority_band={"critical": 1, "high": 1},
         backlog=_recommendations(),
+        competitor_telemetry_summary={
+            "lookback_days": 30,
+            "total_runs": 4,
+            "total_raw_candidate_count": 12,
+            "total_included_candidate_count": 8,
+            "total_excluded_candidate_count": 4,
+            "exclusion_counts_by_reason": {
+                "duplicate": 1,
+                "low_relevance": 2,
+                "directory_or_aggregator": 1,
+                "big_box_mismatch": 0,
+                "existing_domain_match": 0,
+                "invalid_candidate": 0,
+            },
+        },
+        current_tuning_values={
+            "competitor_candidate_min_relevance_score": 35,
+            "competitor_candidate_big_box_penalty": 20,
+            "competitor_candidate_directory_penalty": 35,
+            "competitor_candidate_local_alignment_bonus": 10,
+        },
     )
 
     assert prompt.prompt_version == SEO_RECOMMENDATION_NARRATIVE_PROMPT_VERSION
@@ -86,6 +107,12 @@ def test_prompt_contains_grounded_deterministic_context() -> None:
     top_item = prompt.grounded_context["top_recommendations"][0]
     assert top_item["id"] == "rec-2"
     assert len(top_item["rationale_excerpt"]) <= 320
+    assert prompt.grounded_context["competitor_candidate_telemetry"]["total_excluded_candidate_count"] == 4
+    assert (
+        prompt.grounded_context["current_candidate_quality_tuning"]["competitor_candidate_directory_penalty"] == 35
+    )
+    assert "tuning_suggestions" in prompt.user_prompt
+    assert "ONLY if justified by provided recommendation and telemetry data" in prompt.user_prompt
 
 
 def test_prompt_appends_additional_recommendation_text_safely() -> None:
@@ -98,6 +125,20 @@ def test_prompt_appends_additional_recommendation_text_safely() -> None:
         by_effort_bucket={"LOW": 1},
         by_priority_band={"high": 1},
         backlog=_recommendations(),
+        competitor_telemetry_summary={
+            "lookback_days": 30,
+            "total_runs": 0,
+            "total_raw_candidate_count": 0,
+            "total_included_candidate_count": 0,
+            "total_excluded_candidate_count": 0,
+            "exclusion_counts_by_reason": {},
+        },
+        current_tuning_values={
+            "competitor_candidate_min_relevance_score": 35,
+            "competitor_candidate_big_box_penalty": 20,
+            "competitor_candidate_directory_penalty": 35,
+            "competitor_candidate_local_alignment_bonus": 10,
+        },
         prompt_text_recommendation="Prefer concise operator language.",
     )
 
@@ -115,6 +156,20 @@ def test_prompt_is_deterministic_for_same_inputs() -> None:
         by_effort_bucket={"HIGH": 1, "LOW": 1},
         by_priority_band={"critical": 1, "high": 1},
         backlog=_recommendations(),
+        competitor_telemetry_summary={
+            "lookback_days": 30,
+            "total_runs": 4,
+            "total_raw_candidate_count": 12,
+            "total_included_candidate_count": 8,
+            "total_excluded_candidate_count": 4,
+            "exclusion_counts_by_reason": {"low_relevance": 2},
+        },
+        current_tuning_values={
+            "competitor_candidate_min_relevance_score": 35,
+            "competitor_candidate_big_box_penalty": 20,
+            "competitor_candidate_directory_penalty": 35,
+            "competitor_candidate_local_alignment_bonus": 10,
+        },
     )
     right = build_seo_recommendation_narrative_prompt(
         run=_run(),
@@ -125,6 +180,20 @@ def test_prompt_is_deterministic_for_same_inputs() -> None:
         by_effort_bucket={"HIGH": 1, "LOW": 1},
         by_priority_band={"critical": 1, "high": 1},
         backlog=_recommendations(),
+        competitor_telemetry_summary={
+            "lookback_days": 30,
+            "total_runs": 4,
+            "total_raw_candidate_count": 12,
+            "total_included_candidate_count": 8,
+            "total_excluded_candidate_count": 4,
+            "exclusion_counts_by_reason": {"low_relevance": 2},
+        },
+        current_tuning_values={
+            "competitor_candidate_min_relevance_score": 35,
+            "competitor_candidate_big_box_penalty": 20,
+            "competitor_candidate_directory_penalty": 35,
+            "competitor_candidate_local_alignment_bonus": 10,
+        },
     )
 
     assert left.system_prompt == right.system_prompt

@@ -735,6 +735,9 @@ def get_seo_recommendation_narrative_service(
     seo_recommendation_narrative_repository: SEORecommendationNarrativeRepository = Depends(
         get_seo_recommendation_narrative_repository
     ),
+    seo_competitor_profile_generation_repository: SEOCompetitorProfileGenerationRepository = Depends(
+        get_seo_competitor_profile_generation_repository
+    ),
     provider: SEORecommendationNarrativeProvider = Depends(get_seo_recommendation_narrative_provider),
 ) -> SEORecommendationNarrativeService:
     return SEORecommendationNarrativeService(
@@ -742,6 +745,7 @@ def get_seo_recommendation_narrative_service(
         business_repository=business_repository,
         seo_recommendation_repository=seo_recommendation_repository,
         seo_recommendation_narrative_repository=seo_recommendation_narrative_repository,
+        seo_competitor_profile_generation_repository=seo_competitor_profile_generation_repository,
         provider=provider,
     )
 

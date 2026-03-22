@@ -86,6 +86,33 @@ def _recommendations() -> list[SEORecommendation]:
     ]
 
 
+def _competitor_telemetry(*, raw: int = 10, excluded: int = 4) -> dict[str, object]:
+    return {
+        "lookback_days": 30,
+        "total_runs": 3,
+        "total_raw_candidate_count": raw,
+        "total_included_candidate_count": max(0, raw - excluded),
+        "total_excluded_candidate_count": max(0, excluded),
+        "exclusion_counts_by_reason": {
+            "duplicate": 1,
+            "low_relevance": 1,
+            "directory_or_aggregator": 1,
+            "big_box_mismatch": 1,
+            "existing_domain_match": 0,
+            "invalid_candidate": 0,
+        },
+    }
+
+
+def _current_tuning_values() -> dict[str, int]:
+    return {
+        "competitor_candidate_min_relevance_score": 35,
+        "competitor_candidate_big_box_penalty": 20,
+        "competitor_candidate_directory_penalty": 35,
+        "competitor_candidate_local_alignment_bonus": 10,
+    }
+
+
 def test_openai_recommendation_narrative_provider_parses_structured_response(monkeypatch) -> None:
     captured_payload: dict[str, object] = {}
 
@@ -110,6 +137,16 @@ def test_openai_recommendation_narrative_provider_parses_structured_response(mon
                                         "Then resolve warning metadata issues",
                                     ],
                                     "recommendation_references": ["rec-2", "unknown-id", "rec-2"],
+                                    "tuning_suggestions": [
+                                        {
+                                            "setting": "competitor_candidate_min_relevance_score",
+                                            "current_value": 35,
+                                            "recommended_value": 30,
+                                            "reason": "High low_relevance exclusions indicate threshold is too strict.",
+                                            "linked_recommendation_ids": ["rec-2"],
+                                            "confidence": "medium",
+                                        }
+                                    ],
                                 },
                             }
                         )
@@ -135,15 +172,27 @@ def test_openai_recommendation_narrative_provider_parses_structured_response(mon
         by_effort_bucket={"LOW": 1, "HIGH": 1},
         by_priority_band={"high": 1, "critical": 1},
         backlog=_recommendations(),
+        competitor_telemetry_summary=_competitor_telemetry(),
+        current_tuning_values=_current_tuning_values(),
     )
 
     assert output.provider_name == "openai"
     assert output.model_name == "gpt-4.1-mini-2026-02-01"
-    assert output.prompt_version == "seo-recommendation-narrative-v1"
+    assert output.prompt_version == "seo-recommendation-narrative-v2"
     assert "Focus on title coverage" in output.narrative_text
     assert output.top_themes == ["metadata quality", "content depth"]
     assert isinstance(output.sections, dict)
     assert output.sections["recommendation_references"] == ["rec-2"]
+    assert output.sections["tuning_suggestions"] == [
+        {
+            "setting": "competitor_candidate_min_relevance_score",
+            "current_value": 35,
+            "recommended_value": 30,
+            "reason": "High low_relevance exclusions indicate threshold is too strict.",
+            "linked_recommendation_ids": ["rec-2"],
+            "confidence": "medium",
+        }
+    ]
     assert output.sections["status_rollup"] == {"in_progress": 1, "open": 1}
     assert captured_payload["model"] == "gpt-4.1-mini"
     assert captured_payload["response_format"]["type"] == "json_schema"
@@ -170,6 +219,8 @@ def test_openai_recommendation_narrative_provider_timeout_is_normalized(monkeypa
             by_effort_bucket={"LOW": 1},
             by_priority_band={"high": 1},
             backlog=_recommendations(),
+            competitor_telemetry_summary=_competitor_telemetry(),
+            current_tuning_values=_current_tuning_values(),
         )
 
     assert exc_info.value.code == "timeout"
@@ -202,6 +253,8 @@ def test_openai_recommendation_narrative_provider_auth_error_is_normalized(monke
             by_effort_bucket={"LOW": 1},
             by_priority_band={"high": 1},
             backlog=_recommendations(),
+            competitor_telemetry_summary=_competitor_telemetry(),
+            current_tuning_values=_current_tuning_values(),
         )
 
     assert exc_info.value.code == "provider_auth_config"
@@ -232,6 +285,187 @@ def test_openai_recommendation_narrative_provider_malformed_content_is_normalize
             by_effort_bucket={"LOW": 1},
             by_priority_band={"high": 1},
             backlog=_recommendations(),
+            competitor_telemetry_summary=_competitor_telemetry(),
+            current_tuning_values=_current_tuning_values(),
         )
 
     assert exc_info.value.code == "invalid_output"
+
+
+def test_openai_recommendation_narrative_provider_rejects_invalid_tuning_suggestion_references(monkeypatch) -> None:
+    def _invalid_suggestions_urlopen(request: urllib.request.Request, timeout: int):  # noqa: ANN001
+        del request, timeout
+        response = {
+            "model": "gpt-4.1-mini",
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "narrative_text": "Narrative",
+                                "top_themes": ["theme"],
+                                "sections": {
+                                    "summary": "Summary",
+                                    "priority_rationale": "Rationale",
+                                    "next_actions": ["Action one"],
+                                    "recommendation_references": ["rec-1"],
+                                    "tuning_suggestions": [
+                                        {
+                                            "setting": "competitor_candidate_directory_penalty",
+                                            "current_value": 35,
+                                            "recommended_value": 30,
+                                            "reason": "Directory exclusions are elevated.",
+                                            "linked_recommendation_ids": ["unknown-rec-id"],
+                                            "confidence": "high",
+                                        }
+                                    ],
+                                },
+                            }
+                        )
+                    }
+                }
+            ],
+        }
+        return _FakeHTTPResponse(json.dumps(response))
+
+    monkeypatch.setattr(urllib.request, "urlopen", _invalid_suggestions_urlopen)
+    provider = OpenAISEORecommendationNarrativeProvider(
+        api_key="sk-test",
+        model_name="gpt-4.1-mini",
+    )
+
+    with pytest.raises(SEORecommendationNarrativeProviderError) as exc_info:
+        provider.generate_narrative(
+            run=_run(),
+            recommendations=_recommendations(),
+            by_status={"open": 1},
+            by_category={"SEO": 1},
+            by_severity={"WARNING": 1},
+            by_effort_bucket={"LOW": 1},
+            by_priority_band={"high": 1},
+            backlog=_recommendations(),
+            competitor_telemetry_summary=_competitor_telemetry(),
+            current_tuning_values=_current_tuning_values(),
+        )
+
+    assert exc_info.value.code == "schema_validation"
+
+
+def test_openai_recommendation_narrative_provider_rejects_out_of_bounds_tuning_values(monkeypatch) -> None:
+    def _out_of_bounds_suggestions_urlopen(request: urllib.request.Request, timeout: int):  # noqa: ANN001
+        del request, timeout
+        response = {
+            "model": "gpt-4.1-mini",
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "narrative_text": "Narrative",
+                                "top_themes": ["theme"],
+                                "sections": {
+                                    "summary": "Summary",
+                                    "priority_rationale": "Rationale",
+                                    "next_actions": ["Action one"],
+                                    "recommendation_references": ["rec-1"],
+                                    "tuning_suggestions": [
+                                        {
+                                            "setting": "competitor_candidate_directory_penalty",
+                                            "current_value": 35,
+                                            "recommended_value": 500,
+                                            "reason": "Directory exclusions are elevated.",
+                                            "linked_recommendation_ids": ["rec-1"],
+                                            "confidence": "high",
+                                        }
+                                    ],
+                                },
+                            }
+                        )
+                    }
+                }
+            ],
+        }
+        return _FakeHTTPResponse(json.dumps(response))
+
+    monkeypatch.setattr(urllib.request, "urlopen", _out_of_bounds_suggestions_urlopen)
+    provider = OpenAISEORecommendationNarrativeProvider(
+        api_key="sk-test",
+        model_name="gpt-4.1-mini",
+    )
+
+    with pytest.raises(SEORecommendationNarrativeProviderError) as exc_info:
+        provider.generate_narrative(
+            run=_run(),
+            recommendations=_recommendations(),
+            by_status={"open": 1},
+            by_category={"SEO": 1},
+            by_severity={"WARNING": 1},
+            by_effort_bucket={"LOW": 1},
+            by_priority_band={"high": 1},
+            backlog=_recommendations(),
+            competitor_telemetry_summary=_competitor_telemetry(),
+            current_tuning_values=_current_tuning_values(),
+        )
+
+    assert exc_info.value.code == "schema_validation"
+
+
+def test_openai_recommendation_narrative_provider_suppresses_tuning_suggestions_for_balanced_telemetry(
+    monkeypatch,
+) -> None:
+    def _balanced_urlopen(request: urllib.request.Request, timeout: int):  # noqa: ANN001
+        del request, timeout
+        response = {
+            "model": "gpt-4.1-mini",
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "narrative_text": "Narrative",
+                                "top_themes": ["theme"],
+                                "sections": {
+                                    "summary": "Summary",
+                                    "priority_rationale": "Rationale",
+                                    "next_actions": ["Action one"],
+                                    "recommendation_references": ["rec-1"],
+                                    "tuning_suggestions": [
+                                        {
+                                            "setting": "competitor_candidate_big_box_penalty",
+                                            "current_value": 20,
+                                            "recommended_value": 25,
+                                            "reason": "Potential local mismatch.",
+                                            "linked_recommendation_ids": ["rec-1"],
+                                            "confidence": "low",
+                                        }
+                                    ],
+                                },
+                            }
+                        )
+                    }
+                }
+            ],
+        }
+        return _FakeHTTPResponse(json.dumps(response))
+
+    monkeypatch.setattr(urllib.request, "urlopen", _balanced_urlopen)
+    provider = OpenAISEORecommendationNarrativeProvider(
+        api_key="sk-test",
+        model_name="gpt-4.1-mini",
+    )
+
+    output = provider.generate_narrative(
+        run=_run(),
+        recommendations=_recommendations(),
+        by_status={"open": 1},
+        by_category={"SEO": 1},
+        by_severity={"WARNING": 1},
+        by_effort_bucket={"LOW": 1},
+        by_priority_band={"high": 1},
+        backlog=_recommendations(),
+        competitor_telemetry_summary=_competitor_telemetry(raw=10, excluded=0),
+        current_tuning_values=_current_tuning_values(),
+    )
+
+    assert output.sections is not None
+    assert output.sections["tuning_suggestions"] == []
