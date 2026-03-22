@@ -292,6 +292,26 @@ def test_patch_business_settings_rejects_extreme_crawl_page_limit(db_session, se
     assert _detail_contains_field(response.json()["detail"], "seo_audit_crawl_max_pages")
 
 
+def test_patch_business_settings_partial_crawl_update_ignores_invalid_competitor_settings(
+    db_session,
+    seeded_business,
+) -> None:
+    seeded_business.competitor_candidate_min_relevance_score = 999
+    db_session.commit()
+
+    client = _make_client(db_session, business_id=seeded_business.id)
+
+    response = client.patch(
+        f"/api/businesses/{seeded_business.id}/settings",
+        json={"seo_audit_crawl_max_pages": 250},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["seo_audit_crawl_max_pages"] == 250
+    assert payload["competitor_candidate_min_relevance_score"] == 999
+
+
 def test_patch_business_settings_accepts_candidate_quality_tuning_bounds(db_session, seeded_business) -> None:
     client = _make_client(db_session, business_id=seeded_business.id)
 
@@ -311,6 +331,26 @@ def test_patch_business_settings_accepts_candidate_quality_tuning_bounds(db_sess
     assert payload["competitor_candidate_big_box_penalty"] == 50
     assert payload["competitor_candidate_directory_penalty"] == 0
     assert payload["competitor_candidate_local_alignment_bonus"] == 50
+
+
+def test_patch_business_settings_partial_candidate_update_ignores_invalid_crawl_limit(
+    db_session,
+    seeded_business,
+) -> None:
+    seeded_business.seo_audit_crawl_max_pages = 1000
+    db_session.commit()
+
+    client = _make_client(db_session, business_id=seeded_business.id)
+
+    response = client.patch(
+        f"/api/businesses/{seeded_business.id}/settings",
+        json={"competitor_candidate_min_relevance_score": 40},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["competitor_candidate_min_relevance_score"] == 40
+    assert payload["seo_audit_crawl_max_pages"] == 1000
 
 
 def test_patch_business_settings_rejects_candidate_min_relevance_out_of_range(db_session, seeded_business) -> None:

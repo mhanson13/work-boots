@@ -546,6 +546,31 @@ describe("admin page compatibility route", () => {
     await screen.findByText("SEO crawl page limit updated to 250.");
   });
 
+  it("saves crawl limit even when competitor quality inputs are currently invalid", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockUpdateBusinessSettings.mockResolvedValueOnce(
+      buildBusinessSettings({
+        seo_audit_crawl_max_pages: 250,
+        updated_at: "2026-03-22T00:00:00Z",
+      }),
+    );
+
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    fireEvent.change(screen.getByLabelText("Minimum Relevance Score"), { target: { value: "101" } });
+    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), { target: { value: "250" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Crawl Limit" }));
+
+    await waitFor(() =>
+      expect(mockUpdateBusinessSettings).toHaveBeenCalledWith("token-1", "biz-1", {
+        seo_audit_crawl_max_pages: 250,
+      }),
+    );
+    await screen.findByText("SEO crawl page limit updated to 250.");
+  });
+
   it("rejects crawl page limit below minimum (4)", async () => {
     mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
     mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
@@ -646,5 +671,40 @@ describe("admin page compatibility route", () => {
     expect(
       screen.getByText("Minimum relevance score must be an integer between 0 and 100."),
     ).toBeInTheDocument();
+  });
+
+  it("saves competitor quality settings even when crawl input is currently invalid", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockUpdateBusinessSettings.mockResolvedValueOnce(
+      buildBusinessSettings({
+        seo_audit_crawl_max_pages: 25,
+        competitor_candidate_min_relevance_score: 45,
+        competitor_candidate_big_box_penalty: 25,
+        competitor_candidate_directory_penalty: 30,
+        competitor_candidate_local_alignment_bonus: 15,
+        updated_at: "2026-03-22T00:00:00Z",
+      }),
+    );
+
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), { target: { value: "251" } });
+    fireEvent.change(screen.getByLabelText("Minimum Relevance Score"), { target: { value: "45" } });
+    fireEvent.change(screen.getByLabelText("Big-Box Mismatch Penalty"), { target: { value: "25" } });
+    fireEvent.change(screen.getByLabelText("Directory/Aggregator Penalty"), { target: { value: "30" } });
+    fireEvent.change(screen.getByLabelText("Local Alignment Bonus"), { target: { value: "15" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Candidate Quality Settings" }));
+
+    await waitFor(() =>
+      expect(mockUpdateBusinessSettings).toHaveBeenCalledWith("token-1", "biz-1", {
+        competitor_candidate_min_relevance_score: 45,
+        competitor_candidate_big_box_penalty: 25,
+        competitor_candidate_directory_penalty: 30,
+        competitor_candidate_local_alignment_bonus: 15,
+      }),
+    );
+    await screen.findByText("AI competitor candidate quality settings updated.");
   });
 });

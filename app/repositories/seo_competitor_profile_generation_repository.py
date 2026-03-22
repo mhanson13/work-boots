@@ -66,6 +66,86 @@ class SEOCompetitorProfileGenerationRepository:
         )
         return list(self.session.scalars(stmt))
 
+    def summarize_candidate_telemetry_totals(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+        created_after: datetime,
+    ) -> tuple[int, int, int, int]:
+        stmt = select(
+            func.count(SEOCompetitorProfileGenerationRun.id),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            SEOCompetitorProfileGenerationRun.raw_candidate_count >= 0,
+                            SEOCompetitorProfileGenerationRun.raw_candidate_count,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            SEOCompetitorProfileGenerationRun.included_candidate_count >= 0,
+                            SEOCompetitorProfileGenerationRun.included_candidate_count,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            SEOCompetitorProfileGenerationRun.excluded_candidate_count >= 0,
+                            SEOCompetitorProfileGenerationRun.excluded_candidate_count,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+        ).where(
+            SEOCompetitorProfileGenerationRun.business_id == business_id,
+            SEOCompetitorProfileGenerationRun.site_id == site_id,
+            SEOCompetitorProfileGenerationRun.created_at >= created_after,
+        )
+        row = self.session.execute(stmt).one()
+        return (
+            int(row[0] or 0),
+            int(row[1] or 0),
+            int(row[2] or 0),
+            int(row[3] or 0),
+        )
+
+    def list_exclusion_reason_counts_for_business_site_created_after(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+        created_after: datetime,
+    ) -> list[dict[str, int]]:
+        stmt = (
+            select(SEOCompetitorProfileGenerationRun.exclusion_counts_by_reason)
+            .where(SEOCompetitorProfileGenerationRun.business_id == business_id)
+            .where(SEOCompetitorProfileGenerationRun.site_id == site_id)
+            .where(SEOCompetitorProfileGenerationRun.created_at >= created_after)
+        )
+        rows = self.session.scalars(stmt).all()
+        normalized: list[dict[str, int]] = []
+        for item in rows:
+            if isinstance(item, dict):
+                normalized.append(item)
+            else:
+                normalized.append({})
+        return normalized
+
     def get_run_for_business(
         self,
         business_id: str,

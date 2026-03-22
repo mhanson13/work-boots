@@ -20,6 +20,20 @@ _COMPETITOR_CANDIDATE_DIRECTORY_PENALTY_MIN = 0
 _COMPETITOR_CANDIDATE_DIRECTORY_PENALTY_MAX = 50
 _COMPETITOR_CANDIDATE_LOCAL_ALIGNMENT_BONUS_MIN = 0
 _COMPETITOR_CANDIDATE_LOCAL_ALIGNMENT_BONUS_MAX = 50
+_NOTIFICATION_SETTING_FIELDS = {
+    "notification_phone",
+    "notification_email",
+    "sms_enabled",
+    "email_enabled",
+    "customer_auto_ack_enabled",
+    "contractor_alerts_enabled",
+}
+_COMPETITOR_CANDIDATE_SETTING_FIELDS = {
+    "competitor_candidate_min_relevance_score",
+    "competitor_candidate_big_box_penalty",
+    "competitor_candidate_directory_penalty",
+    "competitor_candidate_local_alignment_bonus",
+}
 
 
 class BusinessSettingsNotFoundError(ValueError):
@@ -46,7 +60,9 @@ class BusinessSettingsService:
 
         updates = payload.model_dump(exclude_unset=True)
         effective = self._effective_settings(business=business, updates=updates)
-        self._validate_effective_settings(effective)
+        # Validate only the setting sections touched by this PATCH payload so one
+        # invalid section cannot poison updates to unrelated admin controls.
+        self._validate_effective_settings(updates=updates, effective=effective)
 
         for field_name, value in updates.items():
             setattr(business, field_name, value)
@@ -87,7 +103,15 @@ class BusinessSettingsService:
             "timezone": updates.get("timezone", business.timezone),
         }
 
-    def _validate_effective_settings(self, effective: dict) -> None:
+    def _validate_effective_settings(self, *, updates: dict, effective: dict) -> None:
+        if _NOTIFICATION_SETTING_FIELDS.intersection(updates.keys()):
+            self._validate_notification_settings(effective)
+        if "seo_audit_crawl_max_pages" in updates:
+            self._validate_crawl_page_limit(effective)
+        if _COMPETITOR_CANDIDATE_SETTING_FIELDS.intersection(updates.keys()):
+            self._validate_competitor_candidate_quality_settings(effective)
+
+    def _validate_notification_settings(self, effective: dict) -> None:
         sms_enabled = bool(effective["sms_enabled"])
         email_enabled = bool(effective["email_enabled"])
         sms_channel_usable = sms_enabled and self._is_valid_phone_e164(effective["notification_phone"])
@@ -115,6 +139,7 @@ class BusinessSettingsService:
                 "At least one channel (sms or email) must be enabled when customer_auto_ack_enabled is true."
             )
 
+    def _validate_crawl_page_limit(self, effective: dict) -> None:
         crawl_max_pages = int(effective["seo_audit_crawl_max_pages"])
         if crawl_max_pages < _SEO_AUDIT_CRAWL_MAX_PAGES_MIN or crawl_max_pages > _SEO_AUDIT_CRAWL_MAX_PAGES_MAX:
             raise BusinessSettingsValidationError(
@@ -124,6 +149,7 @@ class BusinessSettingsService:
                 )
             )
 
+    def _validate_competitor_candidate_quality_settings(self, effective: dict) -> None:
         min_relevance_score = int(effective["competitor_candidate_min_relevance_score"])
         if (
             min_relevance_score < _COMPETITOR_CANDIDATE_MIN_RELEVANCE_SCORE_MIN

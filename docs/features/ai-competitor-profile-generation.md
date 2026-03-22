@@ -103,6 +103,8 @@ Bounded exclusion telemetry is persisted at run level for tuning:
      - `total_included_candidate_count`
      - `total_excluded_candidate_count`
      - `exclusion_counts_by_reason` (bounded deterministic keys only).
+   - Numeric cross-run totals are computed with DB-side aggregation queries for scalability.
+   - Exclusion reasons remain bounded and are aggregated from scoped reason-count payloads only (no raw candidate payload reads).
    - Exposed via site-scoped read endpoint.
 2. Cleanup outcome:
    - Retention cleanup writes a feature-specific execution record (`completed|failed`, counts, timestamps, safe error summary).

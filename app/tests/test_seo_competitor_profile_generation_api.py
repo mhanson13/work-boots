@@ -1800,6 +1800,77 @@ def test_generation_summary_endpoint_returns_zero_candidate_telemetry_when_no_ru
     }
 
 
+def test_generation_summary_endpoint_includes_failed_run_candidate_telemetry_totals(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
+    )
+    site_id = _create_site(client, seeded_business.id)
+
+    completed_run_id = _create_generation_run(client, seeded_business.id, site_id)["run"]["id"]
+    failed_run_id = _create_generation_run(client, seeded_business.id, site_id)["run"]["id"]
+
+    completed_run = (
+        db_session.query(SEOCompetitorProfileGenerationRun)
+        .filter(SEOCompetitorProfileGenerationRun.business_id == seeded_business.id)
+        .filter(SEOCompetitorProfileGenerationRun.id == completed_run_id)
+        .one()
+    )
+    completed_run.status = "completed"
+    completed_run.generated_draft_count = 2
+    completed_run.raw_candidate_count = 2
+    completed_run.included_candidate_count = 2
+    completed_run.excluded_candidate_count = 0
+    completed_run.exclusion_counts_by_reason = {
+        "duplicate": 0,
+        "low_relevance": 0,
+        "directory_or_aggregator": 0,
+        "big_box_mismatch": 0,
+        "existing_domain_match": 0,
+        "invalid_candidate": 0,
+    }
+    completed_run.completed_at = utc_now()
+    db_session.add(completed_run)
+
+    failed_run = (
+        db_session.query(SEOCompetitorProfileGenerationRun)
+        .filter(SEOCompetitorProfileGenerationRun.business_id == seeded_business.id)
+        .filter(SEOCompetitorProfileGenerationRun.id == failed_run_id)
+        .one()
+    )
+    failed_run.status = "failed"
+    failed_run.generated_draft_count = 0
+    failed_run.raw_candidate_count = 5
+    failed_run.included_candidate_count = 0
+    failed_run.excluded_candidate_count = 5
+    failed_run.exclusion_counts_by_reason = {
+        "duplicate": 0,
+        "low_relevance": 5,
+        "directory_or_aggregator": 0,
+        "big_box_mismatch": 0,
+        "existing_domain_match": 0,
+        "invalid_candidate": 0,
+    }
+    failed_run.completed_at = utc_now()
+    db_session.add(failed_run)
+    db_session.commit()
+
+    summary_response = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/summary"
+    )
+    assert summary_response.status_code == 200
+    payload = summary_response.json()
+
+    assert payload["total_runs"] == 2
+    assert payload["total_raw_candidate_count"] == 7
+    assert payload["total_included_candidate_count"] == 2
+    assert payload["total_excluded_candidate_count"] == 5
+    assert payload["exclusion_counts_by_reason"]["low_relevance"] == 5
+
+
 def test_generation_summary_endpoint_enforces_tenant_scope(db_session, seeded_business) -> None:
     other_business = _seed_other_business(db_session)
     deferred_executor = _DeferredRunExecutor()

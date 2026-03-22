@@ -603,19 +603,27 @@ class SEOCompetitorProfileGenerationService:
             site_id=site_id,
             created_after=window_start,
         )
-        runs_in_window = self.seo_competitor_profile_generation_repository.list_runs_for_business_site_created_after(
+        (
+            total_runs,
+            total_raw_candidate_count,
+            total_included_candidate_count,
+            total_excluded_candidate_count,
+        ) = self.seo_competitor_profile_generation_repository.summarize_candidate_telemetry_totals(
             business_id=business_id,
             site_id=site_id,
             created_after=window_start,
         )
-        total_runs = len(runs_in_window)
-        total_raw_candidate_count = sum(max(0, int(item.raw_candidate_count or 0)) for item in runs_in_window)
-        total_included_candidate_count = sum(max(0, int(item.included_candidate_count or 0)) for item in runs_in_window)
-        total_excluded_candidate_count = sum(max(0, int(item.excluded_candidate_count or 0)) for item in runs_in_window)
+        exclusion_reason_counts = (
+            self.seo_competitor_profile_generation_repository.list_exclusion_reason_counts_for_business_site_created_after(
+                business_id=business_id,
+                site_id=site_id,
+                created_after=window_start,
+            )
+        )
 
         exclusion_counts_by_reason = default_exclusion_reason_counts()
-        for run in runs_in_window:
-            normalized_counts = self._normalize_exclusion_counts_by_reason(run.exclusion_counts_by_reason)
+        for raw_counts in exclusion_reason_counts:
+            normalized_counts = self._normalize_exclusion_counts_by_reason(raw_counts)
             for reason in EXCLUSION_REASON_KEYS:
                 exclusion_counts_by_reason[reason] += normalized_counts[reason]
 
