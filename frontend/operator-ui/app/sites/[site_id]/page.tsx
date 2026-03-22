@@ -114,6 +114,7 @@ type StartHereAction =
       kind: "tuning";
       title: string;
       detail: string;
+      whyThisFirst: string;
       buttonLabel: string;
       targetId: string;
       recommendationRunId: string;
@@ -125,6 +126,7 @@ type StartHereAction =
       kind: "recommendation";
       title: string;
       detail: string;
+      whyThisFirst: string;
       buttonLabel: string;
       targetId: string;
     }
@@ -132,6 +134,7 @@ type StartHereAction =
       kind: "none";
       title: string;
       detail: string;
+      whyThisFirst: string;
     };
 
 function formatDateTime(value: string | null): string {
@@ -678,6 +681,14 @@ export default function SiteWorkspacePage() {
       if (best) {
         const settingLabel = formatTuningSettingLabel(best.suggestion.setting);
         const hasPreview = Boolean(best.preview);
+        let whyThisFirst = "strongest available tuning signal in the latest completed run.";
+        if (hasPreview) {
+          whyThisFirst = "highest estimated impact on included competitors.";
+        } else if (best.linkedRecommendationCount > 1) {
+          whyThisFirst = "linked to multiple recommendations in the latest completed run.";
+        } else if (best.suggestion.confidence === "high") {
+          whyThisFirst = "high-confidence tuning adjustment for the latest completed run.";
+        }
         const detail = hasPreview
           ? `Expected: ${formatSignedDelta(
               best.preview!.estimated_impact.estimated_included_candidate_delta,
@@ -687,6 +698,7 @@ export default function SiteWorkspacePage() {
           kind: "tuning",
           title: `Adjust ${settingLabel.toLowerCase()} from ${best.suggestion.current_value} -> ${best.suggestion.recommended_value}`,
           detail,
+          whyThisFirst,
           buttonLabel: hasPreview ? "Focus Tuning Suggestion" : "Preview and Focus",
           targetId: tuningSuggestionCardId(latestCompletedRecommendationRun.id, best.suggestion),
           recommendationRunId: latestCompletedRecommendationRun.id,
@@ -705,6 +717,10 @@ export default function SiteWorkspacePage() {
           }
           return right.updated_at.localeCompare(left.updated_at);
         })[0] || latestCompletedRecommendations[0];
+      const highestPriorityScore = highestPriorityRecommendation.priority_score;
+      const tiedTopPriorityRecommendations = latestCompletedRecommendations.filter(
+        (item) => item.priority_score === highestPriorityScore,
+      ).length;
 
       const impact =
         highestPriorityRecommendation.priority_band === "critical" ||
@@ -718,6 +734,10 @@ export default function SiteWorkspacePage() {
         kind: "recommendation",
         title: highestPriorityRecommendation.title,
         detail: `Marked ${impact}`,
+        whyThisFirst:
+          tiedTopPriorityRecommendations > 1
+            ? `tied for highest priority score (${highestPriorityScore}) and updated most recently.`
+            : `highest priority score (${highestPriorityScore}) in the latest completed run.`,
         buttonLabel: "Focus Recommendation",
         targetId: recommendationRowId(highestPriorityRecommendation.id),
       };
@@ -727,6 +747,7 @@ export default function SiteWorkspacePage() {
       kind: "none",
       title: "No immediate action available",
       detail: "Run analysis to generate recommendations and tuning guidance.",
+      whyThisFirst: "no completed recommendation run or tuning suggestion is available yet.",
     };
   }, [
     latestCompletedRecommendationRun,
@@ -1940,6 +1961,7 @@ export default function SiteWorkspacePage() {
           <span className="hint muted">Start Here</span>
           <strong>{startHereAction.title}</strong>
           <span className="hint">{startHereAction.detail}</span>
+          <span className="hint muted">Why this first: {startHereAction.whyThisFirst}</span>
           {startHereAction.kind !== "none" ? (
             <button type="button" className="button button-secondary" onClick={() => void handleStartHereAction()}>
               {startHereAction.buttonLabel}

@@ -1764,6 +1764,11 @@ describe("site workspace timeline controls", () => {
     await screen.findByText(/Estimated increase of 2 included candidates over the last 30 days of telemetry\./);
     expect(screen.getByText("Impact hint: +2 candidates included")).toBeInTheDocument();
     expect(screen.getByText(/Included delta: \+2; excluded delta: -2/)).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("start-here-section")).getByText(
+        "Why this first: highest estimated impact on included competitors.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("tuning-suggestion-card")).toHaveClass("start-here-target-active");
     expect(mockPreviewRecommendationTuningImpact).toHaveBeenCalledWith("token-1", "biz-1", "site-1", {
       recommendation_run_id: "run-1",
@@ -1889,6 +1894,11 @@ describe("site workspace timeline controls", () => {
     await waitFor(() =>
       expect(within(startHereSection).getByText("Adjust directory penalty from 35 -> 25")).toBeInTheDocument(),
     );
+    expect(
+      within(startHereSection).getByText(
+        "Why this first: linked to multiple recommendations in the latest completed run.",
+      ),
+    ).toBeInTheDocument();
     expect(within(startHereSection).getByRole("button", { name: "Preview and Focus" })).toBeInTheDocument();
   });
 
@@ -2418,6 +2428,11 @@ describe("site workspace timeline controls", () => {
     expect(within(startHereSection).getByText("Start Here")).toBeInTheDocument();
     expect(within(startHereSection).getByText("Fix title tags")).toBeInTheDocument();
     expect(within(startHereSection).getByText("Marked HIGH IMPACT")).toBeInTheDocument();
+    expect(
+      within(startHereSection).getByText(
+        "Why this first: highest priority score (80) in the latest completed run.",
+      ),
+    ).toBeInTheDocument();
     const focusRecommendationButton = within(startHereSection).getByRole("button", { name: "Focus Recommendation" });
     expect(focusRecommendationButton).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("You have 1 actionable improvements")).toBeInTheDocument());
@@ -2475,6 +2490,9 @@ describe("site workspace timeline controls", () => {
     await screen.findByText("No immediate action available");
     expect(
       screen.getByText("Run analysis to generate recommendations and tuning guidance."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Why this first: no completed recommendation run or tuning suggestion is available yet."),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Focus Recommendation|Preview and Focus|Focus Tuning Suggestion/i })).not.toBeInTheDocument();
     await screen.findByText(/No completed recommendation run is available yet\./);
