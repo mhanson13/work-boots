@@ -190,12 +190,12 @@ def get_settings() -> Settings:
             )
 
     return Settings(
-        app_name=os.getenv("APP_NAME", "mbsrn Lead Intake"),
+        app_name=os.getenv("APP_NAME", "MBSRN Operator Platform"),
         app_env=app_env,
         environment=environment,
         database_url=os.getenv(
             "DATABASE_URL",
-            "postgresql+psycopg://postgres:postgres@localhost:5432/work_boots_console",
+            "postgresql+psycopg://postgres:postgres@localhost:5432/mbsrn",
         ),
         db_auto_create_local=_env_bool(
             "DB_AUTO_CREATE_LOCAL",
@@ -239,8 +239,8 @@ def get_settings() -> Settings:
         google_oauth_token_encryption_keys=google_oauth_token_encryption_keys,
         google_oauth_refresh_skew_seconds=int(os.getenv("GOOGLE_OAUTH_REFRESH_SKEW_SECONDS", "120")),
         app_session_secret=app_session_secret,
-        app_session_issuer=os.getenv("APP_SESSION_ISSUER", "work-boots-console"),
-        app_session_audience=os.getenv("APP_SESSION_AUDIENCE", "work-boots-api"),
+        app_session_issuer=os.getenv("APP_SESSION_ISSUER", "mbsrn-operator"),
+        app_session_audience=os.getenv("APP_SESSION_AUDIENCE", "mbsrn-api"),
         app_session_algorithm=os.getenv("APP_SESSION_ALGORITHM", "HS256"),
         app_session_ttl_seconds=int(os.getenv("APP_SESSION_TTL_SECONDS", "3600")),
         app_session_refresh_ttl_seconds=int(os.getenv("APP_SESSION_REFRESH_TTL_SECONDS", "2592000")),

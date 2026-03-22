@@ -757,7 +757,7 @@ Fix:
 
 ## 13) Cross References
 - Deployment pipeline reference: `docs/deployment-gke-cicd.md`
-- Phase 4 roadmap: `docs/phase4-platform-operationalization-roadmap.md`
+- Phase 4 roadmap: `docs/roadmap/phase4-platform-operationalization-roadmap.md`
 - Security architecture: `docs/security-architecture.md`
 - Runtime validation runbook: `docs/phase4-runtime-validation-runbook.md`
 - Workflow sources:

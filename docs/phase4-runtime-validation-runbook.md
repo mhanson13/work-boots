@@ -280,6 +280,6 @@ Phase 4 runtime signoff is complete only when all are true:
 ---
 
 Use this runbook together with:
-- `docs/phase4-platform-operationalization-roadmap.md`
+- `docs/roadmap/phase4-platform-operationalization-roadmap.md`
 - `docs/security-architecture.md`
 - `docs/deployment-gke-cicd.md`

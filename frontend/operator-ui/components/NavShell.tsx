@@ -37,7 +37,7 @@ export function NavShell({ children }: { children: React.ReactNode }) {
       <header className="topnav">
         <div className="topnav-inner">
           <div>
-            <strong>mbsrn Operator</strong>
+            <strong>MBSRN Operator Workspace</strong>
           </div>
           <nav className="topnav-links">
             {links

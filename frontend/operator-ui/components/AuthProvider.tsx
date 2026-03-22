@@ -3,8 +3,10 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { AuthPrincipal } from "../lib/api/types";
 
-const STORAGE_ACCESS_TOKEN = "workboots.operator.access_token";
-const STORAGE_PRINCIPAL = "workboots.operator.principal";
+const STORAGE_ACCESS_TOKEN = "mbsrn.operator.access_token";
+const STORAGE_PRINCIPAL = "mbsrn.operator.principal";
+const LEGACY_STORAGE_ACCESS_TOKEN = "workboots.operator.access_token";
+const LEGACY_STORAGE_PRINCIPAL = "workboots.operator.principal";
 const LEGACY_STORAGE_TOKEN = "workboots.operator.token";
 
 interface AuthState {
@@ -35,8 +37,13 @@ function readStoredSession(): { token: string | null; principal: AuthPrincipal |
   if (typeof window === "undefined") {
     return { token: null, principal: null };
   }
-  const storedToken = window.sessionStorage.getItem(STORAGE_ACCESS_TOKEN);
-  const storedPrincipal = readStoredPrincipal(window.sessionStorage.getItem(STORAGE_PRINCIPAL));
+  const storedToken =
+    window.sessionStorage.getItem(STORAGE_ACCESS_TOKEN) ||
+    window.sessionStorage.getItem(LEGACY_STORAGE_ACCESS_TOKEN);
+  const storedPrincipal = readStoredPrincipal(
+    window.sessionStorage.getItem(STORAGE_PRINCIPAL) ||
+      window.sessionStorage.getItem(LEGACY_STORAGE_PRINCIPAL),
+  );
   return {
     token: storedToken || null,
     principal: storedPrincipal,
@@ -64,6 +71,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setRefreshToken(nextRefreshToken || null);
         window.sessionStorage.setItem(STORAGE_ACCESS_TOKEN, nextToken);
         window.sessionStorage.setItem(STORAGE_PRINCIPAL, JSON.stringify(nextPrincipal));
+        window.sessionStorage.removeItem(LEGACY_STORAGE_ACCESS_TOKEN);
+        window.sessionStorage.removeItem(LEGACY_STORAGE_PRINCIPAL);
       },
       clearSession: () => {
         setToken(null);
@@ -71,6 +80,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setPrincipal(null);
         window.sessionStorage.removeItem(STORAGE_ACCESS_TOKEN);
         window.sessionStorage.removeItem(STORAGE_PRINCIPAL);
+        window.sessionStorage.removeItem(LEGACY_STORAGE_ACCESS_TOKEN);
+        window.sessionStorage.removeItem(LEGACY_STORAGE_PRINCIPAL);
       },
     };
   }, [token, refreshToken, principal]);

@@ -7,7 +7,8 @@ import { useAuth } from "./AuthProvider";
 import { fetchSites } from "../lib/api/client";
 import type { SEOSite } from "../lib/api/types";
 
-const STORAGE_SELECTED_SITE_PREFIX = "workboots.operator.selected_site_id";
+const STORAGE_SELECTED_SITE_PREFIX = "mbsrn.operator.selected_site_id";
+const LEGACY_STORAGE_SELECTED_SITE_PREFIX = "workboots.operator.selected_site_id";
 
 interface OperatorContextResult {
   loading: boolean;
@@ -28,8 +29,9 @@ function readStoredSelectedSiteId(businessId: string): string | null {
   if (typeof window === "undefined") {
     return null;
   }
-  const key = selectedSiteStorageKey(businessId);
-  const value = window.sessionStorage.getItem(key);
+  const value =
+    window.sessionStorage.getItem(selectedSiteStorageKey(businessId)) ||
+    window.sessionStorage.getItem(`${LEGACY_STORAGE_SELECTED_SITE_PREFIX}.${businessId}`);
   return value && value.trim() ? value : null;
 }
 
@@ -40,8 +42,10 @@ function writeStoredSelectedSiteId(businessId: string, siteId: string | null): v
   const key = selectedSiteStorageKey(businessId);
   if (siteId && siteId.trim()) {
     window.sessionStorage.setItem(key, siteId);
+    window.sessionStorage.removeItem(`${LEGACY_STORAGE_SELECTED_SITE_PREFIX}.${businessId}`);
   } else {
     window.sessionStorage.removeItem(key);
+    window.sessionStorage.removeItem(`${LEGACY_STORAGE_SELECTED_SITE_PREFIX}.${businessId}`);
   }
 }
 

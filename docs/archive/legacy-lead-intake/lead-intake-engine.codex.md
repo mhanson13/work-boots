@@ -85,7 +85,7 @@ Output format:
 ## Recommended File Location
 
 ```text
-docs/lead-intake-engine.codex.md
+docs/archive/legacy-lead-intake/lead-intake-engine.codex.md
 ```
 
 ---
@@ -93,6 +93,6 @@ docs/lead-intake-engine.codex.md
 ## Notes for Use
 
 - Paste the prompt into Codex as-is.
-- Use it after the `lead-intake-engine.md` spec is already in the repo.
+- Use it after the archived `lead-intake-engine.md` spec is available under this folder.
 - Keep generated output lightweight and implementation-focused.
 - Prioritize manual entry and email parsing before more advanced integrations.

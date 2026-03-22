@@ -9,4 +9,4 @@ Canonical documentation has moved to:
 - [Token Rotation Runbook](token-rotation.md)
 
 Roadmap-only security planning remains in:
-- [Phase 5 Security Maturity Roadmap](phase5-security-maturity-roadmap.md)
+- [Phase 5 Security Maturity Roadmap](roadmap/phase5-security-maturity-roadmap.md)

@@ -11,7 +11,7 @@ Target repo: mbsrn
 
 SEO.ai is a new business-scoped capability inside mbsrn that helps contractor businesses improve local search visibility through a combination of deterministic website analysis, competitor gap detection, AI-assisted recommendations, and AI-generated draft content.
 
-SEO.ai extends the existing mbsrn product rather than living as a separate system. mbsrn already supports business-scoped operations, persisted principals, credential lifecycle, and project documentation under `docs/`, which makes it a suitable foundation for this module. The current repo is a monolithic FastAPI service for contractor lead intake and follow-up operations, so SEO.ai should fit that architecture and documentation pattern.
+SEO.ai extends the existing mbsrn product rather than living as a separate system. mbsrn already supports business-scoped operations, persisted principals, credential lifecycle, and project documentation under `docs/`, which makes it a suitable foundation for this module. The current repo is a monolithic FastAPI service for operator-facing SEO operations and follow-up workflows, so SEO.ai should fit that architecture and documentation pattern.
 
 ---
 

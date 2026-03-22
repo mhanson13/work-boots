@@ -42,9 +42,9 @@ test("recommendations queue smoke flow keeps route context and supports basic ac
   const expectedQueueQuery = "status=open&sort_by=created_at&sort_order=asc&page=2&page_size=50";
 
   await page.addInitScript((principalBusinessId: string) => {
-    window.sessionStorage.setItem("workboots.operator.access_token", "smoke-access-token");
+    window.sessionStorage.setItem("mbsrn.operator.access_token", "smoke-access-token");
     window.sessionStorage.setItem(
-      "workboots.operator.principal",
+      "mbsrn.operator.principal",
       JSON.stringify({
         business_id: principalBusinessId,
         principal_id: "principal-smoke-1",
