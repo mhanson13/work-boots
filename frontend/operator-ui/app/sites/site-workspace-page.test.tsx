@@ -1751,13 +1751,14 @@ describe("site workspace timeline controls", () => {
 
     await screen.findByRole("heading", { name: "Recommendation Runs and Narratives" });
     expect((await screen.findAllByRole("link", { name: "run-1" })).length).toBeGreaterThan(0);
+    expect(screen.getByText("Minimum relevance score")).toBeInTheDocument();
+    expect(screen.getByText("Current -> Suggested:", { exact: false })).toHaveTextContent("35");
     expect(
-      screen.getByText(
-        "Minimum relevance score: 35 -> 30 (High low_relevance exclusions indicate threshold is too strict.)",
-      ),
+      screen.getByText("High low_relevance exclusions indicate threshold is too strict."),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Preview Impact" }));
     await screen.findByText(/Estimated increase of 2 included candidates over the last 30 days of telemetry\./);
+    expect(screen.getByText("Impact hint: +2 candidates included")).toBeInTheDocument();
     expect(screen.getByText(/Included delta: \+2; excluded delta: -2/)).toBeInTheDocument();
     expect(mockPreviewRecommendationTuningImpact).toHaveBeenCalledWith("token-1", "biz-1", "site-1", {
       recommendation_run_id: "run-1",
@@ -2150,9 +2151,8 @@ describe("site workspace timeline controls", () => {
 
     render(<SiteWorkspacePage />);
 
-    await screen.findByText(
-      "Minimum relevance score: 35 -> 30 (High low_relevance exclusions indicate threshold is too strict.)",
-    );
+    await screen.findByText("Minimum relevance score");
+    expect(screen.getByText("Current -> Suggested:", { exact: false })).toHaveTextContent("35");
     await user.click(screen.getByRole("button", { name: "Preview Impact" }));
     await screen.findByText(/Estimated increase of 2 included candidates over the last 30 days of telemetry\./);
 
@@ -2165,9 +2165,10 @@ describe("site workspace timeline controls", () => {
       }),
     );
     await waitFor(() => expect(mockFetchRecommendationWorkspaceSummary).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("Current -> Suggested:", { exact: false })).toHaveTextContent("30");
     expect(
       screen.getByText(
-        "Minimum relevance score: 30 -> 30 (High low_relevance exclusions indicate threshold is too strict.)",
+        "Setting updated: Minimum relevance score is now 30. New run will reflect this change.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Applied" })).toBeDisabled();
@@ -2271,12 +2272,15 @@ describe("site workspace timeline controls", () => {
 
     render(<SiteWorkspacePage />);
 
-    await screen.findByText("Directory penalty: 35 -> 30 (Suggestion two.)");
+    await screen.findByText("Directory penalty");
+    expect(screen.getAllByText("Current -> Suggested:", { exact: false }).length).toBeGreaterThan(0);
+    expect(screen.getByText("Suggestion two.")).toBeInTheDocument();
     const applyButtons = await screen.findAllByRole("button", { name: "Apply Suggestion" });
     await user.click(applyButtons[0]);
 
     await screen.findByText("Competitor quality settings must use bounded integer values.");
-    expect(screen.getByText("Directory penalty: 35 -> 30 (Suggestion two.)")).toBeInTheDocument();
+    expect(screen.getByText("Directory penalty")).toBeInTheDocument();
+    expect(screen.getByText("Suggestion two.")).toBeInTheDocument();
     expect(screen.queryAllByText("Competitor quality settings must use bounded integer values.")).toHaveLength(1);
   });
 
@@ -2284,9 +2288,16 @@ describe("site workspace timeline controls", () => {
     seedRichWorkspaceData();
     render(<SiteWorkspacePage />);
 
+    await screen.findByRole("heading", { name: "Top Insights" });
+    await waitFor(() => expect(screen.getByText("You have 1 actionable improvements")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("0 tuning opportunities identified")).toBeInTheDocument());
+    expect(
+      screen.getByText("Preview a tuning suggestion to estimate included-candidate impact"),
+    ).toBeInTheDocument();
     await screen.findByRole("heading", { name: "Recommendation Runs and Narratives" });
     await screen.findByRole("heading", { name: "Latest Completed Run" });
     await screen.findByRole("heading", { name: "Deterministic Recommendations" });
+    expect(screen.getByText("HIGH IMPACT")).toBeInTheDocument();
     expect(screen.getByText("Title tags are missing core keywords.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "AI Narrative Overlay" })).toBeInTheDocument();
     expect(screen.getByText("Narrative for run 1.")).toBeInTheDocument();

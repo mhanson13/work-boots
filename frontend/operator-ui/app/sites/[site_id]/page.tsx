@@ -264,6 +264,39 @@ function formatSignedDelta(value: number): string {
   return String(value);
 }
 
+function recommendationImpactLabel(
+  item: Recommendation,
+  index: number,
+): "HIGH IMPACT" | "QUICK WIN" | "NEEDS REVIEW" | null {
+  if (index === 0) {
+    return "HIGH IMPACT";
+  }
+  if (index === 1) {
+    if (item.effort_bucket === "small" && item.status === "open") {
+      return "QUICK WIN";
+    }
+    if (!["accepted", "dismissed", "resolved"].includes(item.status)) {
+      return "NEEDS REVIEW";
+    }
+  }
+  return null;
+}
+
+function recommendationImpactBadgeClass(
+  label: ReturnType<typeof recommendationImpactLabel>,
+): string {
+  switch (label) {
+    case "HIGH IMPACT":
+      return "badge badge-error";
+    case "QUICK WIN":
+      return "badge badge-success";
+    case "NEEDS REVIEW":
+      return "badge badge-warn";
+    default:
+      return "badge badge-muted";
+  }
+}
+
 function buildTuningPreviewKey(
   recommendationRunId: string,
   suggestion: RecommendationTuningSuggestion,
@@ -530,6 +563,34 @@ export default function SiteWorkspacePage() {
     () => recommendationRuns[0] || null,
     [recommendationRuns],
   );
+
+  const actionableRecommendationCount = useMemo(
+    () =>
+      latestCompletedRecommendations.filter(
+        (item) => !["accepted", "dismissed", "resolved"].includes(item.status),
+      ).length,
+    [latestCompletedRecommendations],
+  );
+
+  const latestPreviewInsight = useMemo(() => {
+    if (!latestCompletedRecommendationRun || latestCompletedTuningSuggestions.length === 0) {
+      return null;
+    }
+    for (const suggestion of latestCompletedTuningSuggestions) {
+      const previewKey = buildTuningPreviewKey(latestCompletedRecommendationRun.id, suggestion);
+      const preview = tuningPreviewByKey[previewKey];
+      if (preview) {
+        return `Latest preview suggests ${formatSignedDelta(
+          preview.estimated_impact.estimated_included_candidate_delta,
+        )} included competitors`;
+      }
+    }
+    return null;
+  }, [
+    latestCompletedRecommendationRun,
+    latestCompletedTuningSuggestions,
+    tuningPreviewByKey,
+  ]);
 
   function currentSuggestionValue(suggestion: RecommendationTuningSuggestion): number {
     const persistedValue = tuningSettingValueFromBusinessSettings(tuningSettings, suggestion.setting);
@@ -980,7 +1041,7 @@ export default function SiteWorkspacePage() {
       setTuningPreviewLoadingKey(null);
       setTuningApplyErrorByKey({});
       setTuningApplyMessage(
-        `${formatTuningSettingLabel(suggestion.setting)} updated to ${suggestion.recommended_value}.`,
+        `Setting updated: ${formatTuningSettingLabel(suggestion.setting)} is now ${suggestion.recommended_value}. New run will reflect this change.`,
       );
     } catch (error) {
       setTuningApplyErrorByKey((current) => ({
@@ -1689,6 +1750,23 @@ export default function SiteWorkspacePage() {
       </SectionCard>
 
       <SectionCard>
+        <h2>Top Insights</h2>
+        <div className="metrics-grid">
+          <div className="panel panel-compact">
+            <strong>You have {actionableRecommendationCount} actionable improvements</strong>
+          </div>
+          <div className="panel panel-compact">
+            <strong>{latestCompletedTuningSuggestions.length} tuning opportunities identified</strong>
+          </div>
+          <div className="panel panel-compact">
+            <strong>
+              {latestPreviewInsight || "Preview a tuning suggestion to estimate included-candidate impact"}
+            </strong>
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard>
         <h2>Site Activity Timeline</h2>
         {loadingWorkspace ? <p className="hint muted">Loading recent site activity...</p> : null}
         {timelineWarning ? (
@@ -2298,7 +2376,7 @@ export default function SiteWorkspacePage() {
           <Link href="/recommendations">Open Recommendation Queue</Link>
         </p>
         {!queueError && (!queueResponse || queueResponse.items.length === 0) ? (
-          <p className="hint muted">No recommendations are currently visible for this site.</p>
+          <p className="hint muted">No recommendations yet — run analysis to generate insights.</p>
         ) : null}
         {queueResponse && queueResponse.items.length > 0 ? (
           <div className="table-container">
@@ -2381,7 +2459,7 @@ export default function SiteWorkspacePage() {
             </p>
             <h4>Deterministic Recommendations</h4>
             {!latestCompletedRecommendationsError && latestCompletedRecommendations.length === 0 ? (
-              <p className="hint muted">No deterministic recommendations were produced for this run.</p>
+              <p className="hint muted">No recommendations yet — run analysis to generate insights.</p>
             ) : null}
             {latestCompletedRecommendations.length > 0 ? (
               <div className="table-container">
@@ -2397,11 +2475,19 @@ export default function SiteWorkspacePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {latestCompletedRecommendations.map((item) => (
+                    {latestCompletedRecommendations.map((item, index) => {
+                      const impactLabel = recommendationImpactLabel(item, index);
+                      return (
                       <tr key={item.id}>
                         <td className="table-cell-wrap">
                           <Link href={buildRecommendationDetailHref(item.id, selectedSite.id)}>{item.title}</Link>
                           <br />
+                          {impactLabel ? (
+                            <>
+                              <span className={recommendationImpactBadgeClass(impactLabel)}>{impactLabel}</span>
+                              <br />
+                            </>
+                          ) : null}
                           <span className="hint muted"><code>{item.id}</code></span>
                         </td>
                         <td>{item.category}</td>
@@ -2412,7 +2498,8 @@ export default function SiteWorkspacePage() {
                         <td>{item.status}</td>
                         <td className="table-cell-wrap">{truncateText(item.rationale, 180)}</td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -2454,21 +2541,25 @@ export default function SiteWorkspacePage() {
                   </p>
                 ) : null}
                 <span className="hint muted">AI-Assisted Tuning Suggestions</span>
-                {tuningApplyMessage ? <span className="hint">{tuningApplyMessage}</span> : null}
+                {tuningApplyMessage ? <span className="hint success">{tuningApplyMessage}</span> : null}
                 {latestCompletedTuningSuggestions.length > 0 ? (
                   latestCompletedTuningSuggestions.map((suggestion) => {
                     const previewKey = buildTuningPreviewKey(latestCompletedRecommendationRun.id, suggestion);
                     const currentValue = currentSuggestionValue(suggestion);
                     const alreadyApplied = currentValue === suggestion.recommended_value;
+                    const preview = tuningPreviewByKey[previewKey];
                     return (
-                      <Fragment
+                      <div
                         key={`${latestCompletedRecommendationRun.id}-${suggestion.setting}-${suggestion.recommended_value}`}
+                        className="panel panel-compact stack"
+                        data-testid="tuning-suggestion-card"
                       >
-                        <span className="hint muted">
-                          {formatTuningSettingLabel(suggestion.setting)}: {currentValue}
-                          {" -> "}
-                          {suggestion.recommended_value} ({suggestion.reason})
+                        <strong>{formatTuningSettingLabel(suggestion.setting)}</strong>
+                        <span className="hint">
+                          Current -&gt; Suggested: <strong>{currentValue}</strong> -&gt;{" "}
+                          <strong>{suggestion.recommended_value}</strong>
                         </span>
+                        <span className="hint muted">{suggestion.reason}</span>
                         <span className="hint muted">Confidence: {suggestion.confidence}</span>
                         <button
                           type="button"
@@ -2507,23 +2598,26 @@ export default function SiteWorkspacePage() {
                         {tuningApplyErrorByKey[previewKey] ? (
                           <span className="hint warning">{tuningApplyErrorByKey[previewKey]}</span>
                         ) : null}
-                        {tuningPreviewByKey[previewKey] ? (
-                          <span className="hint muted">
-                            {tuningPreviewByKey[previewKey].estimated_impact.summary} Included delta:{" "}
-                            {formatSignedDelta(
-                              tuningPreviewByKey[previewKey].estimated_impact.estimated_included_candidate_delta,
-                            )}
-                            ; excluded delta:{" "}
-                            {formatSignedDelta(
-                              tuningPreviewByKey[previewKey].estimated_impact.estimated_excluded_candidate_delta,
-                            )}
-                          </span>
+                        {preview ? (
+                          <>
+                            <span className="hint">
+                              Impact hint: {formatSignedDelta(preview.estimated_impact.estimated_included_candidate_delta)}{" "}
+                              candidates included
+                            </span>
+                            <span className="hint muted">{preview.estimated_impact.summary}</span>
+                            <span className="hint muted">
+                              Included delta:{" "}
+                              {formatSignedDelta(preview.estimated_impact.estimated_included_candidate_delta)};
+                              excluded delta:{" "}
+                              {formatSignedDelta(preview.estimated_impact.estimated_excluded_candidate_delta)}
+                            </span>
+                          </>
                         ) : null}
-                      </Fragment>
+                      </div>
                     );
                   })
                 ) : (
-                  <span className="hint muted">No tuning suggestions</span>
+                  <span className="hint muted">No tuning adjustments suggested for current data.</span>
                 )}
               </div>
             ) : (

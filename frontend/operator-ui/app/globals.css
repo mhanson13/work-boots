@@ -316,6 +316,10 @@ code {
   color: #991b1b;
 }
 
+.hint.success {
+  color: #166534;
+}
+
 .hint.muted {
   color: #475569;
 }
