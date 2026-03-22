@@ -244,6 +244,18 @@ def test_patch_business_settings_rejects_crawl_page_limit_below_minimum(db_sessi
     assert _detail_contains_field(response.json()["detail"], "seo_audit_crawl_max_pages")
 
 
+def test_patch_business_settings_accepts_crawl_page_limit_at_maximum(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+
+    response = client.patch(
+        f"/api/businesses/{seeded_business.id}/settings",
+        json={"seo_audit_crawl_max_pages": 250},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["seo_audit_crawl_max_pages"] == 250
+
+
 def test_patch_business_settings_rejects_crawl_page_limit_above_maximum(db_session, seeded_business) -> None:
     client = _make_client(db_session, business_id=seeded_business.id)
 

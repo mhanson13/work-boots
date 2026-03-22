@@ -53,13 +53,13 @@ export default function DashboardPage() {
       </div>
 
       <div className="panel stack">
-        <h2>Users</h2>
+        <h2>Admin</h2>
         {principal?.role === "admin" ? (
           <p className="hint muted">
-            Admin user management is available. Open <Link href="/users">Users</Link> to add or review principals.
+            Business administration is available. Open <Link href="/admin">Admin</Link> to manage principals and settings.
           </p>
         ) : (
-          <p className="hint muted">User administration is restricted to admin principals.</p>
+          <p className="hint muted">Business administration is restricted to admin principals.</p>
         )}
       </div>
     </section>

@@ -32,6 +32,12 @@ The setting controls how many pages an audit crawl is allowed to scan for both m
 - Only admin principals can update the setting (`require_credential_manager_principal`).
 - Tenant/business scoping is enforced via `TenantContext` + `resolve_tenant_business_id`.
 
+## Operator UI Surface
+
+- Canonical admin route: `/admin`
+- Backward-compatible route: `/users` (compatibility alias for existing bookmarks)
+- The crawl limit control lives on the Admin page under **SEO Crawl Settings**.
+
 ## Runtime Usage
 
 ### Manual audit path

@@ -18,6 +18,10 @@ branch_labels = None
 depends_on = None
 
 
+def _has_column(inspector: Inspector, table: str, name: str) -> bool:
+    return any(column.get("name") == name for column in inspector.get_columns(table))
+
+
 def _has_index(inspector: Inspector, table: str, name: str) -> bool:
     for index in inspector.get_indexes(table):
         if index.get("name") == name:
@@ -26,12 +30,16 @@ def _has_index(inspector: Inspector, table: str, name: str) -> bool:
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("principals") as batch_op:
-        batch_op.add_column(sa.Column("created_by_principal_id", sa.String(length=64), nullable=True))
-        batch_op.add_column(sa.Column("updated_by_principal_id", sa.String(length=64), nullable=True))
-        batch_op.add_column(sa.Column("last_authenticated_at", sa.DateTime(timezone=True), nullable=True))
-
     bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    with op.batch_alter_table("principals") as batch_op:
+        if not _has_column(inspector, "principals", "created_by_principal_id"):
+            batch_op.add_column(sa.Column("created_by_principal_id", sa.String(length=64), nullable=True))
+        if not _has_column(inspector, "principals", "updated_by_principal_id"):
+            batch_op.add_column(sa.Column("updated_by_principal_id", sa.String(length=64), nullable=True))
+        if not _has_column(inspector, "principals", "last_authenticated_at"):
+            batch_op.add_column(sa.Column("last_authenticated_at", sa.DateTime(timezone=True), nullable=True))
+
     inspector = sa.inspect(bind)
     if not _has_index(inspector, "principals", "ix_principals_last_authenticated_at"):
         with op.batch_alter_table("principals") as batch_op:
@@ -45,7 +53,11 @@ def downgrade() -> None:
         with op.batch_alter_table("principals") as batch_op:
             batch_op.drop_index("ix_principals_last_authenticated_at")
 
+    inspector = sa.inspect(bind)
     with op.batch_alter_table("principals") as batch_op:
-        batch_op.drop_column("last_authenticated_at")
-        batch_op.drop_column("updated_by_principal_id")
-        batch_op.drop_column("created_by_principal_id")
+        if _has_column(inspector, "principals", "last_authenticated_at"):
+            batch_op.drop_column("last_authenticated_at")
+        if _has_column(inspector, "principals", "updated_by_principal_id"):
+            batch_op.drop_column("updated_by_principal_id")
+        if _has_column(inspector, "principals", "created_by_principal_id"):
+            batch_op.drop_column("created_by_principal_id")

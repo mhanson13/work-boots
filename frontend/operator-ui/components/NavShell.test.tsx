@@ -1,0 +1,50 @@
+import { render, screen } from "@testing-library/react";
+
+import { NavShell } from "./NavShell";
+
+const mockUsePathname = jest.fn<string, []>();
+const mockUseAuth = jest.fn();
+
+jest.mock("next/navigation", () => ({
+  usePathname: () => mockUsePathname(),
+}));
+
+jest.mock("./AuthProvider", () => ({
+  useAuth: () => mockUseAuth(),
+}));
+
+jest.mock("../lib/api/client", () => ({
+  logoutSession: jest.fn(),
+}));
+
+describe("NavShell", () => {
+  beforeEach(() => {
+    mockUsePathname.mockReturnValue("/dashboard");
+  });
+
+  it("shows Admin navigation label for admin principals", () => {
+    mockUseAuth.mockReturnValue({
+      token: "token-1",
+      refreshToken: "refresh-1",
+      principal: {
+        business_id: "biz-1",
+        principal_id: "admin-1",
+        display_name: "Admin One",
+        role: "admin",
+        is_active: true,
+      },
+      clearSession: jest.fn(),
+    });
+
+    render(
+      <NavShell>
+        <div>content</div>
+      </NavShell>,
+    );
+
+    const adminLink = screen.getByRole("link", { name: "Admin" });
+    expect(adminLink).toBeInTheDocument();
+    expect(adminLink).toHaveAttribute("href", "/admin");
+    expect(screen.queryByRole("link", { name: "Users" })).not.toBeInTheDocument();
+  });
+});

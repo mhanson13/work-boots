@@ -43,11 +43,13 @@ python -m uvicorn app.main:app --reload
 ```
 
 Schema initialization policy:
-- Local/dev/test convenience: startup `create_all()` is allowed only when `APP_ENV` is local-like and `DB_AUTO_CREATE_LOCAL=true`.
-- CI/staging/production/GKE: set `DB_AUTO_CREATE_LOCAL=false`; Alembic migrations are authoritative.
+- Alembic migrations are the default schema authority across local, CI, and production workflows.
+- `DB_AUTO_CREATE_LOCAL=false` is the recommended default for local development.
+- Startup `create_all()` is an opt-in local convenience only when `APP_ENV` is local-like and `DB_AUTO_CREATE_LOCAL=true`.
 - Deploy path runs `alembic upgrade head` before rollout.
 - For pre-existing databases missing Alembic history, run `deploy-prod` manually with `db_alignment_mode=baseline_existing` once to stamp revision `0024_google_business_profile_oauth_connections`, then continue normal migration-gated deploys.
 - In non-local environments, `/healthz` enforces Alembic head readiness and returns `503` while schema revision is behind.
+- Migration drift remediation guidance: `docs/development/migration-hygiene.md`.
 
 Health check:
 ```powershell
@@ -75,7 +77,7 @@ pytest --cov=app --cov-report=term-missing --cov-report=xml
 ```
 CI applies a modest backend coverage gate (`--cov-fail-under=70`) to prevent silent regression.
 
-Optional local migration check:
+Local migration initialization (run once per local DB, and after pulling new revisions):
 ```powershell
 alembic upgrade head
 ```
@@ -129,6 +131,7 @@ Project docs live under [`docs/`](docs):
 - `operator-ui-and-google-auth.md` (implemented operator UI + Google identity exchange to internal principal authorization)
 - `deployment-gke-cicd.md` (implemented GKE deployment, Artifact Registry image flow, and GitHub Actions CI/CD)
 - `deployment-configuration-contract.md` (canonical deploy-time naming contract for env vars, secrets, workflow inputs, and deprecated aliases)
+- `development/migration-hygiene.md` (local migration drift root cause, safe reset path, and validation checklist)
 - `gcp-github-actions-bootstrap.md` (production-safe bootstrap script and minimum setup for WIF + Artifact Registry + IAM)
 - `gcp-github-actions-deployment-prerequisites.md` (step-by-step prerequisite setup for GKE deploys from GitHub Actions, including WIF, secrets, and runtime config mapping)
 - `phase3-response-and-reminders.md`

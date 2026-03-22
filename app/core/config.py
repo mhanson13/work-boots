@@ -199,7 +199,7 @@ def get_settings() -> Settings:
         ),
         db_auto_create_local=_env_bool(
             "DB_AUTO_CREATE_LOCAL",
-            app_env in {"local", "development", "dev", "test"},
+            False,
         ),
         google_auth_enabled=google_auth_enabled,
         google_oidc_client_id=google_oidc_client_id,

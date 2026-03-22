@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import UsersPage from "./page";
+import UsersCompatibilityPage from "./page";
 import { ApiRequestError } from "../../lib/api/client";
 import type { BusinessSettings, PrincipalIdentityListResponse, PrincipalListResponse } from "../../lib/api/types";
 
@@ -153,7 +153,7 @@ function identitiesResponse(isOperatorIdentityActive: boolean = true): Principal
   };
 }
 
-describe("users page completeness", () => {
+describe("admin page compatibility route", () => {
   it("renders all principals and identity completeness details", async () => {
     mockFetchPrincipals.mockResolvedValueOnce({
       items: [
@@ -229,7 +229,7 @@ describe("users page completeness", () => {
       total: 2,
     });
 
-    render(<UsersPage />);
+    render(<UsersCompatibilityPage />);
 
     await screen.findByText("inactive-1");
     expect(screen.getByText("Principals: 3")).toBeInTheDocument();
@@ -259,7 +259,7 @@ describe("users page completeness", () => {
     });
     mockFetchPrincipalIdentities.mockRejectedValueOnce(new Error("identity service unavailable"));
 
-    render(<UsersPage />);
+    render(<UsersCompatibilityPage />);
 
     await screen.findByText("admin-1");
     expect(screen.getByText("Sign-in identity details are temporarily unavailable.")).toBeInTheDocument();
@@ -271,7 +271,7 @@ describe("users page completeness", () => {
     mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
     const confirmSpy = jest.spyOn(window, "confirm").mockReturnValue(false);
 
-    render(<UsersPage />);
+    render(<UsersCompatibilityPage />);
 
     await screen.findByText("operator-1");
     fireEvent.click(screen.getAllByRole("button", { name: "Deactivate" })[1]);
@@ -293,7 +293,7 @@ describe("users page completeness", () => {
     });
     const confirmSpy = jest.spyOn(window, "confirm").mockReturnValue(true);
 
-    render(<UsersPage />);
+    render(<UsersCompatibilityPage />);
 
     await screen.findByText("operator-1");
     fireEvent.click(screen.getAllByRole("button", { name: "Deactivate" })[1]);
@@ -309,7 +309,7 @@ describe("users page completeness", () => {
     mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
     const confirmSpy = jest.spyOn(window, "confirm").mockReturnValue(false);
 
-    render(<UsersPage />);
+    render(<UsersCompatibilityPage />);
 
     await screen.findByText("operator-1");
     fireEvent.click(screen.getAllByRole("button", { name: "Deactivate Identity" })[1]);
@@ -331,7 +331,7 @@ describe("users page completeness", () => {
     });
     const confirmSpy = jest.spyOn(window, "confirm").mockReturnValue(true);
 
-    render(<UsersPage />);
+    render(<UsersCompatibilityPage />);
 
     await screen.findByText("operator-1");
     fireEvent.click(screen.getAllByRole("button", { name: "Deactivate Identity" })[1]);
@@ -383,7 +383,7 @@ describe("users page completeness", () => {
       updated_at: "2026-03-21T00:00:00Z",
     });
 
-    render(<UsersPage />);
+    render(<UsersCompatibilityPage />);
 
     await screen.findByText("operator-1");
     fireEvent.change(screen.getByLabelText("Principal"), { target: { value: "operator-1" } });
@@ -410,7 +410,7 @@ describe("users page completeness", () => {
     mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
     mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
 
-    render(<UsersPage />);
+    render(<UsersCompatibilityPage />);
 
     await screen.findByText("operator-1");
     fireEvent.change(screen.getByLabelText("Principal"), { target: { value: "operator-1" } });
@@ -433,7 +433,7 @@ describe("users page completeness", () => {
       }),
     );
 
-    render(<UsersPage />);
+    render(<UsersCompatibilityPage />);
 
     await screen.findByText("operator-1");
     fireEvent.change(screen.getByLabelText("Principal"), { target: { value: "operator-1" } });
@@ -457,9 +457,9 @@ describe("users page completeness", () => {
       },
     });
 
-    render(<UsersPage />);
+    render(<UsersCompatibilityPage />);
 
-    expect(screen.getByText("User administration is available to admin principals only.")).toBeInTheDocument();
+    expect(screen.getByText("Business administration is available to admin principals only.")).toBeInTheDocument();
     expect(screen.queryByText("Create User")).not.toBeInTheDocument();
     expect(screen.queryByText("Create and Link Identity")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Deactivate Identity" })).not.toBeInTheDocument();
@@ -483,7 +483,7 @@ describe("users page completeness", () => {
       updated_at: "2026-03-22T00:00:00Z",
     });
 
-    render(<UsersPage />);
+    render(<UsersCompatibilityPage />);
 
     await screen.findByText("operator-1");
     fireEvent.change(screen.getByLabelText("Crawl Page Limit"), { target: { value: "80" } });
@@ -495,5 +495,101 @@ describe("users page completeness", () => {
       }),
     );
     await screen.findByText("SEO crawl page limit updated to 80.");
+  });
+
+  it("accepts crawl page limit at lower bound (5)", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockUpdateBusinessSettings.mockResolvedValueOnce({
+      id: "biz-1",
+      name: "Business One",
+      notification_phone: "+13035550100",
+      notification_email: "owner@example.com",
+      sms_enabled: true,
+      email_enabled: true,
+      customer_auto_ack_enabled: true,
+      contractor_alerts_enabled: true,
+      seo_audit_crawl_max_pages: 5,
+      timezone: "America/Denver",
+      created_at: "2026-03-20T00:00:00Z",
+      updated_at: "2026-03-22T00:00:00Z",
+    });
+
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Crawl Limit" }));
+
+    await waitFor(() =>
+      expect(mockUpdateBusinessSettings).toHaveBeenCalledWith("token-1", "biz-1", {
+        seo_audit_crawl_max_pages: 5,
+      }),
+    );
+    await screen.findByText("SEO crawl page limit updated to 5.");
+  });
+
+  it("accepts crawl page limit at upper bound (250)", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockUpdateBusinessSettings.mockResolvedValueOnce({
+      id: "biz-1",
+      name: "Business One",
+      notification_phone: "+13035550100",
+      notification_email: "owner@example.com",
+      sms_enabled: true,
+      email_enabled: true,
+      customer_auto_ack_enabled: true,
+      contractor_alerts_enabled: true,
+      seo_audit_crawl_max_pages: 250,
+      timezone: "America/Denver",
+      created_at: "2026-03-20T00:00:00Z",
+      updated_at: "2026-03-22T00:00:00Z",
+    });
+
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), { target: { value: "250" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Crawl Limit" }));
+
+    await waitFor(() =>
+      expect(mockUpdateBusinessSettings).toHaveBeenCalledWith("token-1", "biz-1", {
+        seo_audit_crawl_max_pages: 250,
+      }),
+    );
+    await screen.findByText("SEO crawl page limit updated to 250.");
+  });
+
+  it("rejects crawl page limit below minimum (4)", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Crawl Limit" }));
+
+    expect(mockUpdateBusinessSettings).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("Crawl page limit must be an integer between 5 and 250."),
+    ).toBeInTheDocument();
+  });
+
+  it("rejects crawl page limit above maximum (251)", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    fireEvent.change(screen.getByLabelText("Crawl Page Limit"), { target: { value: "251" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Crawl Limit" }));
+
+    expect(mockUpdateBusinessSettings).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("Crawl page limit must be an integer between 5 and 250."),
+    ).toBeInTheDocument();
   });
 });

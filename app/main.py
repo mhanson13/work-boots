@@ -7,7 +7,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -46,6 +46,20 @@ def _should_auto_create_schema() -> bool:
 
 def _should_enforce_schema_readiness() -> bool:
     return not _is_local_like_env()
+
+
+def _can_run_local_schema_autocreate() -> tuple[bool, str]:
+    try:
+        with engine.connect() as connection:
+            table_names = set(inspect(connection).get_table_names())
+    except SQLAlchemyError:
+        return False, "database_inspection_failed"
+
+    if not table_names:
+        return True, "empty_database"
+    if "alembic_version" in table_names:
+        return False, "alembic_version_present"
+    return False, "existing_tables_present"
 
 
 def _is_security_headers_scope(path: str) -> bool:
@@ -171,6 +185,14 @@ _configure_security_headers()
 @app.on_event("startup")
 def on_startup() -> None:
     if _should_auto_create_schema():
+        can_autocreate, reason = _can_run_local_schema_autocreate()
+        if not can_autocreate:
+            logger.warning(
+                "Skipping local schema auto-create (reason=%s). "
+                "Use `alembic upgrade head` to align local schema state.",
+                reason,
+            )
+            return
         logger.warning(
             "Local schema auto-create is enabled (app_env=%s, DB_AUTO_CREATE_LOCAL=%s). "
             "Alembic remains authoritative for non-local environments.",

@@ -18,6 +18,10 @@ branch_labels = None
 depends_on = None
 
 
+def _has_column(inspector: Inspector, table: str, name: str) -> bool:
+    return any(column.get("name") == name for column in inspector.get_columns(table))
+
+
 def _has_index(inspector: Inspector, table: str, name: str) -> bool:
     for index in inspector.get_indexes(table):
         if index.get("name") == name:
@@ -33,12 +37,16 @@ def _has_fk(inspector: Inspector, table: str, name: str) -> bool:
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("api_credentials") as batch_op:
-        batch_op.add_column(sa.Column("label", sa.String(length=128), nullable=True))
-        batch_op.add_column(sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True))
-        batch_op.add_column(sa.Column("rotated_from_credential_id", sa.String(length=36), nullable=True))
-
     bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    with op.batch_alter_table("api_credentials") as batch_op:
+        if not _has_column(inspector, "api_credentials", "label"):
+            batch_op.add_column(sa.Column("label", sa.String(length=128), nullable=True))
+        if not _has_column(inspector, "api_credentials", "last_used_at"):
+            batch_op.add_column(sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True))
+        if not _has_column(inspector, "api_credentials", "rotated_from_credential_id"):
+            batch_op.add_column(sa.Column("rotated_from_credential_id", sa.String(length=36), nullable=True))
+
     inspector = sa.inspect(bind)
     if not _has_fk(inspector, "api_credentials", "fk_api_credentials_rotated_from_credential_id"):
         with op.batch_alter_table("api_credentials") as batch_op:
@@ -68,7 +76,11 @@ def downgrade() -> None:
         with op.batch_alter_table("api_credentials") as batch_op:
             batch_op.drop_constraint("fk_api_credentials_rotated_from_credential_id", type_="foreignkey")
 
+    inspector = sa.inspect(bind)
     with op.batch_alter_table("api_credentials") as batch_op:
-        batch_op.drop_column("rotated_from_credential_id")
-        batch_op.drop_column("last_used_at")
-        batch_op.drop_column("label")
+        if _has_column(inspector, "api_credentials", "rotated_from_credential_id"):
+            batch_op.drop_column("rotated_from_credential_id")
+        if _has_column(inspector, "api_credentials", "last_used_at"):
+            batch_op.drop_column("last_used_at")
+        if _has_column(inspector, "api_credentials", "label"):
+            batch_op.drop_column("label")
