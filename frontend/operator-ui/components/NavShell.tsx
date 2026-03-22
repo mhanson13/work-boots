@@ -36,28 +36,40 @@ export function NavShell({ children }: { children: React.ReactNode }) {
     <>
       <header className="topnav">
         <div className="topnav-inner">
-          <div>
+          <div className="topnav-brand">
             <strong>MBSRN Operator Workspace</strong>
           </div>
           <nav className="topnav-links">
             {links
               .filter((link) => !link.adminOnly || principal?.role === "admin")
-              .map((link) => (
-                <Link key={link.href} href={link.href} style={{ opacity: pathname === link.href ? 1 : 0.75 }}>
-                  {link.label}
-                </Link>
-              ))}
+              .map((link) => {
+                const active = pathname === link.href || pathname.startsWith(`${link.href}/`);
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={active ? "topnav-link is-active" : "topnav-link"}
+                    aria-current={active ? "page" : undefined}
+                  >
+                    {link.label}
+                  </Link>
+                );
+              })}
           </nav>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <div className="topnav-session">
             {principal ? (
               <>
-                <small>
+                <small className="topnav-principal">
                   {principal.display_name} ({principal.role})
                 </small>
-                <button onClick={() => void handleSignOut()}>Sign out</button>
+                <button type="button" onClick={() => void handleSignOut()}>
+                  Sign out
+                </button>
               </>
             ) : (
-              <Link href="/">Sign in</Link>
+              <Link href="/" className="topnav-link">
+                Sign in
+              </Link>
             )}
           </div>
         </div>

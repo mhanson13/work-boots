@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { PageContainer } from "../../components/layout/PageContainer";
+import { SectionCard } from "../../components/layout/SectionCard";
 import { useOperatorContext } from "../../components/useOperatorContext";
 import { ApiRequestError, fetchAuditRuns } from "../../lib/api/client";
 import type { SEOAuditRun } from "../../lib/api/types";
@@ -92,84 +94,98 @@ export default function AuditsPage() {
   }, [context.businessId, context.error, context.loading, context.selectedSiteId, context.token]);
 
   if (context.loading) {
-    return <section className="panel">Loading audits...</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Loading audits...</SectionCard>
+      </PageContainer>
+    );
   }
   if (context.error) {
-    return <section className="panel">Unable to load tenant context. Refresh and sign in again.</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Unable to load tenant context. Refresh and sign in again.</SectionCard>
+      </PageContainer>
+    );
   }
   if (context.sites.length === 0) {
     return (
-      <section className="panel stack">
-        <h1>Audit Runs</h1>
-        <p className="hint muted">No SEO sites are configured yet. Add a site first to view audit runs.</p>
-      </section>
+      <PageContainer>
+        <SectionCard>
+          <h1>Audit Runs</h1>
+          <p className="hint muted">No SEO sites are configured yet. Add a site first to view audit runs.</p>
+        </SectionCard>
+      </PageContainer>
     );
   }
 
   return (
-    <section className="panel stack">
-      <h1>Audit Runs</h1>
-      <label htmlFor="site-picker-audit">Site</label>
-      <select
-        id="site-picker-audit"
-        value={context.selectedSiteId || ""}
-        onChange={(event) => context.setSelectedSiteId(event.target.value)}
-      >
-        {context.sites.map((site) => (
-          <option key={site.id} value={site.id}>
-            {site.display_name}
-          </option>
-        ))}
-      </select>
-
-      {loadingRuns ? <p className="hint muted">Loading audit runs...</p> : null}
-      {runsError ? <p className="hint error">{runsError}</p> : null}
-
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Run ID</th>
-            <th>Business</th>
-            <th>Site</th>
-            <th>Status</th>
-            <th>Created</th>
-            <th>Started</th>
-            <th>Completed</th>
-            <th>Result</th>
-          </tr>
-        </thead>
-        <tbody>
-          {runs.map((run) => (
-            <tr
-              key={run.id}
-              role="link"
-              tabIndex={0}
-              style={{ cursor: "pointer" }}
-              onClick={() => router.push(`/audits/${run.id}`)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  router.push(`/audits/${run.id}`);
-                }
-              }}
-            >
-              <td>{run.id}</td>
-              <td>{run.business_id}</td>
-              <td>{run.site_id}</td>
-              <td>{run.status}</td>
-              <td>{formatDateTime(run.created_at)}</td>
-              <td>{formatDateTime(run.started_at)}</td>
-              <td>{formatDateTime(run.completed_at)}</td>
-              <td>{deriveResultIndicator(run)}</td>
-            </tr>
+    <PageContainer>
+      <SectionCard>
+        <h1>Audit Runs</h1>
+        <label htmlFor="site-picker-audit">Site</label>
+        <select
+          id="site-picker-audit"
+          value={context.selectedSiteId || ""}
+          onChange={(event) => context.setSelectedSiteId(event.target.value)}
+        >
+          {context.sites.map((site) => (
+            <option key={site.id} value={site.id}>
+              {site.display_name}
+            </option>
           ))}
-          {runs.length === 0 && !loadingRuns ? (
-            <tr>
-              <td colSpan={8}>No audit runs found for the selected site.</td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
-    </section>
+        </select>
+
+        {loadingRuns ? <p className="hint muted">Loading audit runs...</p> : null}
+        {runsError ? <p className="hint error">{runsError}</p> : null}
+
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Run ID</th>
+                <th>Business</th>
+                <th>Site</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Started</th>
+                <th>Completed</th>
+                <th>Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {runs.map((run) => (
+                <tr
+                  key={run.id}
+                  role="link"
+                  tabIndex={0}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => router.push(`/audits/${run.id}`)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      router.push(`/audits/${run.id}`);
+                    }
+                  }}
+                >
+                  <td>{run.id}</td>
+                  <td>{run.business_id}</td>
+                  <td>{run.site_id}</td>
+                  <td>{run.status}</td>
+                  <td>{formatDateTime(run.created_at)}</td>
+                  <td>{formatDateTime(run.started_at)}</td>
+                  <td>{formatDateTime(run.completed_at)}</td>
+                  <td>{deriveResultIndicator(run)}</td>
+                </tr>
+              ))}
+              {runs.length === 0 && !loadingRuns ? (
+                <tr>
+                  <td colSpan={8}>No audit runs found for the selected site.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+    </PageContainer>
   );
 }

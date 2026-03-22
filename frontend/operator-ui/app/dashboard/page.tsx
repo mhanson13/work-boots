@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useOperatorContext } from "../../components/useOperatorContext";
 import { useAuth } from "../../components/AuthProvider";
+import { PageContainer } from "../../components/layout/PageContainer";
+import { SectionCard } from "../../components/layout/SectionCard";
 
 export default function DashboardPage() {
   const context = useOperatorContext();
@@ -22,8 +24,8 @@ export default function DashboardPage() {
   );
 
   return (
-    <section className="stack">
-      <div className="panel stack">
+    <PageContainer>
+      <SectionCard>
         <h1>Dashboard</h1>
         <p>
           Business scope: <code>{context.businessId}</code>
@@ -38,11 +40,11 @@ export default function DashboardPage() {
         {hasCompletedAudit ? (
           <p className="hint muted">Audit data is available. Next step: review recommendations.</p>
         ) : null}
-      </div>
+      </SectionCard>
 
-      <div className="panel stack">
+      <SectionCard>
         <h2>Operator Navigation</h2>
-        <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+        <div className="link-row">
           <Link href="/sites">Sites</Link>
           <Link href="/audits">Audit Runs</Link>
           <Link href="/competitors">Competitor Intelligence</Link>
@@ -50,9 +52,9 @@ export default function DashboardPage() {
           <Link href="/automation">Automation Runs</Link>
           <Link href="/business-profile">Google Business Profile</Link>
         </div>
-      </div>
+      </SectionCard>
 
-      <div className="panel stack">
+      <SectionCard>
         <h2>Admin</h2>
         {principal?.role === "admin" ? (
           <p className="hint muted">
@@ -61,7 +63,7 @@ export default function DashboardPage() {
         ) : (
           <p className="hint muted">Business administration is restricted to admin principals.</p>
         )}
-      </div>
-    </section>
+      </SectionCard>
+    </PageContainer>
   );
 }

@@ -5,6 +5,23 @@
   --muted: #475569;
   --border: #dbe4f0;
   --accent: #0f766e;
+  --shell-bg-start: #e7eefb;
+  --shell-bg-end: #f5f8fc;
+  --shell-header-bg: rgba(13, 21, 40, 0.92);
+  --shell-header-border: rgba(154, 176, 212, 0.35);
+  --shell-header-shadow: rgba(15, 23, 42, 0.22);
+  --shell-header-text: #e2e8f0;
+  --shell-link-bg: rgba(148, 163, 184, 0.15);
+  --shell-link-border: rgba(148, 163, 184, 0.35);
+  --shell-link-text: #dbe7f7;
+  --shell-link-hover-bg: rgba(148, 163, 184, 0.26);
+  --shell-link-active-bg: rgba(45, 212, 191, 0.22);
+  --shell-link-active-border: rgba(45, 212, 191, 0.65);
+  --shell-link-active-text: #ecfeff;
+  --link-pill-bg: #f8fbff;
+  --link-pill-border: #cdd9ec;
+  --link-pill-hover-bg: #edf4ff;
+  --link-pill-text: #0f172a;
   --auth-border-strong: #c3d8f2;
   --auth-bg-strong: #f8fbff;
   --auth-accent-soft: #d1fae5;
@@ -19,6 +36,23 @@
     --muted: #9ca3af;
     --border: #1f2f4a;
     --accent: #2dd4bf;
+    --shell-bg-start: #0a1120;
+    --shell-bg-end: #0f172a;
+    --shell-header-bg: rgba(4, 10, 23, 0.95);
+    --shell-header-border: rgba(45, 212, 191, 0.28);
+    --shell-header-shadow: rgba(2, 6, 23, 0.65);
+    --shell-header-text: #ecfeff;
+    --shell-link-bg: rgba(30, 41, 59, 0.7);
+    --shell-link-border: rgba(71, 85, 105, 0.85);
+    --shell-link-text: #cbd5e1;
+    --shell-link-hover-bg: rgba(51, 65, 85, 0.92);
+    --shell-link-active-bg: rgba(13, 148, 136, 0.4);
+    --shell-link-active-border: rgba(45, 212, 191, 0.72);
+    --shell-link-active-text: #ecfeff;
+    --link-pill-bg: rgba(15, 23, 42, 0.62);
+    --link-pill-border: rgba(100, 116, 139, 0.55);
+    --link-pill-hover-bg: rgba(30, 41, 59, 0.86);
+    --link-pill-text: #e2e8f0;
     --auth-border-strong: #2b4469;
     --auth-bg-strong: #101b2f;
     --auth-accent-soft: #0e2b28;
@@ -34,7 +68,7 @@ body {
   margin: 0;
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   color: var(--text);
-  background: linear-gradient(180deg, #eef4ff 0%, #f8fafc 100%);
+  background: linear-gradient(180deg, var(--shell-bg-start) 0%, var(--shell-bg-end) 100%);
 }
 
 a {
@@ -45,7 +79,7 @@ a {
 main {
   max-width: 1120px;
   margin: 0 auto;
-  padding: 1rem;
+  padding: 1.25rem 1rem 2rem;
 }
 
 .page-container {
@@ -110,6 +144,26 @@ main {
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
+}
+
+.link-row a {
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--link-pill-border);
+  border-radius: 999px;
+  background: var(--link-pill-bg);
+  color: var(--link-pill-text);
+  font-size: 0.88rem;
+  line-height: 1.2;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.link-row a:hover {
+  background: var(--link-pill-hover-bg);
+}
+
+.link-row a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .checkbox-chip {
@@ -238,35 +292,91 @@ code {
   font-size: 0.92rem;
 }
 
+/* Shared shell chrome for all operator pages. Reuse this layout language for new routes. */
 .topnav {
-  border-bottom: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.92);
+  border-bottom: 1px solid var(--shell-header-border);
+  background: linear-gradient(180deg, var(--shell-header-bg) 0%, rgba(9, 14, 27, 0.92) 100%);
   position: sticky;
   top: 0;
+  z-index: 40;
   backdrop-filter: blur(6px);
+  box-shadow: 0 10px 24px var(--shell-header-shadow);
 }
 
 .topnav-inner {
   max-width: 1120px;
   margin: 0 auto;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  padding: 0.75rem 1rem;
+  padding: 0.85rem 1rem;
   gap: 1rem;
+}
+
+.topnav-brand {
+  color: var(--shell-header-text);
+  font-size: 0.98rem;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 .topnav-links {
   display: flex;
-  gap: 0.75rem;
+  gap: 0.55rem;
   flex-wrap: wrap;
+  align-items: center;
 }
 
-.topnav-links a {
-  padding: 0.35rem 0.6rem;
-  border: 1px solid var(--border);
+.topnav-link {
+  padding: 0.38rem 0.72rem;
+  border: 1px solid var(--shell-link-border);
   border-radius: 999px;
-  background: #fff;
+  background: var(--shell-link-bg);
+  color: var(--shell-link-text);
+  font-size: 0.88rem;
+  line-height: 1.2;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.topnav-link:hover {
+  background: var(--shell-link-hover-bg);
+}
+
+.topnav-link:focus-visible {
+  outline: 2px solid var(--shell-link-active-border);
+  outline-offset: 2px;
+}
+
+.topnav-link.is-active {
+  background: var(--shell-link-active-bg);
+  border-color: var(--shell-link-active-border);
+  color: var(--shell-link-active-text);
+  font-weight: 600;
+}
+
+.topnav-session {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.topnav-principal {
+  color: var(--shell-header-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topnav-session button {
+  border-color: var(--shell-link-border);
+  background: var(--shell-link-bg);
+  color: var(--shell-link-text);
+}
+
+.topnav-session button:hover {
+  background: var(--shell-link-hover-bg);
 }
 
 .badge {
@@ -423,5 +533,17 @@ code {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 960px) {
+  .topnav-inner {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 0.7rem;
+  }
+
+  .topnav-session {
+    justify-content: flex-start;
   }
 }
