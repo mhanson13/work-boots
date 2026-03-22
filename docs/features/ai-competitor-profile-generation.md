@@ -223,6 +223,8 @@ Bounded exclusion telemetry is persisted at run level for tuning:
 - `AI_PROMPT_TEXT_RECOMMENDATION` (default: empty)
 - `OPENAI_API_BASE_URL` (default: `https://api.openai.com/v1`)
 
+These AI runtime settings are shared with recommendation narrative generation (`docs/features/seo-recommendations-ai-assist.md`) so provider/model behavior stays consistent across bounded SEO.ai AI surfaces.
+
 Prompt behavior notes:
 - dynamic location/industry context comes from persisted site fields (not runtime retrieval);
 - recommendation text is optional, additive, and bounded;

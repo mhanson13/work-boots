@@ -32,6 +32,11 @@ from app.integrations.seo_competitor_profile_generation_provider import (
     OpenAISEOCompetitorProfileGenerationProvider,
     SEOCompetitorProfileProviderError,
 )
+from app.integrations.seo_recommendation_narrative_provider import (
+    MisconfiguredSEORecommendationNarrativeProvider,
+    OpenAISEORecommendationNarrativeProvider,
+    SEORecommendationNarrativeProviderError,
+)
 from app.integrations.google_auth import (
     GoogleIdentityClaims,
     GoogleOIDCJWKSVerifier,
@@ -74,6 +79,9 @@ __all__ = [
     "MisconfiguredSEOCompetitorProfileGenerationProvider",
     "OpenAISEOCompetitorProfileGenerationProvider",
     "SEOCompetitorProfileProviderError",
+    "MisconfiguredSEORecommendationNarrativeProvider",
+    "OpenAISEORecommendationNarrativeProvider",
+    "SEORecommendationNarrativeProviderError",
     "GoogleIdentityClaims",
     "GoogleOIDCJWKSVerifier",
     "GoogleOIDCTokenInfoVerifier",

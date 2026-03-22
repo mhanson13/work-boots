@@ -7,12 +7,14 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
+from app.integrations.seo_recommendation_narrative_provider import SEORecommendationNarrativeProviderError
 from app.integrations.seo_summary_provider import SEORecommendationNarrativeProvider
 from app.models.seo_recommendation import SEORecommendation
 from app.models.seo_recommendation_narrative import SEORecommendationNarrative
 from app.repositories.business_repository import BusinessRepository
 from app.repositories.seo_recommendation_narrative_repository import SEORecommendationNarrativeRepository
 from app.repositories.seo_recommendation_repository import SEORecommendationRepository
+from app.services.seo_recommendation_narrative_prompt import SEO_RECOMMENDATION_NARRATIVE_PROMPT_VERSION
 
 
 logger = logging.getLogger(__name__)
@@ -109,13 +111,16 @@ class SEORecommendationNarrativeService:
             self.session.commit()
             self.session.refresh(narrative)
             return SEORecommendationNarrativeResult(narrative=narrative)
-        except Exception as exc:  # noqa: BLE001
+        except SEORecommendationNarrativeProviderError as exc:
             logger.warning(
-                "SEO recommendation narrative generation failed business_id=%s site_id=%s recommendation_run_id=%s reason=%s",
+                (
+                    "SEO recommendation narrative generation failed business_id=%s site_id=%s "
+                    "recommendation_run_id=%s code=%s"
+                ),
                 business_id,
                 site_id,
                 recommendation_run_id,
-                str(exc),
+                exc.code,
             )
             failed = SEORecommendationNarrative(
                 id=str(uuid4()),
@@ -127,10 +132,38 @@ class SEORecommendationNarrativeService:
                 narrative_text=None,
                 top_themes_json=[],
                 sections_json=None,
-                provider_name="narrative-provider-error",
-                model_name="narrative-provider-error",
-                prompt_version="seo-recommendation-narrative-v1",
-                error_message=str(exc),
+                provider_name=exc.provider_name,
+                model_name=exc.model_name,
+                prompt_version=exc.prompt_version,
+                error_message=exc.safe_message,
+                created_by_principal_id=created_by_principal_id,
+            )
+            self.seo_recommendation_narrative_repository.create(failed)
+            self.session.commit()
+            raise SEORecommendationNarrativeValidationError(exc.safe_message) from exc
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "SEO recommendation narrative generation failed business_id=%s site_id=%s recommendation_run_id=%s reason=%s",
+                business_id,
+                site_id,
+                recommendation_run_id,
+                str(exc),
+            )
+            provider_name, model_name, prompt_version = self._provider_defaults()
+            failed = SEORecommendationNarrative(
+                id=str(uuid4()),
+                business_id=business_id,
+                site_id=site_id,
+                recommendation_run_id=recommendation_run_id,
+                version=version,
+                status="failed",
+                narrative_text=None,
+                top_themes_json=[],
+                sections_json=None,
+                provider_name=provider_name,
+                model_name=model_name,
+                prompt_version=prompt_version,
+                error_message="Recommendation narrative generation failed.",
                 created_by_principal_id=created_by_principal_id,
             )
             self.seo_recommendation_narrative_repository.create(failed)
@@ -237,3 +270,12 @@ class SEORecommendationNarrativeService:
                 rec.id,
             ),
         )
+
+    def _provider_defaults(self) -> tuple[str, str, str]:
+        provider_name = str(getattr(self.provider, "provider_name", "") or "").strip() or "narrative-provider-error"
+        model_name = str(getattr(self.provider, "model_name", "") or "").strip() or "narrative-provider-error"
+        prompt_version = (
+            str(getattr(self.provider, "prompt_version", "") or "").strip()
+            or SEO_RECOMMENDATION_NARRATIVE_PROMPT_VERSION
+        )
+        return provider_name, model_name, prompt_version

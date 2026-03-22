@@ -2,14 +2,27 @@ from __future__ import annotations
 
 import pytest
 
-from app.api.deps import get_seo_competitor_profile_generation_provider
+from app.api.deps import (
+    get_seo_competitor_profile_generation_provider,
+    get_seo_recommendation_narrative_provider,
+)
 from app.core.config import get_settings
 from app.integrations.seo_competitor_profile_generation_provider import (
     MisconfiguredSEOCompetitorProfileGenerationProvider,
     OpenAISEOCompetitorProfileGenerationProvider,
     SEOCompetitorProfileProviderError,
 )
-from app.integrations.seo_summary_provider import MockSEOCompetitorProfileGenerationProvider
+from app.integrations.seo_recommendation_narrative_provider import (
+    MisconfiguredSEORecommendationNarrativeProvider,
+    OpenAISEORecommendationNarrativeProvider,
+    SEORecommendationNarrativeProviderError,
+)
+from app.integrations.seo_summary_provider import (
+    MockSEOCompetitorProfileGenerationProvider,
+    MockSEORecommendationNarrativeProvider,
+)
+from app.models.seo_recommendation import SEORecommendation
+from app.models.seo_recommendation_run import SEORecommendationRun
 from app.models.seo_site import SEOSite
 
 
@@ -29,6 +42,41 @@ def _site() -> SEOSite:
         normalized_domain="client.example",
         is_active=True,
         is_primary=True,
+    )
+
+
+def _recommendation_run() -> SEORecommendationRun:
+    return SEORecommendationRun(
+        id="rec-run-1",
+        business_id="biz-1",
+        site_id="site-1",
+        audit_run_id="audit-1",
+        comparison_run_id=None,
+        status="completed",
+        total_recommendations=1,
+        critical_recommendations=0,
+        warning_recommendations=1,
+        info_recommendations=0,
+    )
+
+
+def _recommendation() -> SEORecommendation:
+    return SEORecommendation(
+        id="rec-1",
+        business_id="biz-1",
+        site_id="site-1",
+        recommendation_run_id="rec-run-1",
+        audit_run_id="audit-1",
+        comparison_run_id=None,
+        rule_key="fix_missing_title_tags",
+        category="SEO",
+        severity="WARNING",
+        title="Fix missing title tags",
+        rationale="Deterministic recommendation rationale.",
+        priority_score=65,
+        priority_band="high",
+        effort_bucket="LOW",
+        status="open",
     )
 
 
@@ -143,3 +191,87 @@ def test_retention_config_rejects_invalid_values(monkeypatch: pytest.MonkeyPatch
 
     with pytest.raises(RuntimeError, match="SEO_COMPETITOR_PROFILE_RUN_RETENTION_DAYS must be >= 1"):
         get_settings()
+
+
+def test_recommendation_narrative_provider_factory_uses_openai_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AI_PROVIDER_NAME", "openai")
+    monkeypatch.setenv("AI_PROVIDER_API_KEY", "sk-test")
+    monkeypatch.setenv("AI_MODEL_NAME", "gpt-configured")
+    monkeypatch.setenv("AI_TIMEOUT_VALUE", "39")
+    monkeypatch.setenv("AI_PROMPT_TEXT_RECOMMENDATION", "Focus on backlog clarity")
+
+    provider = get_seo_recommendation_narrative_provider()
+
+    assert isinstance(provider, OpenAISEORecommendationNarrativeProvider)
+    assert provider.model_name == "gpt-configured"
+    assert provider.timeout_seconds == 39
+    assert provider.prompt_text_recommendation == "Focus on backlog clarity"
+
+
+def test_recommendation_narrative_provider_factory_missing_key_in_production_is_safe_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AI_PROVIDER_NAME", "openai")
+    monkeypatch.setenv("AI_MODEL_NAME", "gpt-configured")
+    monkeypatch.delenv("AI_PROVIDER_API_KEY", raising=False)
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("API_TOKEN_HASH_PEPPER", "test-pepper")
+
+    provider = get_seo_recommendation_narrative_provider()
+
+    assert isinstance(provider, MisconfiguredSEORecommendationNarrativeProvider)
+    with pytest.raises(SEORecommendationNarrativeProviderError) as exc_info:
+        provider.generate_narrative(
+            run=_recommendation_run(),
+            recommendations=[_recommendation()],
+            by_status={"open": 1},
+            by_category={"SEO": 1},
+            by_severity={"WARNING": 1},
+            by_effort_bucket={"LOW": 1},
+            by_priority_band={"high": 1},
+            backlog=[_recommendation()],
+        )
+    assert exc_info.value.code == "provider_auth_config"
+    assert "credentials are not configured" in exc_info.value.safe_message.lower()
+
+
+def test_recommendation_narrative_provider_factory_missing_key_falls_back_to_mock_in_local(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AI_PROVIDER_NAME", "openai")
+    monkeypatch.setenv("AI_MODEL_NAME", "gpt-configured")
+    monkeypatch.delenv("AI_PROVIDER_API_KEY", raising=False)
+    monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("ENVIRONMENT", "development")
+
+    provider = get_seo_recommendation_narrative_provider()
+
+    assert isinstance(provider, MockSEORecommendationNarrativeProvider)
+
+
+def test_recommendation_narrative_provider_factory_invalid_provider_is_safe_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AI_PROVIDER_NAME", "invalid-provider")
+    monkeypatch.setenv("AI_MODEL_NAME", "invalid-model")
+    monkeypatch.setenv("AI_PROVIDER_API_KEY", "sk-ignored")
+
+    provider = get_seo_recommendation_narrative_provider()
+
+    assert isinstance(provider, MisconfiguredSEORecommendationNarrativeProvider)
+    with pytest.raises(SEORecommendationNarrativeProviderError) as exc_info:
+        provider.generate_narrative(
+            run=_recommendation_run(),
+            recommendations=[_recommendation()],
+            by_status={"open": 1},
+            by_category={"SEO": 1},
+            by_severity={"WARNING": 1},
+            by_effort_bucket={"LOW": 1},
+            by_priority_band={"high": 1},
+            backlog=[_recommendation()],
+        )
+    assert exc_info.value.code == "provider_auth_config"
+    assert "selection is invalid" in exc_info.value.safe_message.lower()

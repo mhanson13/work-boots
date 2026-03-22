@@ -524,6 +524,11 @@ export interface RecommendationRunListResponse {
   total: number;
 }
 
+export interface RecommendationRunCreateRequest {
+  audit_run_id?: string;
+  comparison_run_id?: string;
+}
+
 export interface RecommendationRunReport {
   recommendation_run: RecommendationRun;
   rollups: {

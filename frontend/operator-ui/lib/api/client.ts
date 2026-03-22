@@ -33,6 +33,7 @@ import type {
   CompetitorProfileGenerationSummaryResponse,
   RecommendationRunListResponse,
   RecommendationRun,
+  RecommendationRunCreateRequest,
   RecommendationRunReport,
   RecommendationNarrative,
   RecommendationNarrativeListResponse,
@@ -545,6 +546,22 @@ export async function fetchRecommendationRuns(
   );
 }
 
+export async function createRecommendationRun(
+  token: string,
+  businessId: string,
+  siteId: string,
+  payload: RecommendationRunCreateRequest,
+): Promise<RecommendationRun> {
+  return apiRequest<RecommendationRun>(
+    `/api/businesses/${businessId}/seo/sites/${siteId}/recommendation-runs`,
+    {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 export async function fetchRecommendationRun(
   token: string,
   businessId: string,
@@ -590,6 +607,21 @@ export async function fetchRecommendationRunNarratives(
   return apiRequest<RecommendationNarrativeListResponse>(
     `/api/businesses/${businessId}/seo/sites/${siteId}/recommendation-runs/${recommendationRunId}/narratives`,
     { token },
+  );
+}
+
+export async function createRecommendationRunNarrative(
+  token: string,
+  businessId: string,
+  siteId: string,
+  recommendationRunId: string,
+): Promise<RecommendationNarrative> {
+  return apiRequest<RecommendationNarrative>(
+    `/api/businesses/${businessId}/seo/sites/${siteId}/recommendation-runs/${recommendationRunId}/narratives`,
+    {
+      method: "POST",
+      token,
+    },
   );
 }
 

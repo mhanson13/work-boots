@@ -13,6 +13,7 @@ from app.api.deps import (
 )
 from app.api.routes.seo import router as seo_router
 from app.api.routes.seo import router_v1 as seo_v1_router
+from app.integrations.seo_recommendation_narrative_provider import SEORecommendationNarrativeProviderError
 from app.integrations.seo_summary_provider import (
     SEORecommendationNarrativeOutput,
     SEORecommendationNarrativeProvider,
@@ -48,6 +49,18 @@ NARRATIVE_RESPONSE_KEYS = {
 class _FailingRecommendationNarrativeProvider:
     def generate_narrative(self, **kwargs):  # noqa: ANN003, ANN201
         raise RuntimeError("provider unavailable")
+
+
+class _StructuredOutputFailingNarrativeProvider:
+    def generate_narrative(self, **kwargs):  # noqa: ANN003, ANN201
+        raise SEORecommendationNarrativeProviderError(
+            code="schema_validation",
+            safe_message="Recommendation narrative returned invalid structured output.",
+            provider_name="openai",
+            model_name="gpt-4o-mini",
+            prompt_version="seo-recommendation-narrative-v1",
+            raw_output='{"bad":"payload"}',
+        )
 
 
 class _CapturingRecommendationNarrativeProvider:
@@ -317,6 +330,43 @@ def test_recommendation_narrative_failure_is_isolated_and_persisted(db_session, 
     assert latest.status_code == 200
     assert latest.json()["version"] == 2
     assert latest.json()["status"] == "failed"
+
+
+def test_recommendation_narrative_structured_output_failure_is_safe_and_auditable(
+    db_session,
+    seeded_business,
+) -> None:
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        narrative_provider=_StructuredOutputFailingNarrativeProvider(),
+    )
+    site_id, run_id = _create_completed_recommendation_run(client, db_session, seeded_business.id)
+
+    failed = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/narratives"
+    )
+    assert failed.status_code == 422
+    assert failed.json()["detail"] == "Recommendation narrative returned invalid structured output."
+
+    narratives = (
+        db_session.query(SEORecommendationNarrative)
+        .filter(SEORecommendationNarrative.recommendation_run_id == run_id)
+        .order_by(SEORecommendationNarrative.version.asc())
+        .all()
+    )
+    assert len(narratives) == 1
+    assert narratives[0].status == "failed"
+    assert narratives[0].provider_name == "openai"
+    assert narratives[0].model_name == "gpt-4o-mini"
+    assert narratives[0].prompt_version == "seo-recommendation-narrative-v1"
+    assert narratives[0].error_message == "Recommendation narrative returned invalid structured output."
+
+    recs_after = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/recommendations"
+    )
+    assert recs_after.status_code == 200
+    assert recs_after.json()["total"] >= 1
 
 
 def test_recommendation_narrative_business_isolation_and_invalid_lineage(db_session, seeded_business) -> None:

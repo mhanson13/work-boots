@@ -20,12 +20,14 @@ from app.integrations import (
     EmailProvider,
     GoogleBusinessProfileClient,
     MisconfiguredSEOCompetitorProfileGenerationProvider,
+    MisconfiguredSEORecommendationNarrativeProvider,
     MockSEOCompetitorComparisonSummaryProvider,
     MockSEOCompetitorProfileGenerationProvider,
     MockSEORecommendationNarrativeProvider,
     MockSEOAuditSummaryProvider,
     MockEmailProvider,
     OpenAISEOCompetitorProfileGenerationProvider,
+    OpenAISEORecommendationNarrativeProvider,
     MockSMSProvider,
     SEOCompetitorProfileGenerationProvider,
     SEORecommendationNarrativeProvider,
@@ -91,6 +93,7 @@ from app.services.seo_extractor import SEOExtractor
 from app.services.seo_finding_rules import SEOFindingRules
 from app.services.seo_recommendation_narratives import SEORecommendationNarrativeService
 from app.services.seo_recommendations import SEORecommendationService
+from app.services.seo_recommendation_narrative_prompt import SEO_RECOMMENDATION_NARRATIVE_PROMPT_VERSION
 from app.services.seo_sites import SEOSiteService
 from app.services.seo_summary import SEOSummaryService
 from app.services.summary import LeadSummaryService
@@ -467,7 +470,68 @@ def get_seo_competitor_profile_generation_run_executor(
 
 
 def get_seo_recommendation_narrative_provider() -> SEORecommendationNarrativeProvider:
-    return MockSEORecommendationNarrativeProvider()
+    settings = get_settings()
+    provider_name = settings.ai_provider_name
+    model_name = settings.ai_model_name
+    prompt_version = SEO_RECOMMENDATION_NARRATIVE_PROMPT_VERSION
+
+    if provider_name == "openai":
+        api_key = (settings.ai_provider_api_key or "").strip()
+        if not api_key:
+            local_test_env_tokens = {
+                (settings.app_env or "").strip().lower(),
+                (settings.environment or "").strip().lower(),
+            }
+            if local_test_env_tokens & {"local", "development", "dev", "test", "testing"}:
+                logger.warning(
+                    "SEO recommendation narrative provider falling back to mock in local/test because AI_PROVIDER_API_KEY is missing."
+                )
+                return MockSEORecommendationNarrativeProvider(
+                    provider_name="mock",
+                    model_name=model_name or "mock-seo-recommendation-narrative-v1",
+                    prompt_version=prompt_version,
+                )
+            logger.warning(
+                "SEO recommendation narrative provider misconfigured: AI_PROVIDER_API_KEY is missing for provider=openai"
+            )
+            return MisconfiguredSEORecommendationNarrativeProvider(
+                provider_name="openai",
+                model_name=model_name or "gpt-4o-mini",
+                prompt_version=prompt_version,
+                safe_message="AI provider credentials are not configured for recommendation narrative generation.",
+            )
+        try:
+            return OpenAISEORecommendationNarrativeProvider(
+                api_key=api_key,
+                model_name=model_name or "gpt-4o-mini",
+                timeout_seconds=settings.ai_timeout_value,
+                api_base_url=settings.openai_api_base_url,
+                prompt_version=prompt_version,
+                prompt_text_recommendation=settings.ai_prompt_text_recommendation,
+            )
+        except ValueError as exc:
+            logger.warning("Failed to initialize OpenAI recommendation narrative provider: %s", str(exc))
+            return MisconfiguredSEORecommendationNarrativeProvider(
+                provider_name="openai",
+                model_name=model_name or "gpt-4o-mini",
+                prompt_version=prompt_version,
+                safe_message="AI provider configuration is invalid for recommendation narrative generation.",
+            )
+
+    if provider_name == "mock":
+        return MockSEORecommendationNarrativeProvider(
+            provider_name="mock",
+            model_name=model_name or "mock-seo-recommendation-narrative-v1",
+            prompt_version=prompt_version,
+        )
+
+    logger.warning("Unknown SEO recommendation narrative provider '%s'", provider_name)
+    return MisconfiguredSEORecommendationNarrativeProvider(
+        provider_name=provider_name or "unknown",
+        model_name=model_name or "unknown-model",
+        prompt_version=prompt_version,
+        safe_message="AI provider selection is invalid for recommendation narrative generation.",
+    )
 
 
 def get_google_oidc_verifier() -> GoogleOIDCJWKSVerifier:

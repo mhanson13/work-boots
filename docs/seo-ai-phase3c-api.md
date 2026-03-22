@@ -13,29 +13,38 @@ Primary route prefixes:
 ## Endpoints
 
 ## Create recommendation narrative
+`POST /api/businesses/{business_id}/seo/sites/{site_id}/recommendation-runs/{recommendation_run_id}/narratives`
+and
 `POST /api/v1/businesses/{business_id}/seo/sites/{site_id}/recommendation-runs/{recommendation_run_id}/narratives`
 
 Behavior:
 - creates next narrative version for the recommendation run
 - persists `completed` on success
 - persists `failed` with `error_message` on provider failure
+- validates AI output against a strict structured schema before persistence
 
 Response:
 - `SEORecommendationNarrativeRead`
 
 ## List recommendation narratives
+`GET /api/businesses/{business_id}/seo/sites/{site_id}/recommendation-runs/{recommendation_run_id}/narratives`
+and
 `GET /api/v1/businesses/{business_id}/seo/sites/{site_id}/recommendation-runs/{recommendation_run_id}/narratives`
 
 Response:
 - `SEORecommendationNarrativeListResponse`
 
 ## Get latest recommendation narrative
+`GET /api/businesses/{business_id}/seo/sites/{site_id}/recommendation-runs/{recommendation_run_id}/narratives/latest`
+and
 `GET /api/v1/businesses/{business_id}/seo/sites/{site_id}/recommendation-runs/{recommendation_run_id}/narratives/latest`
 
 Response:
 - `SEORecommendationNarrativeRead`
 
 ## Get recommendation narrative by id
+`GET /api/businesses/{business_id}/seo/sites/{site_id}/recommendation-narratives/{narrative_id}`
+and
 `GET /api/v1/businesses/{business_id}/seo/sites/{site_id}/recommendation-narratives/{narrative_id}`
 
 Response:
@@ -59,6 +68,7 @@ Narrative resources expose:
 ## Status and Error Semantics
 - `404` for out-of-scope business/site/run/narrative access
 - `422` for invalid run state or provider generation failure
+- provider/runtime errors are normalized to safe messages (no credential leakage)
 
 ## Grounding and Deterministic Authority
 Narratives are explanatory overlays for persisted deterministic recommendations.
