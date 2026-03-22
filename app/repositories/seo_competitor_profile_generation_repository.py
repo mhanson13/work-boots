@@ -2,13 +2,21 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Select, and_, case, delete, func, or_, select, update
+from sqlalchemy import Float, Select, and_, case, delete, func, or_, select, update
 from sqlalchemy.orm import Session, aliased
 
 from app.core.time import utc_now
 from app.models.seo_competitor_profile_cleanup_execution import SEOCompetitorProfileCleanupExecution
 from app.models.seo_competitor_profile_draft import SEOCompetitorProfileDraft
 from app.models.seo_competitor_profile_generation_run import SEOCompetitorProfileGenerationRun
+from app.models.seo_competitor_tuning_preview_event import SEOCompetitorTuningPreviewEvent
+
+_TUNING_SETTING_KEYS: tuple[str, ...] = (
+    "competitor_candidate_min_relevance_score",
+    "competitor_candidate_big_box_penalty",
+    "competitor_candidate_directory_penalty",
+    "competitor_candidate_local_alignment_bonus",
+)
 
 
 class SEOCompetitorProfileGenerationRepository:
@@ -387,6 +395,184 @@ class SEOCompetitorProfileGenerationRepository:
             row[2],
             row[3],
         )
+
+    def create_tuning_preview_event(
+        self,
+        event: SEOCompetitorTuningPreviewEvent,
+    ) -> SEOCompetitorTuningPreviewEvent:
+        self.session.add(event)
+        self.session.flush()
+        return event
+
+    def save_tuning_preview_event(
+        self,
+        event: SEOCompetitorTuningPreviewEvent,
+    ) -> SEOCompetitorTuningPreviewEvent:
+        self.session.add(event)
+        self.session.flush()
+        return event
+
+    def find_recent_unapplied_preview_event_for_business_matching_tuning(
+        self,
+        *,
+        business_id: str,
+        changed_keys: set[str],
+        previous_values: dict[str, int],
+        applied_values: dict[str, int],
+        created_after: datetime,
+    ) -> SEOCompetitorTuningPreviewEvent | None:
+        if not changed_keys:
+            return None
+
+        stmt = (
+            select(SEOCompetitorTuningPreviewEvent)
+            .where(SEOCompetitorTuningPreviewEvent.business_id == business_id)
+            .where(SEOCompetitorTuningPreviewEvent.applied_at.is_(None))
+            .where(SEOCompetitorTuningPreviewEvent.created_at >= created_after)
+            .order_by(
+                SEOCompetitorTuningPreviewEvent.created_at.desc(),
+                SEOCompetitorTuningPreviewEvent.id.desc(),
+            )
+        )
+        for event in self.session.scalars(stmt):
+            event_values = self._tuning_values_from_preview_response(event.preview_response)
+            if event_values is None:
+                continue
+            current_values, proposed_values = event_values
+            matches_all = True
+            for key in changed_keys:
+                if key not in _TUNING_SETTING_KEYS:
+                    matches_all = False
+                    break
+                if proposed_values.get(key) != applied_values.get(key):
+                    matches_all = False
+                    break
+                # Guardrail: avoid linking unrelated previews by requiring the preview's
+                # current value to match the pre-update value when available.
+                if current_values.get(key) != previous_values.get(key):
+                    matches_all = False
+                    break
+            if matches_all:
+                return event
+        return None
+
+    def list_pending_applied_preview_events_for_business_site(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+        applied_before: datetime,
+    ) -> list[SEOCompetitorTuningPreviewEvent]:
+        stmt = (
+            select(SEOCompetitorTuningPreviewEvent)
+            .where(SEOCompetitorTuningPreviewEvent.business_id == business_id)
+            .where(SEOCompetitorTuningPreviewEvent.site_id == site_id)
+            .where(SEOCompetitorTuningPreviewEvent.applied_at.is_not(None))
+            .where(SEOCompetitorTuningPreviewEvent.applied_at <= applied_before)
+            .where(SEOCompetitorTuningPreviewEvent.evaluated_at.is_(None))
+            .order_by(
+                SEOCompetitorTuningPreviewEvent.applied_at.asc(),
+                SEOCompetitorTuningPreviewEvent.created_at.asc(),
+                SEOCompetitorTuningPreviewEvent.id.asc(),
+            )
+        )
+        return list(self.session.scalars(stmt))
+
+    def summarize_preview_accuracy_metrics(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+        evaluated_after: datetime,
+    ) -> tuple[int, int, float | None]:
+        stmt = select(
+            func.count(SEOCompetitorTuningPreviewEvent.id),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (SEOCompetitorTuningPreviewEvent.direction_correct.is_(True), 1),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.avg(SEOCompetitorTuningPreviewEvent.error_margin.cast(Float)),
+        ).where(
+            SEOCompetitorTuningPreviewEvent.business_id == business_id,
+            SEOCompetitorTuningPreviewEvent.site_id == site_id,
+            SEOCompetitorTuningPreviewEvent.evaluated_at.is_not(None),
+            SEOCompetitorTuningPreviewEvent.evaluated_at >= evaluated_after,
+            SEOCompetitorTuningPreviewEvent.direction_correct.is_not(None),
+            SEOCompetitorTuningPreviewEvent.error_margin.is_not(None),
+        )
+        row = self.session.execute(stmt).one()
+        return (
+            int(row[0] or 0),
+            int(row[1] or 0),
+            float(row[2]) if row[2] is not None else None,
+        )
+
+    def summarize_last_n_preview_accuracy(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+        limit: int,
+    ) -> tuple[int, int, float | None]:
+        bounded_limit = max(1, int(limit))
+        stmt = (
+            select(
+                SEOCompetitorTuningPreviewEvent.direction_correct,
+                SEOCompetitorTuningPreviewEvent.error_margin,
+            )
+            .where(SEOCompetitorTuningPreviewEvent.business_id == business_id)
+            .where(SEOCompetitorTuningPreviewEvent.site_id == site_id)
+            .where(SEOCompetitorTuningPreviewEvent.evaluated_at.is_not(None))
+            .where(SEOCompetitorTuningPreviewEvent.direction_correct.is_not(None))
+            .where(SEOCompetitorTuningPreviewEvent.error_margin.is_not(None))
+            .order_by(
+                SEOCompetitorTuningPreviewEvent.evaluated_at.desc(),
+                SEOCompetitorTuningPreviewEvent.id.desc(),
+            )
+            .limit(bounded_limit)
+        )
+        rows = self.session.execute(stmt).all()
+        if not rows:
+            return (0, 0, None)
+
+        sample_size = len(rows)
+        direction_correct_count = 0
+        total_error_margin = 0.0
+        for direction_correct, error_margin in rows:
+            if direction_correct is True:
+                direction_correct_count += 1
+            total_error_margin += float(error_margin or 0.0)
+        return (
+            sample_size,
+            direction_correct_count,
+            (total_error_margin / sample_size) if sample_size else None,
+        )
+
+    @staticmethod
+    def _tuning_values_from_preview_response(
+        preview_response: dict[str, object] | None,
+    ) -> tuple[dict[str, int], dict[str, int]] | None:
+        if not isinstance(preview_response, dict):
+            return None
+        raw_current = preview_response.get("current_values")
+        raw_proposed = preview_response.get("proposed_values")
+        if not isinstance(raw_current, dict) or not isinstance(raw_proposed, dict):
+            return None
+
+        current_values: dict[str, int] = {}
+        proposed_values: dict[str, int] = {}
+        for key in _TUNING_SETTING_KEYS:
+            try:
+                current_values[key] = int(raw_current.get(key))
+                proposed_values[key] = int(raw_proposed.get(key))
+            except (TypeError, ValueError):
+                return None
+        return current_values, proposed_values
 
     def create_cleanup_execution(
         self,

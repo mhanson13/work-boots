@@ -334,8 +334,15 @@ def get_lead_reminder_job(
 def get_business_settings_service(
     db: Session = Depends(get_db),
     business_repository: BusinessRepository = Depends(get_business_repository),
+    seo_competitor_profile_generation_repository: SEOCompetitorProfileGenerationRepository = Depends(
+        get_seo_competitor_profile_generation_repository
+    ),
 ) -> BusinessSettingsService:
-    return BusinessSettingsService(session=db, business_repository=business_repository)
+    return BusinessSettingsService(
+        session=db,
+        business_repository=business_repository,
+        seo_competitor_profile_generation_repository=seo_competitor_profile_generation_repository,
+    )
 
 
 def get_seo_site_service(

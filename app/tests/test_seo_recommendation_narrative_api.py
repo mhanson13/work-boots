@@ -25,6 +25,7 @@ from app.models.seo_audit_finding import SEOAuditFinding
 from app.models.seo_audit_run import SEOAuditRun
 from app.models.seo_recommendation import SEORecommendation
 from app.models.seo_recommendation_narrative import SEORecommendationNarrative
+from app.models.seo_competitor_tuning_preview_event import SEOCompetitorTuningPreviewEvent
 
 
 NARRATIVE_RESPONSE_KEYS = {
@@ -574,6 +575,53 @@ def test_recommendation_tuning_preview_returns_deterministic_estimate(db_session
     )
     assert v1_response.status_code == 200
     assert v1_response.json()["source_recommendation_run_id"] == run_id
+
+
+def test_recommendation_tuning_preview_persists_preview_event(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id, run_id = _create_completed_recommendation_run(client, db_session, seeded_business.id)
+    _seed_competitor_generation_telemetry_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        raw_candidate_count=6,
+        included_candidate_count=3,
+        excluded_candidate_count=3,
+        exclusion_counts_by_reason={
+            "duplicate": 1,
+            "low_relevance": 1,
+            "directory_or_aggregator": 1,
+            "big_box_mismatch": 0,
+            "existing_domain_match": 0,
+            "invalid_candidate": 0,
+        },
+    )
+
+    response = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/tuning-preview",
+        json={
+            "recommendation_run_id": run_id,
+            "current_values": {"competitor_candidate_directory_penalty": 35},
+            "proposed_values": {"competitor_candidate_directory_penalty": 30},
+        },
+    )
+    assert response.status_code == 200
+
+    events = (
+        db_session.query(SEOCompetitorTuningPreviewEvent)
+        .filter(SEOCompetitorTuningPreviewEvent.business_id == seeded_business.id)
+        .filter(SEOCompetitorTuningPreviewEvent.site_id == site_id)
+        .order_by(SEOCompetitorTuningPreviewEvent.created_at.desc(), SEOCompetitorTuningPreviewEvent.id.desc())
+        .all()
+    )
+    assert len(events) == 1
+    event = events[0]
+    assert event.source_recommendation_run_id == run_id
+    assert event.source_narrative_id is None
+    assert event.preview_request["proposed_values"]["competitor_candidate_directory_penalty"] == 30
+    assert event.preview_response["estimated_impact"]["summary"]
+    assert event.applied_at is None
+    assert event.evaluated_at is None
 
 
 def test_recommendation_tuning_preview_rejects_invalid_payload(db_session, seeded_business) -> None:

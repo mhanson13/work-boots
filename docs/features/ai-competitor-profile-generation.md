@@ -10,6 +10,7 @@ It now includes bounded observability for:
 - normalized failure categories,
 - cross-run candidate telemetry totals (raw/included/excluded),
 - cross-run exclusion reason aggregates (bounded deterministic reason codes),
+- tuning-preview accuracy metrics (estimated vs actual directional correctness),
 - retention cleanup outcomes and last-run visibility.
 
 Prompt quality is improved with governed site context:
@@ -105,6 +106,10 @@ Bounded exclusion telemetry is persisted at run level for tuning:
      - `exclusion_counts_by_reason` (bounded deterministic keys only).
    - Numeric cross-run totals are computed with DB-side aggregation queries for scalability.
    - Exclusion reasons remain bounded and are aggregated from scoped reason-count payloads only (no raw candidate payload reads).
+   - Preview accuracy is aggregated from linked tuning preview events:
+     - `preview_accuracy_rate`
+     - `avg_error_margin`
+     - `last_n_preview_accuracy` (bounded sample window)
    - Exposed via site-scoped read endpoint.
 2. Cleanup outcome:
    - Retention cleanup writes a feature-specific execution record (`completed|failed`, counts, timestamps, safe error summary).
@@ -189,6 +194,17 @@ Bounded exclusion telemetry is persisted at run level for tuning:
   - `error_summary` (safe, optional)
   - `started_at`, `completed_at`, `created_at`, `updated_at`
 
+### New preview accuracy table
+- `seo_competitor_tuning_preview_events`
+  - scope: `business_id`, `site_id`
+  - bounded payloads: `preview_request`, `preview_response`
+  - lifecycle fields: `applied_at`, `evaluated_at`, `evaluated_generation_run_id`
+  - accuracy fields:
+    - `estimated_included_delta`
+    - `actual_included_delta`
+    - `error_margin`
+    - `direction_correct`
+
 ## Key Constraints / Invariants
 
 - AI output is untrusted until validation + operator review.
@@ -210,6 +226,8 @@ Bounded exclusion telemetry is persisted at run level for tuning:
 - Retry lineage is preserved via `parent_run_id` and surfaced in summaries.
 - Candidate processing emits deterministic ordering and persisted relevance scoring for included drafts.
 - Effective candidate-quality tuning is resolved server-side from business settings with strict bounds validation and deterministic defaults.
+- Tuning impact previews are persisted as bounded events and linked when matching settings are applied.
+- Completed generation runs evaluate pending linked previews and persist deterministic estimated-vs-actual accuracy metrics.
 - Cleanup remains idempotent and now records structured execution outcomes.
 - Scheduled retention (Kubernetes CronJob) continues daily cadence; cleanup status endpoint exposes latest outcome and recent success/failure counts.
 

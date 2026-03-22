@@ -20,6 +20,7 @@ from app.models.seo_competitor_domain import SEOCompetitorDomain
 from app.models.seo_competitor_profile_cleanup_execution import SEOCompetitorProfileCleanupExecution
 from app.models.seo_competitor_profile_draft import SEOCompetitorProfileDraft
 from app.models.seo_competitor_profile_generation_run import SEOCompetitorProfileGenerationRun
+from app.models.seo_competitor_tuning_preview_event import SEOCompetitorTuningPreviewEvent
 from app.models.seo_competitor_set import SEOCompetitorSet
 from app.models.seo_competitor_snapshot_page import SEOCompetitorSnapshotPage
 from app.models.seo_competitor_snapshot_run import SEOCompetitorSnapshotRun
@@ -57,6 +58,7 @@ __all__ = [
     "SEOCompetitorProfileCleanupExecution",
     "SEOCompetitorProfileDraft",
     "SEOCompetitorProfileGenerationRun",
+    "SEOCompetitorTuningPreviewEvent",
     "SEOCompetitorSet",
     "SEOCompetitorSnapshotPage",
     "SEOCompetitorSnapshotRun",

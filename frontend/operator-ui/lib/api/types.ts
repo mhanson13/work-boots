@@ -325,6 +325,15 @@ export interface CompetitorProfileGenerationSummaryResponse {
     | "invalid_candidate",
     number
   >;
+  preview_accuracy_rate?: number | null;
+  avg_error_margin?: number | null;
+  last_n_preview_accuracy?: {
+    window_size: number;
+    sample_size: number;
+    direction_correct_count: number;
+    accuracy_rate: number | null;
+    avg_error_margin: number | null;
+  } | null;
   latest_run_created_at: string | null;
   latest_run_completed_at: string | null;
   latest_completed_run_completed_at: string | null;

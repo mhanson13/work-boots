@@ -40,6 +40,7 @@ from app.models import (
     seo_competitor_domain,
     seo_competitor_profile_draft,
     seo_competitor_profile_generation_run,
+    seo_competitor_tuning_preview_event,
     seo_competitor_set,
     seo_competitor_snapshot_page,
     seo_competitor_snapshot_run,

@@ -12,6 +12,7 @@ from app.core.time import utc_now
 from app.integrations.seo_recommendation_narrative_provider import SEORecommendationNarrativeProviderError
 from app.integrations.seo_summary_provider import SEORecommendationNarrativeProvider
 from app.models.business import Business
+from app.models.seo_competitor_tuning_preview_event import SEOCompetitorTuningPreviewEvent
 from app.models.seo_recommendation import SEORecommendation
 from app.models.seo_recommendation_narrative import SEORecommendationNarrative
 from app.repositories.business_repository import BusinessRepository
@@ -48,6 +49,8 @@ _PREVIEW_CAVEAT = (
     "Preview is deterministic and estimated from recent persisted telemetry. "
     "It does not apply settings and does not guarantee exact future counts."
 )
+_PREVIEW_SUMMARY_MAX_CHARS = 500
+_PREVIEW_RISK_FLAG_MAX_CHARS = 160
 _TUNING_SETTINGS_BOUNDS: dict[str, tuple[int, int]] = {
     "competitor_candidate_min_relevance_score": (MIN_RELEVANCE_SCORE_MIN, MIN_RELEVANCE_SCORE_MAX),
     "competitor_candidate_big_box_penalty": (BIG_BOX_PENALTY_MIN, BIG_BOX_PENALTY_MAX),
@@ -342,7 +345,7 @@ class SEORecommendationNarrativeService:
             current_values=current_values,
             proposed_values=proposed_values,
         )
-        return SEORecommendationTuningImpactPreviewResult(
+        result = SEORecommendationTuningImpactPreviewResult(
             business_id=business_id,
             site_id=site_id,
             source_recommendation_run_id=source_run_id,
@@ -353,6 +356,50 @@ class SEORecommendationNarrativeService:
             estimated_impact=estimated_impact,
             caveat=_PREVIEW_CAVEAT,
         )
+        preview_event = SEOCompetitorTuningPreviewEvent(
+            id=str(uuid4()),
+            business_id=business_id,
+            site_id=site_id,
+            source_narrative_id=source_narrative_id,
+            source_recommendation_run_id=source_run_id,
+            preview_request={
+                "current_values_overrides": dict(sorted((current_values_overrides or {}).items())),
+                "proposed_values_overrides": dict(sorted(proposed_values_overrides.items())),
+                "current_values": dict(sorted(current_values.items())),
+                "proposed_values": dict(sorted(proposed_values.items())),
+                "source_recommendation_run_id": source_run_id,
+                "source_narrative_id": source_narrative_id,
+            },
+            preview_response={
+                "telemetry_window": telemetry_window,
+                "estimated_impact": self._sanitize_estimated_impact_for_preview_storage(estimated_impact),
+                "current_values": dict(sorted(current_values.items())),
+                "proposed_values": dict(sorted(proposed_values.items())),
+                "caveat": _PREVIEW_CAVEAT,
+            },
+            applied_at=None,
+            evaluated_generation_run_id=None,
+            evaluated_at=None,
+            estimated_included_delta=None,
+            actual_included_delta=None,
+            error_margin=None,
+            direction_correct=None,
+        )
+        try:
+            self.seo_competitor_profile_generation_repository.create_tuning_preview_event(preview_event)
+            self.session.commit()
+        except Exception as exc:  # noqa: BLE001
+            self.session.rollback()
+            logger.warning(
+                "Failed to persist tuning preview event business_id=%s site_id=%s reason=%s",
+                business_id,
+                site_id,
+                str(exc),
+            )
+            raise SEORecommendationNarrativeValidationError(
+                "Unable to persist tuning impact preview event."
+            ) from exc
+        return result
 
     def _get_run_for_business(self, *, business_id: str, site_id: str, recommendation_run_id: str):
         run = self.seo_recommendation_repository.get_run_for_business(business_id, recommendation_run_id)
@@ -634,6 +681,31 @@ class SEORecommendationNarrativeService:
             "summary": summary,
             "risk_flags": deduped_flags,
         }
+
+    def _sanitize_estimated_impact_for_preview_storage(
+        self,
+        estimated_impact: dict[str, object],
+    ) -> dict[str, object]:
+        sanitized = dict(estimated_impact)
+        raw_summary = str(sanitized.get("summary", "") or "").strip()
+        if len(raw_summary) > _PREVIEW_SUMMARY_MAX_CHARS:
+            raw_summary = raw_summary[: _PREVIEW_SUMMARY_MAX_CHARS - 3] + "..."
+        sanitized["summary"] = raw_summary
+
+        raw_risk_flags = sanitized.get("risk_flags")
+        if isinstance(raw_risk_flags, list):
+            bounded_flags: list[str] = []
+            for raw_item in raw_risk_flags[:4]:
+                normalized = str(raw_item or "").strip()
+                if not normalized:
+                    continue
+                if len(normalized) > _PREVIEW_RISK_FLAG_MAX_CHARS:
+                    normalized = normalized[: _PREVIEW_RISK_FLAG_MAX_CHARS - 3] + "..."
+                bounded_flags.append(normalized)
+            sanitized["risk_flags"] = bounded_flags
+        else:
+            sanitized["risk_flags"] = []
+        return sanitized
 
     @staticmethod
     def _apply_reason_delta(

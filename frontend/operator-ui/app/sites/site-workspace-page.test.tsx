@@ -1756,6 +1756,15 @@ describe("site workspace ai competitor profile drafts", () => {
       total_raw_candidate_count: 8,
       total_included_candidate_count: 2,
       total_excluded_candidate_count: 6,
+      preview_accuracy_rate: 0.8,
+      avg_error_margin: 1.2,
+      last_n_preview_accuracy: {
+        window_size: 10,
+        sample_size: 5,
+        direction_correct_count: 4,
+        accuracy_rate: 0.8,
+        avg_error_margin: 1.2,
+      },
       exclusion_counts_by_reason: {
         duplicate: 1,
         low_relevance: 2,
@@ -1774,6 +1783,7 @@ describe("site workspace ai competitor profile drafts", () => {
 
     await screen.findByRole("heading", { name: "AI Competitor Profiles" });
     expect(screen.getByText(/Candidate telemetry \(3 runs\): raw 8 \| included 2 \| excluded 6/)).toBeInTheDocument();
+    expect(screen.getByText(/Preview accuracy \(last 5\): 80% directionally correct \| avg error margin 1.2/)).toBeInTheDocument();
     expect(screen.getByText(/Exclusion reasons:/i)).toHaveTextContent(
       "Exclusion reasons: big box mismatch=1, directory or aggregator=2, duplicate=1, low relevance=2",
     );

@@ -320,6 +320,9 @@ class SEOCompetitorProfileGenerationObservabilitySummaryRead(BaseModel):
     total_included_candidate_count: int = 0
     total_excluded_candidate_count: int = 0
     exclusion_counts_by_reason: dict[SEOCompetitorProfileExclusionReason, int] = Field(default_factory=dict)
+    preview_accuracy_rate: float | None = None
+    avg_error_margin: float | None = None
+    last_n_preview_accuracy: dict[str, int | float | None] = Field(default_factory=dict)
     latest_run_created_at: datetime | None
     latest_run_completed_at: datetime | None
     latest_completed_run_completed_at: datetime | None

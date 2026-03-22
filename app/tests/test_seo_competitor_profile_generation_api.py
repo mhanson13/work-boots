@@ -28,6 +28,7 @@ from app.models.business import Business
 from app.models.seo_competitor_domain import SEOCompetitorDomain
 from app.models.seo_competitor_profile_draft import SEOCompetitorProfileDraft
 from app.models.seo_competitor_profile_generation_run import SEOCompetitorProfileGenerationRun
+from app.models.seo_competitor_tuning_preview_event import SEOCompetitorTuningPreviewEvent
 from app.models.seo_site import SEOSite
 from app.repositories.business_repository import BusinessRepository
 from app.repositories.seo_competitor_profile_generation_repository import (
@@ -530,6 +531,95 @@ def _execute_generation_run(
         site_id=site_id,
         generation_run_id=run_id,
     )
+
+
+def _seed_tuning_preview_event(
+    db_session: Session,
+    *,
+    business_id: str,
+    site_id: str,
+    applied_at,
+    telemetry_total_runs: int,
+    telemetry_total_included: int,
+    estimated_included_delta: int,
+) -> SEOCompetitorTuningPreviewEvent:
+    event = SEOCompetitorTuningPreviewEvent(
+        id=str(uuid4()),
+        business_id=business_id,
+        site_id=site_id,
+        source_narrative_id=None,
+        source_recommendation_run_id=None,
+        preview_request={
+            "current_values": {
+                "competitor_candidate_min_relevance_score": 35,
+                "competitor_candidate_big_box_penalty": 20,
+                "competitor_candidate_directory_penalty": 35,
+                "competitor_candidate_local_alignment_bonus": 10,
+            },
+            "proposed_values": {
+                "competitor_candidate_min_relevance_score": 30,
+                "competitor_candidate_big_box_penalty": 20,
+                "competitor_candidate_directory_penalty": 35,
+                "competitor_candidate_local_alignment_bonus": 10,
+            },
+        },
+        preview_response={
+            "telemetry_window": {
+                "lookback_days": 30,
+                "total_runs": telemetry_total_runs,
+                "total_raw_candidate_count": 20,
+                "total_included_candidate_count": telemetry_total_included,
+                "total_excluded_candidate_count": 8,
+                "exclusion_counts_by_reason": {
+                    "duplicate": 1,
+                    "low_relevance": 3,
+                    "directory_or_aggregator": 2,
+                    "big_box_mismatch": 2,
+                    "existing_domain_match": 0,
+                    "invalid_candidate": 0,
+                },
+            },
+            "estimated_impact": {
+                "insufficient_data": False,
+                "estimated_included_candidate_delta": estimated_included_delta,
+                "estimated_excluded_candidate_delta": -estimated_included_delta,
+                "estimated_exclusion_reason_deltas": {
+                    "duplicate": 0,
+                    "low_relevance": -estimated_included_delta,
+                    "directory_or_aggregator": 0,
+                    "big_box_mismatch": 0,
+                    "existing_domain_match": 0,
+                    "invalid_candidate": 0,
+                },
+                "summary": "Deterministic preview summary.",
+                "risk_flags": [],
+            },
+            "current_values": {
+                "competitor_candidate_min_relevance_score": 35,
+                "competitor_candidate_big_box_penalty": 20,
+                "competitor_candidate_directory_penalty": 35,
+                "competitor_candidate_local_alignment_bonus": 10,
+            },
+            "proposed_values": {
+                "competitor_candidate_min_relevance_score": 30,
+                "competitor_candidate_big_box_penalty": 20,
+                "competitor_candidate_directory_penalty": 35,
+                "competitor_candidate_local_alignment_bonus": 10,
+            },
+            "caveat": "Preview is deterministic.",
+        },
+        applied_at=applied_at,
+        evaluated_generation_run_id=None,
+        evaluated_at=None,
+        estimated_included_delta=None,
+        actual_included_delta=None,
+        error_margin=None,
+        direction_correct=None,
+    )
+    db_session.add(event)
+    db_session.commit()
+    db_session.refresh(event)
+    return event
 
 
 def _complete_generation_run(
@@ -1869,6 +1959,102 @@ def test_generation_summary_endpoint_includes_failed_run_candidate_telemetry_tot
     assert payload["total_included_candidate_count"] == 2
     assert payload["total_excluded_candidate_count"] == 5
     assert payload["exclusion_counts_by_reason"]["low_relevance"] == 5
+
+
+def test_generation_run_completion_evaluates_pending_preview_accuracy_event(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
+    )
+    site_id = _create_site(client, seeded_business.id)
+    run_id = _create_generation_run(client, seeded_business.id, site_id)["run"]["id"]
+    preview_event = _seed_tuning_preview_event(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        applied_at=utc_now() - timedelta(minutes=1),
+        telemetry_total_runs=2,
+        telemetry_total_included=2,
+        estimated_included_delta=2,
+    )
+
+    _execute_generation_run(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        run_id=run_id,
+        provider=_DeterministicCompetitorProfileProvider(),
+    )
+
+    db_session.refresh(preview_event)
+    assert preview_event.evaluated_generation_run_id == run_id
+    assert preview_event.evaluated_at is not None
+    assert preview_event.estimated_included_delta == 1
+    assert preview_event.actual_included_delta == 1
+    assert preview_event.error_margin == 0
+    assert preview_event.direction_correct is True
+
+
+def test_generation_summary_endpoint_includes_preview_accuracy_aggregates(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        generation_provider=_DeterministicCompetitorProfileProvider(),
+        run_executor=deferred_executor,
+    )
+    site_id = _create_site(client, seeded_business.id)
+    now = utc_now()
+    event_one = _seed_tuning_preview_event(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        applied_at=now - timedelta(days=1),
+        telemetry_total_runs=3,
+        telemetry_total_included=6,
+        estimated_included_delta=3,
+    )
+    event_two = _seed_tuning_preview_event(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        applied_at=now - timedelta(days=1),
+        telemetry_total_runs=2,
+        telemetry_total_included=4,
+        estimated_included_delta=-2,
+    )
+    event_one.evaluated_generation_run_id = str(uuid4())
+    event_one.evaluated_at = now - timedelta(hours=1)
+    event_one.estimated_included_delta = 1
+    event_one.actual_included_delta = 2
+    event_one.error_margin = 1
+    event_one.direction_correct = True
+    event_two.evaluated_generation_run_id = str(uuid4())
+    event_two.evaluated_at = now - timedelta(minutes=30)
+    event_two.estimated_included_delta = -1
+    event_two.actual_included_delta = 1
+    event_two.error_margin = 2
+    event_two.direction_correct = False
+    db_session.add(event_one)
+    db_session.add(event_two)
+    db_session.commit()
+
+    summary_response = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/summary"
+    )
+    assert summary_response.status_code == 200
+    payload = summary_response.json()
+
+    assert payload["preview_accuracy_rate"] == 0.5
+    assert payload["avg_error_margin"] == 1.5
+    assert payload["last_n_preview_accuracy"]["window_size"] == 10
+    assert payload["last_n_preview_accuracy"]["sample_size"] == 2
+    assert payload["last_n_preview_accuracy"]["direction_correct_count"] == 1
+    assert payload["last_n_preview_accuracy"]["accuracy_rate"] == 0.5
+    assert payload["last_n_preview_accuracy"]["avg_error_margin"] == 1.5
 
 
 def test_generation_summary_endpoint_enforces_tenant_scope(db_session, seeded_business) -> None:

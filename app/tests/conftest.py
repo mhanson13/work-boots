@@ -30,6 +30,7 @@ from app.models.seo_competitor_comparison_finding import SEOCompetitorComparison
 from app.models.seo_competitor_comparison_run import SEOCompetitorComparisonRun  # noqa: F401
 from app.models.seo_competitor_comparison_summary import SEOCompetitorComparisonSummary  # noqa: F401
 from app.models.seo_competitor_domain import SEOCompetitorDomain  # noqa: F401
+from app.models.seo_competitor_tuning_preview_event import SEOCompetitorTuningPreviewEvent  # noqa: F401
 from app.models.seo_competitor_set import SEOCompetitorSet  # noqa: F401
 from app.models.seo_competitor_snapshot_page import SEOCompetitorSnapshotPage  # noqa: F401
 from app.models.seo_competitor_snapshot_run import SEOCompetitorSnapshotRun  # noqa: F401

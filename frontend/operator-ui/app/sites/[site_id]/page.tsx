@@ -1831,6 +1831,19 @@ export default function SiteWorkspacePage() {
               {competitorProfileSummary.total_included_candidate_count} | excluded{" "}
               {competitorProfileSummary.total_excluded_candidate_count}
             </p>
+            {competitorProfileSummary.last_n_preview_accuracy &&
+            competitorProfileSummary.last_n_preview_accuracy.sample_size > 0 ? (
+              <p className="hint muted">
+                Preview accuracy (last {competitorProfileSummary.last_n_preview_accuracy.sample_size}):{" "}
+                {Math.round(
+                  (competitorProfileSummary.last_n_preview_accuracy.accuracy_rate || 0) * 100,
+                )}
+                % directionally correct
+                {typeof competitorProfileSummary.last_n_preview_accuracy.avg_error_margin === "number"
+                  ? ` | avg error margin ${competitorProfileSummary.last_n_preview_accuracy.avg_error_margin.toFixed(1)}`
+                  : ""}
+              </p>
+            ) : null}
             {Object.keys(competitorProfileSummary.failure_category_counts).length > 0 ? (
               <p className="hint muted">
                 Failure categories:{" "}

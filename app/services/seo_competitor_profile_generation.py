@@ -84,6 +84,7 @@ DEFAULT_RAW_OUTPUT_RETENTION_DAYS = 30
 DEFAULT_RUN_RETENTION_DAYS = 180
 DEFAULT_REJECTED_DRAFT_RETENTION_DAYS = 90
 DEFAULT_OBSERVABILITY_LOOKBACK_DAYS = 30
+DEFAULT_PREVIEW_ACCURACY_LAST_N = 10
 
 FAILURE_CATEGORY_TIMEOUT = "timeout"
 FAILURE_CATEGORY_PROVIDER_AUTH = "provider_auth"
@@ -183,6 +184,9 @@ class SEOCompetitorProfileGenerationObservabilitySummary:
     total_included_candidate_count: int
     total_excluded_candidate_count: int
     exclusion_counts_by_reason: dict[str, int]
+    preview_accuracy_rate: float | None
+    avg_error_margin: float | None
+    last_n_preview_accuracy: dict[str, float | int | None]
     latest_run_created_at: datetime | None
     latest_run_completed_at: datetime | None
     latest_completed_run_completed_at: datetime | None
@@ -418,6 +422,23 @@ class SEOCompetitorProfileGenerationService:
             self.seo_competitor_profile_generation_repository.save_run(run)
             for draft in drafts:
                 self.seo_competitor_profile_generation_repository.create_draft(draft)
+            try:
+                self._evaluate_pending_preview_accuracy_for_completed_run(
+                    business_id=business_id,
+                    site_id=site_id,
+                    run=run,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    (
+                        "SEO competitor profile preview accuracy evaluation failed "
+                        "business_id=%s site_id=%s run_id=%s reason=%s"
+                    ),
+                    business_id,
+                    site_id,
+                    run.id,
+                    str(exc),
+                )
             self.session.commit()
             self.session.refresh(run)
             logger.info(
@@ -627,6 +648,29 @@ class SEOCompetitorProfileGenerationService:
             for reason in EXCLUSION_REASON_KEYS:
                 exclusion_counts_by_reason[reason] += normalized_counts[reason]
 
+        evaluated_preview_count, evaluated_direction_correct_count, avg_error_margin = (
+            self.seo_competitor_profile_generation_repository.summarize_preview_accuracy_metrics(
+                business_id=business_id,
+                site_id=site_id,
+                evaluated_after=window_start,
+            )
+        )
+        preview_accuracy_rate = None
+        if evaluated_preview_count > 0:
+            preview_accuracy_rate = evaluated_direction_correct_count / evaluated_preview_count
+        (
+            last_n_sample_size,
+            last_n_direction_correct_count,
+            last_n_avg_error_margin,
+        ) = self.seo_competitor_profile_generation_repository.summarize_last_n_preview_accuracy(
+            business_id=business_id,
+            site_id=site_id,
+            limit=DEFAULT_PREVIEW_ACCURACY_LAST_N,
+        )
+        last_n_accuracy_rate = None
+        if last_n_sample_size > 0:
+            last_n_accuracy_rate = last_n_direction_correct_count / last_n_sample_size
+
         return SEOCompetitorProfileGenerationObservabilitySummary(
             business_id=business_id,
             site_id=site_id,
@@ -646,6 +690,15 @@ class SEOCompetitorProfileGenerationService:
             total_included_candidate_count=total_included_candidate_count,
             total_excluded_candidate_count=total_excluded_candidate_count,
             exclusion_counts_by_reason=dict(sorted(exclusion_counts_by_reason.items())),
+            preview_accuracy_rate=preview_accuracy_rate,
+            avg_error_margin=avg_error_margin,
+            last_n_preview_accuracy={
+                "window_size": DEFAULT_PREVIEW_ACCURACY_LAST_N,
+                "sample_size": last_n_sample_size,
+                "direction_correct_count": last_n_direction_correct_count,
+                "accuracy_rate": last_n_accuracy_rate,
+                "avg_error_margin": last_n_avg_error_margin,
+            },
             latest_run_created_at=latest_run_created_at,
             latest_run_completed_at=latest_run_completed_at,
             latest_completed_run_completed_at=latest_completed_run_completed_at,
@@ -1218,6 +1271,78 @@ class SEOCompetitorProfileGenerationService:
             except (TypeError, ValueError):
                 normalized[reason] = 0
         return normalized
+
+    def _evaluate_pending_preview_accuracy_for_completed_run(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+        run: SEOCompetitorProfileGenerationRun,
+    ) -> None:
+        completed_at = run.completed_at or utc_now()
+        pending_events = (
+            self.seo_competitor_profile_generation_repository.list_pending_applied_preview_events_for_business_site(
+                business_id=business_id,
+                site_id=site_id,
+                applied_before=completed_at,
+            )
+        )
+        if not pending_events:
+            return
+
+        for event in pending_events:
+            preview_response = event.preview_response if isinstance(event.preview_response, dict) else {}
+            telemetry_window = (
+                preview_response.get("telemetry_window")
+                if isinstance(preview_response.get("telemetry_window"), dict)
+                else {}
+            )
+            estimated_impact = (
+                preview_response.get("estimated_impact")
+                if isinstance(preview_response.get("estimated_impact"), dict)
+                else {}
+            )
+            baseline_run_count = max(0, self._coerce_int(telemetry_window.get("total_runs"), default=0))
+            baseline_included_total = max(
+                0,
+                self._coerce_int(telemetry_window.get("total_included_candidate_count"), default=0),
+            )
+            estimated_window_delta = self._coerce_int(
+                estimated_impact.get("estimated_included_candidate_delta"),
+                default=0,
+            )
+            divisor = max(1, baseline_run_count)
+            baseline_included_per_run = int(round(baseline_included_total / divisor))
+            estimated_included_delta = int(round(estimated_window_delta / divisor))
+            actual_included_delta = int(run.included_candidate_count) - baseline_included_per_run
+            error_margin = abs(actual_included_delta - estimated_included_delta)
+            direction_correct = (
+                self._delta_direction(estimated_included_delta)
+                == self._delta_direction(actual_included_delta)
+            )
+
+            event.evaluated_generation_run_id = run.id
+            event.evaluated_at = completed_at
+            event.estimated_included_delta = estimated_included_delta
+            event.actual_included_delta = actual_included_delta
+            event.error_margin = error_margin
+            event.direction_correct = direction_correct
+            self.seo_competitor_profile_generation_repository.save_tuning_preview_event(event)
+
+    @staticmethod
+    def _coerce_int(value: object, *, default: int = 0) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return int(default)
+
+    @staticmethod
+    def _delta_direction(value: int) -> int:
+        if value > 0:
+            return 1
+        if value < 0:
+            return -1
+        return 0
 
     def _sanitize_raw_output(self, raw_output: str | object | None) -> str | None:
         if raw_output is None:

@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+from datetime import timedelta
+import logging
 import re
 
 from sqlalchemy.orm import Session
 
+from app.core.time import utc_now
 from app.models.business import Business
 from app.repositories.business_repository import BusinessRepository
+from app.repositories.seo_competitor_profile_generation_repository import (
+    SEOCompetitorProfileGenerationRepository,
+)
 from app.schemas.business import BusinessSettingsUpdateRequest
 
 _EMAIL_REGEX = re.compile(r"^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$", re.IGNORECASE)
@@ -37,6 +43,9 @@ _COMPETITOR_CANDIDATE_SETTING_FIELDS = {
     "competitor_candidate_directory_penalty",
     "competitor_candidate_local_alignment_bonus",
 }
+_COMPETITOR_PREVIEW_MATCH_LOOKBACK_DAYS = 14
+
+logger = logging.getLogger(__name__)
 
 
 class BusinessSettingsNotFoundError(ValueError):
@@ -48,9 +57,16 @@ class BusinessSettingsValidationError(ValueError):
 
 
 class BusinessSettingsService:
-    def __init__(self, *, session: Session, business_repository: BusinessRepository) -> None:
+    def __init__(
+        self,
+        *,
+        session: Session,
+        business_repository: BusinessRepository,
+        seo_competitor_profile_generation_repository: SEOCompetitorProfileGenerationRepository,
+    ) -> None:
         self.session = session
         self.business_repository = business_repository
+        self.seo_competitor_profile_generation_repository = seo_competitor_profile_generation_repository
 
     def get(self, *, business_id: str) -> Business:
         business = self.business_repository.get(business_id)
@@ -62,6 +78,7 @@ class BusinessSettingsService:
         business = self.get(business_id=business_id)
 
         updates = payload.model_dump(exclude_unset=True)
+        previous_competitor_values = self._competitor_settings_from_business(business)
         effective = self._effective_settings(business=business, updates=updates)
         # Validate only the setting sections touched by this PATCH payload so one
         # invalid section cannot poison updates to unrelated admin controls.
@@ -73,7 +90,66 @@ class BusinessSettingsService:
         self.business_repository.save(business)
         self.session.commit()
         self.session.refresh(business)
+        self._link_recent_preview_event_for_competitor_settings_change(
+            business=business,
+            updates=updates,
+            previous_competitor_values=previous_competitor_values,
+        )
         return business
+
+    def _link_recent_preview_event_for_competitor_settings_change(
+        self,
+        *,
+        business: Business,
+        updates: dict,
+        previous_competitor_values: dict[str, int],
+    ) -> None:
+        changed_keys = {
+            key
+            for key in _COMPETITOR_CANDIDATE_SETTING_FIELDS
+            if key in updates
+            and int(getattr(business, key)) != int(previous_competitor_values[key])
+        }
+        if not changed_keys:
+            return
+
+        applied_values = self._competitor_settings_from_business(business)
+        created_after = utc_now() - timedelta(days=_COMPETITOR_PREVIEW_MATCH_LOOKBACK_DAYS)
+        try:
+            matched_event = (
+                self.seo_competitor_profile_generation_repository.find_recent_unapplied_preview_event_for_business_matching_tuning(
+                    business_id=business.id,
+                    changed_keys=changed_keys,
+                    previous_values=previous_competitor_values,
+                    applied_values=applied_values,
+                    created_after=created_after,
+                )
+            )
+            if matched_event is None:
+                return
+            matched_event.applied_at = utc_now()
+            self.seo_competitor_profile_generation_repository.save_tuning_preview_event(matched_event)
+            self.session.commit()
+        except Exception as exc:  # noqa: BLE001
+            self.session.rollback()
+            logger.warning(
+                (
+                    "Failed to link competitor tuning preview event business_id=%s changed_keys=%s "
+                    "reason=%s"
+                ),
+                business.id,
+                ",".join(sorted(changed_keys)),
+                str(exc),
+            )
+
+    @staticmethod
+    def _competitor_settings_from_business(business: Business) -> dict[str, int]:
+        return {
+            "competitor_candidate_min_relevance_score": int(business.competitor_candidate_min_relevance_score),
+            "competitor_candidate_big_box_penalty": int(business.competitor_candidate_big_box_penalty),
+            "competitor_candidate_directory_penalty": int(business.competitor_candidate_directory_penalty),
+            "competitor_candidate_local_alignment_bonus": int(business.competitor_candidate_local_alignment_bonus),
+        }
 
     def _effective_settings(self, *, business: Business, updates: dict) -> dict:
         return {
