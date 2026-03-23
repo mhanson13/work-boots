@@ -56,6 +56,8 @@ const NARRATIVE_LOOKUP_LIMIT = 5;
 const MAX_TIMELINE_EVENTS = 20;
 const TIMELINE_INITIAL_VISIBLE_COUNT = 10;
 const AI_OPPORTUNITY_INITIAL_COUNT = 3;
+const AI_ACTION_HIGHLIGHT_DURATION_MS = 1800;
+const MAX_RECENT_TUNING_CHANGES = 8;
 const COMPETITOR_PROFILE_DRAFT_CANDIDATE_COUNT = 5;
 const COMPETITOR_PROFILE_POLL_INTERVAL_MS = 2000;
 const COMPETITOR_PROFILE_POLL_MAX_ATTEMPTS = 30;
@@ -143,6 +145,20 @@ interface AiOpportunityItem {
   linkedSuggestions: RecommendationTuningSuggestion[];
   whyThisMatters: string | null;
   isSourceAi: boolean;
+}
+
+interface AiOpportunityApplyAttribution {
+  recommendation_id: string;
+  recommendation_title: string;
+}
+
+interface RecentTuningChange {
+  id: string;
+  applied_at: string;
+  setting_label: string;
+  previous_value: number;
+  next_value: number;
+  ai_attribution: AiOpportunityApplyAttribution | null;
 }
 
 function formatDateTime(value: string | null): string {
@@ -548,6 +564,11 @@ export default function SiteWorkspacePage() {
   const [tuningApplyErrorByKey, setTuningApplyErrorByKey] = useState<Record<string, string>>({});
   const [tuningApplyLoadingKey, setTuningApplyLoadingKey] = useState<string | null>(null);
   const [startHereFocusedTargetId, setStartHereFocusedTargetId] = useState<string | null>(null);
+  const [aiActionFocusedTargetId, setAiActionFocusedTargetId] = useState<string | null>(null);
+  const [pendingAiApplyAttributionByPreviewKey, setPendingAiApplyAttributionByPreviewKey] = useState<
+    Record<string, AiOpportunityApplyAttribution>
+  >({});
+  const [recentTuningChanges, setRecentTuningChanges] = useState<RecentTuningChange[]>([]);
   const [showAllAiOpportunities, setShowAllAiOpportunities] = useState(false);
   const [expandedAiOpportunityIds, setExpandedAiOpportunityIds] = useState<Set<string>>(() => new Set());
 
@@ -858,6 +879,18 @@ export default function SiteWorkspacePage() {
     setExpandedAiOpportunityIds(new Set());
   }, [latestCompletedRecommendationRun?.id]);
 
+  useEffect(() => {
+    if (!aiActionFocusedTargetId) {
+      return;
+    }
+    const timerId = window.setTimeout(() => {
+      setAiActionFocusedTargetId((current) =>
+        current === aiActionFocusedTargetId ? null : current,
+      );
+    }, AI_ACTION_HIGHLIGHT_DURATION_MS);
+    return () => window.clearTimeout(timerId);
+  }, [aiActionFocusedTargetId]);
+
   function toggleAiOpportunityExpansion(recommendationId: string): void {
     setExpandedAiOpportunityIds((current) => {
       const next = new Set(current);
@@ -870,15 +903,57 @@ export default function SiteWorkspacePage() {
     });
   }
 
-  function focusActionTarget(targetId: string): void {
+  function scrollToTarget(targetId: string): boolean {
     const target = document.getElementById(targetId);
     if (!target) {
-      return;
+      return false;
     }
     if (typeof target.scrollIntoView === "function") {
       target.scrollIntoView({ behavior: "smooth", block: "center" });
     }
+    return true;
+  }
+
+  function focusActionTarget(targetId: string): void {
+    const didFocus = scrollToTarget(targetId);
+    if (!didFocus) {
+      return;
+    }
     setStartHereFocusedTargetId(targetId);
+  }
+
+  function focusAiActionTarget(targetId: string): void {
+    const didFocus = scrollToTarget(targetId);
+    if (!didFocus) {
+      return;
+    }
+    setAiActionFocusedTargetId(targetId);
+  }
+
+  function registerAiApplyAttribution(
+    recommendationRunId: string,
+    suggestion: RecommendationTuningSuggestion,
+    recommendation: Recommendation,
+  ): string {
+    const previewKey = buildTuningPreviewKey(recommendationRunId, suggestion);
+    // Frontend-only attribution to connect AI opportunity guidance to later manual apply actions.
+    setPendingAiApplyAttributionByPreviewKey((current) => ({
+      ...current,
+      [previewKey]: {
+        recommendation_id: recommendation.id,
+        recommendation_title: recommendation.title,
+      },
+    }));
+    return previewKey;
+  }
+
+  function focusLinkedTuningSuggestion(
+    recommendationRunId: string,
+    suggestion: RecommendationTuningSuggestion,
+    recommendation: Recommendation,
+  ): void {
+    registerAiApplyAttribution(recommendationRunId, suggestion, recommendation);
+    focusAiActionTarget(tuningSuggestionCardId(recommendationRunId, suggestion));
   }
 
   async function handleStartHereAction(): Promise<void> {
@@ -1284,6 +1359,7 @@ export default function SiteWorkspacePage() {
     const previewKey = buildTuningPreviewKey(recommendationRunId, suggestion);
     const currentValue = currentSuggestionValue(suggestion);
     const preview = tuningPreviewByKey[previewKey];
+    const pendingAiAttribution = pendingAiApplyAttributionByPreviewKey[previewKey] || null;
     const confirmationLines = [
       `Apply tuning suggestion to business settings?`,
       `${formatTuningSettingLabel(suggestion.setting)}: ${currentValue} -> ${suggestion.recommended_value}`,
@@ -1328,6 +1404,26 @@ export default function SiteWorkspacePage() {
         payload,
       );
       setTuningSettings(updated);
+      // Record a local recent-change entry so operators can trace apply outcomes from this workspace session.
+      setRecentTuningChanges((current) => [
+        {
+          id: `${previewKey}:${Date.now()}`,
+          applied_at: new Date().toISOString(),
+          setting_label: formatTuningSettingLabel(suggestion.setting),
+          previous_value: currentValue,
+          next_value: suggestion.recommended_value,
+          ai_attribution: pendingAiAttribution,
+        },
+        ...current,
+      ].slice(0, MAX_RECENT_TUNING_CHANGES));
+      setPendingAiApplyAttributionByPreviewKey((current) => {
+        if (!current[previewKey]) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[previewKey];
+        return next;
+      });
 
       try {
         const summary = await fetchRecommendationWorkspaceSummary(
@@ -1520,6 +1616,9 @@ export default function SiteWorkspacePage() {
       setTuningApplyMessage(null);
       setTuningApplyErrorByKey({});
       setTuningApplyLoadingKey(null);
+      setAiActionFocusedTargetId(null);
+      setPendingAiApplyAttributionByPreviewKey({});
+      setRecentTuningChanges([]);
       setCompetitorProfileGenerationRuns([]);
       setCompetitorProfileSummary(null);
       setLatestCompetitorProfileRunId(null);
@@ -1560,6 +1659,9 @@ export default function SiteWorkspacePage() {
       setTuningApplyMessage(null);
       setTuningApplyErrorByKey({});
       setTuningApplyLoadingKey(null);
+      setAiActionFocusedTargetId(null);
+      setPendingAiApplyAttributionByPreviewKey({});
+      setRecentTuningChanges([]);
       setCompetitorProfileGenerationRuns([]);
       setCompetitorProfileSummary(null);
       setLatestCompetitorProfileRunId(null);
@@ -1595,6 +1697,9 @@ export default function SiteWorkspacePage() {
       setTuningApplyMessage(null);
       setTuningApplyErrorByKey({});
       setTuningApplyLoadingKey(null);
+      setAiActionFocusedTargetId(null);
+      setPendingAiApplyAttributionByPreviewKey({});
+      setRecentTuningChanges([]);
       setCompetitorProfileSummaryError(null);
 
       const [
@@ -2092,6 +2197,21 @@ export default function SiteWorkspacePage() {
             {visibleAiOpportunities.map((opportunity) => {
               const { recommendation, linkedSuggestions, whyThisMatters, isSourceAi } = opportunity;
               const isExpanded = expandedAiOpportunityIds.has(recommendation.id);
+              const recommendationRunId = latestCompletedRecommendationRun?.id || null;
+              const primaryLinkedSuggestion = linkedSuggestions[0] || null;
+              const linkedSuggestionWithPreview =
+                recommendationRunId
+                  ? linkedSuggestions.find((suggestion) =>
+                      Boolean(tuningPreviewByKey[buildTuningPreviewKey(recommendationRunId, suggestion)]),
+                    ) || null
+                  : null;
+              const hasDirectAction = Boolean(recommendationRunId && primaryLinkedSuggestion);
+              const previewSuggestion = linkedSuggestionWithPreview || null;
+              const previewKey =
+                recommendationRunId && previewSuggestion
+                  ? buildTuningPreviewKey(recommendationRunId, previewSuggestion)
+                  : null;
+              const preview = previewKey ? tuningPreviewByKey[previewKey] : null;
               const whyText =
                 whyThisMatters || "AI narrative guidance is available for this recommendation run.";
               const collapsedWhyText = truncateOptionalText(whyText, 180) || whyText;
@@ -2122,8 +2242,70 @@ export default function SiteWorkspacePage() {
                     <span className="hint">{recommendationExpectedOutcome(recommendation)}</span>
                   </div>
 
+                  <div className="stack-tight">
+                    <span className="hint muted">Action bridge</span>
+                    <span className="hint muted">Action is executed through tuning suggestions.</span>
+                    {hasDirectAction ? (
+                      <span className="hint success">Backed by tuning suggestion</span>
+                    ) : (
+                      <span className="hint muted">No direct action available yet.</span>
+                    )}
+                  </div>
+
+                  {hasDirectAction && primaryLinkedSuggestion && recommendationRunId ? (
+                    <div className="stack-tight">
+                      <div className="form-actions">
+                        <button
+                          type="button"
+                          className="button button-primary button-inline"
+                          onClick={() =>
+                            focusLinkedTuningSuggestion(
+                              recommendationRunId,
+                              primaryLinkedSuggestion,
+                              recommendation,
+                            )
+                          }
+                        >
+                          View Recommended Action
+                        </button>
+                        {preview && previewSuggestion ? (
+                          <button
+                            type="button"
+                            className="button button-secondary button-inline"
+                            onClick={() =>
+                              focusLinkedTuningSuggestion(
+                                recommendationRunId,
+                                previewSuggestion,
+                                recommendation,
+                              )
+                            }
+                          >
+                            View Preview
+                          </button>
+                        ) : null}
+                      </div>
+                      {preview ? (
+                        <>
+                          <span className="hint muted">Expected impact (from preview):</span>
+                          <span className="hint">{preview.estimated_impact.summary}</span>
+                        </>
+                      ) : (
+                        <span className="hint muted">Impact will be reflected in next run.</span>
+                      )}
+                    </div>
+                  ) : null}
+
                   {isExpanded ? (
                     <div className="stack-tight">
+                      <span className="hint muted">How to act on this</span>
+                      {hasDirectAction ? (
+                        <span className="hint">Use the recommended tuning below.</span>
+                      ) : (
+                        <span className="hint">No direct tuning action is currently available.</span>
+                      )}
+                      {preview ? (
+                        <span className="hint">Preview shows expected impact before applying.</span>
+                      ) : null}
                       {linkedSuggestions.length > 0 ? (
                         <>
                           <span className="hint muted">Supporting signals</span>
@@ -2978,7 +3160,8 @@ export default function SiteWorkspacePage() {
                         key={`${latestCompletedRecommendationRun.id}-${suggestion.setting}-${suggestion.recommended_value}`}
                         id={suggestionCardId}
                         className={
-                          startHereFocusedTargetId === suggestionCardId
+                          startHereFocusedTargetId === suggestionCardId ||
+                          aiActionFocusedTargetId === suggestionCardId
                             ? "panel panel-compact stack start-here-target-active"
                             : "panel panel-compact stack"
                         }
@@ -3049,6 +3232,28 @@ export default function SiteWorkspacePage() {
                 ) : (
                   <span className="hint muted">No tuning adjustments suggested for current data.</span>
                 )}
+                {recentTuningChanges.length > 0 ? (
+                  <div className="panel panel-compact stack" data-testid="recent-changes-panel">
+                    <span className="hint muted">Recent Changes</span>
+                    <ul>
+                      {recentTuningChanges.map((change) => (
+                        <li key={change.id}>
+                          <span className="hint">
+                            {change.setting_label}: {change.previous_value} -&gt; {change.next_value} (
+                            {formatDateTime(change.applied_at)})
+                          </span>
+                          {change.ai_attribution ? (
+                            <>
+                              <br />
+                              <span className="badge badge-muted">From AI Recommendation</span>
+                              <span className="hint muted"> {change.ai_attribution.recommendation_title}</span>
+                            </>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <p className="hint muted">

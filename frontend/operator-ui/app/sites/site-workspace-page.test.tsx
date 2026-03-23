@@ -186,8 +186,8 @@ function buildCompetitorProfileGenerationRun(
 function buildRecommendation(
   overrides: Partial<Recommendation> = {},
   options: { source?: string } = {},
-): Recommendation {
-  const recommendation: Recommendation = {
+): Recommendation & { source?: string } {
+  const recommendation: Recommendation & { source?: string } = {
     id: "rec-1",
     business_id: "biz-1",
     site_id: "site-1",
@@ -206,10 +206,8 @@ function buildRecommendation(
     created_at: "2026-03-21T00:30:00Z",
     updated_at: "2026-03-21T00:31:00Z",
     ...overrides,
+    ...(options.source ? { source: options.source } : {}),
   };
-  if (options.source) {
-    (recommendation as Record<string, unknown>).source = options.source;
-  }
   return recommendation;
 }
 
@@ -1792,7 +1790,7 @@ describe("site workspace timeline controls", () => {
       screen.getAllByText("High low_relevance exclusions indicate threshold is too strict.").length,
     ).toBeGreaterThan(0);
     await user.click(startHereButton);
-    await screen.findByText(/Estimated increase of 2 included candidates over the last 30 days of telemetry\./);
+    await screen.findAllByText(/Estimated increase of 2 included candidates over the last 30 days of telemetry\./);
     expect(screen.getByText("Impact hint: +2 candidates included")).toBeInTheDocument();
     expect(screen.getByText(/Included delta: \+2; excluded delta: -2/)).toBeInTheDocument();
     expect(
@@ -2148,8 +2146,8 @@ describe("site workspace timeline controls", () => {
 
     await screen.findByRole("heading", { name: "Recommendation Runs and Narratives" });
     expect((await screen.findAllByRole("link", { name: "run-1" })).length).toBeGreaterThan(0);
-    await user.click(screen.getByRole("button", { name: "Preview Impact" }));
-    await screen.findByText(/Insufficient recent competitor telemetry for deterministic impact estimation\./);
+    await user.click(screen.getAllByRole("button", { name: "Preview Impact" })[0]);
+    await screen.findAllByText(/Insufficient recent competitor telemetry for deterministic impact estimation\./);
     expect(screen.getByText(/Included delta: 0; excluded delta: 0/)).toBeInTheDocument();
   });
 
@@ -2318,8 +2316,8 @@ describe("site workspace timeline controls", () => {
 
     await screen.findByText("Minimum relevance score");
     expect(screen.getByText("Current -> Suggested:", { exact: false })).toHaveTextContent("35");
-    await user.click(screen.getByRole("button", { name: "Preview Impact" }));
-    await screen.findByText(/Estimated increase of 2 included candidates over the last 30 days of telemetry\./);
+    await user.click(screen.getAllByRole("button", { name: "Preview Impact" })[0]);
+    await screen.findAllByText(/Estimated increase of 2 included candidates over the last 30 days of telemetry\./);
 
     await user.click(screen.getByRole("button", { name: "Apply Suggestion" }));
 
@@ -2648,6 +2646,347 @@ describe("site workspace timeline controls", () => {
     expect(within(aiOpportunitiesSection).getByText("Supporting signals")).toBeInTheDocument();
     expect(within(aiOpportunitiesSection).getByText(/Related context: titles, headings/)).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Deterministic Recommendations" })).toBeInTheDocument();
+  });
+
+  it("bridges ai opportunities to linked tuning suggestions with temporary highlight", async () => {
+    jest.useFakeTimers();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue({
+      business_id: "biz-1",
+      site_id: "site-1",
+      state: "completed_with_narrative",
+      latest_run: {
+        id: "run-1",
+        business_id: "biz-1",
+        site_id: "site-1",
+        audit_run_id: "audit-1",
+        comparison_run_id: "comparison-1",
+        status: "completed",
+        total_recommendations: 1,
+        critical_recommendations: 0,
+        warning_recommendations: 1,
+        info_recommendations: 0,
+        category_counts_json: {},
+        effort_bucket_counts_json: {},
+        started_at: "2026-03-21T00:29:00Z",
+        completed_at: "2026-03-21T00:30:00Z",
+        duration_ms: 60000,
+        error_summary: null,
+        created_by_principal_id: "principal-1",
+        created_at: "2026-03-21T00:29:00Z",
+        updated_at: "2026-03-21T00:30:00Z",
+      },
+      latest_completed_run: {
+        id: "run-1",
+        business_id: "biz-1",
+        site_id: "site-1",
+        audit_run_id: "audit-1",
+        comparison_run_id: "comparison-1",
+        status: "completed",
+        total_recommendations: 1,
+        critical_recommendations: 0,
+        warning_recommendations: 1,
+        info_recommendations: 0,
+        category_counts_json: {},
+        effort_bucket_counts_json: {},
+        started_at: "2026-03-21T00:29:00Z",
+        completed_at: "2026-03-21T00:30:00Z",
+        duration_ms: 60000,
+        error_summary: null,
+        created_by_principal_id: "principal-1",
+        created_at: "2026-03-21T00:29:00Z",
+        updated_at: "2026-03-21T00:30:00Z",
+      },
+      recommendations: {
+        items: [buildRecommendation({ id: "rec-1", title: "Fix title tags" })],
+        total: 1,
+      },
+      latest_narrative: {
+        id: "narrative-1",
+        business_id: "biz-1",
+        site_id: "site-1",
+        recommendation_run_id: "run-1",
+        version: 2,
+        status: "completed",
+        narrative_text: "Narrative for run 1.",
+        top_themes_json: ["titles"],
+        sections_json: { summary: "AI summary." },
+        provider_name: "provider",
+        model_name: "model",
+        prompt_version: "v2",
+        error_message: null,
+        created_by_principal_id: "principal-1",
+        created_at: "2026-03-21T00:33:00Z",
+        updated_at: "2026-03-21T00:33:00Z",
+      },
+      tuning_suggestions: [
+        {
+          setting: "competitor_candidate_min_relevance_score",
+          current_value: 35,
+          recommended_value: 30,
+          reason: "High low_relevance exclusions indicate threshold is too strict.",
+          linked_recommendation_ids: ["rec-1"],
+          confidence: "medium",
+        },
+      ],
+    });
+
+    render(<SiteWorkspacePage />);
+
+    const aiSection = await screen.findByTestId("ai-opportunities-section");
+    expect(within(aiSection).getByText("Backed by tuning suggestion")).toBeInTheDocument();
+    await user.click(within(aiSection).getByRole("button", { name: "View Recommended Action" }));
+    const tuningCard = await screen.findByTestId("tuning-suggestion-card");
+    expect(tuningCard).toHaveClass("start-here-target-active");
+    act(() => {
+      jest.advanceTimersByTime(2000);
+    });
+    expect(tuningCard).not.toHaveClass("start-here-target-active");
+    jest.useRealTimers();
+  });
+
+  it("shows ai opportunity preview bridge and no-preview fallback safely", async () => {
+    seedRichWorkspaceData();
+    const user = userEvent.setup();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue({
+      business_id: "biz-1",
+      site_id: "site-1",
+      state: "completed_with_narrative",
+      latest_run: {
+        id: "run-1",
+        business_id: "biz-1",
+        site_id: "site-1",
+        audit_run_id: "audit-1",
+        comparison_run_id: "comparison-1",
+        status: "completed",
+        total_recommendations: 2,
+        critical_recommendations: 0,
+        warning_recommendations: 2,
+        info_recommendations: 0,
+        category_counts_json: {},
+        effort_bucket_counts_json: {},
+        started_at: "2026-03-21T00:29:00Z",
+        completed_at: "2026-03-21T00:30:00Z",
+        duration_ms: 60000,
+        error_summary: null,
+        created_by_principal_id: "principal-1",
+        created_at: "2026-03-21T00:29:00Z",
+        updated_at: "2026-03-21T00:30:00Z",
+      },
+      latest_completed_run: {
+        id: "run-1",
+        business_id: "biz-1",
+        site_id: "site-1",
+        audit_run_id: "audit-1",
+        comparison_run_id: "comparison-1",
+        status: "completed",
+        total_recommendations: 2,
+        critical_recommendations: 0,
+        warning_recommendations: 2,
+        info_recommendations: 0,
+        category_counts_json: {},
+        effort_bucket_counts_json: {},
+        started_at: "2026-03-21T00:29:00Z",
+        completed_at: "2026-03-21T00:30:00Z",
+        duration_ms: 60000,
+        error_summary: null,
+        created_by_principal_id: "principal-1",
+        created_at: "2026-03-21T00:29:00Z",
+        updated_at: "2026-03-21T00:30:00Z",
+      },
+      recommendations: {
+        items: [
+          buildRecommendation({ id: "rec-1", title: "Fix title tags" }),
+          buildRecommendation({ id: "rec-2", title: "Improve category coverage", priority_score: 70 }),
+        ],
+        total: 2,
+      },
+      latest_narrative: {
+        id: "narrative-1",
+        business_id: "biz-1",
+        site_id: "site-1",
+        recommendation_run_id: "run-1",
+        version: 2,
+        status: "completed",
+        narrative_text: "Narrative for run 1.",
+        top_themes_json: ["titles"],
+        sections_json: { summary: "AI summary." },
+        provider_name: "provider",
+        model_name: "model",
+        prompt_version: "v2",
+        error_message: null,
+        created_by_principal_id: "principal-1",
+        created_at: "2026-03-21T00:33:00Z",
+        updated_at: "2026-03-21T00:33:00Z",
+      },
+      tuning_suggestions: [
+        {
+          setting: "competitor_candidate_min_relevance_score",
+          current_value: 35,
+          recommended_value: 30,
+          reason: "Low relevance exclusions are high.",
+          linked_recommendation_ids: ["rec-1"],
+          confidence: "medium",
+        },
+      ],
+    });
+    mockPreviewRecommendationTuningImpact.mockResolvedValue({
+      business_id: "biz-1",
+      site_id: "site-1",
+      preview_event_id: "preview-event-2",
+      source_recommendation_run_id: "run-1",
+      source_narrative_id: "narrative-1",
+      current_values: {
+        competitor_candidate_min_relevance_score: 35,
+        competitor_candidate_big_box_penalty: 20,
+        competitor_candidate_directory_penalty: 35,
+        competitor_candidate_local_alignment_bonus: 10,
+      },
+      proposed_values: {
+        competitor_candidate_min_relevance_score: 30,
+        competitor_candidate_big_box_penalty: 20,
+        competitor_candidate_directory_penalty: 35,
+        competitor_candidate_local_alignment_bonus: 10,
+      },
+      telemetry_window: {
+        lookback_days: 30,
+        total_runs: 0,
+        total_raw_candidate_count: 0,
+        total_included_candidate_count: 0,
+        total_excluded_candidate_count: 0,
+        exclusion_counts_by_reason: {
+          duplicate: 0,
+          low_relevance: 0,
+          directory_or_aggregator: 0,
+          big_box_mismatch: 0,
+          existing_domain_match: 0,
+          invalid_candidate: 0,
+        },
+      },
+      estimated_impact: {
+        insufficient_data: false,
+        estimated_included_candidate_delta: 2,
+        estimated_excluded_candidate_delta: -2,
+        estimated_exclusion_reason_deltas: {
+          duplicate: 0,
+          low_relevance: -2,
+          directory_or_aggregator: 0,
+          big_box_mismatch: 0,
+          existing_domain_match: 0,
+          invalid_candidate: 0,
+        },
+        summary: "Estimated increase of 2 included candidates over the last 30 days of telemetry.",
+        risk_flags: [],
+      },
+      caveat: "Preview only.",
+    });
+
+    render(<SiteWorkspacePage />);
+
+    const aiSection = await screen.findByTestId("ai-opportunities-section");
+    expect(within(aiSection).getByText("Impact will be reflected in next run.")).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "Preview Impact" })[0]);
+    await screen.findAllByText("Estimated increase of 2 included candidates over the last 30 days of telemetry.");
+    expect(within(aiSection).getByText("Expected impact (from preview):")).toBeInTheDocument();
+    expect(within(aiSection).getByText("View Preview")).toBeInTheDocument();
+  });
+
+  it("tracks recent change attribution when apply follows ai recommendation bridge", async () => {
+    seedRichWorkspaceData();
+    const user = userEvent.setup();
+    jest.spyOn(window, "confirm").mockReturnValue(true);
+    mockFetchBusinessSettings.mockResolvedValue(buildBusinessSettings({ competitor_candidate_min_relevance_score: 35 }));
+    const summaryPayload: RecommendationWorkspaceSummaryResponse = {
+      business_id: "biz-1",
+      site_id: "site-1",
+      state: "completed_with_narrative",
+      latest_run: {
+        id: "run-1",
+        business_id: "biz-1",
+        site_id: "site-1",
+        audit_run_id: "audit-1",
+        comparison_run_id: "comparison-1",
+        status: "completed",
+        total_recommendations: 1,
+        critical_recommendations: 0,
+        warning_recommendations: 1,
+        info_recommendations: 0,
+        category_counts_json: {},
+        effort_bucket_counts_json: {},
+        started_at: "2026-03-21T00:29:00Z",
+        completed_at: "2026-03-21T00:30:00Z",
+        duration_ms: 60000,
+        error_summary: null,
+        created_by_principal_id: "principal-1",
+        created_at: "2026-03-21T00:29:00Z",
+        updated_at: "2026-03-21T00:30:00Z",
+      },
+      latest_completed_run: {
+        id: "run-1",
+        business_id: "biz-1",
+        site_id: "site-1",
+        audit_run_id: "audit-1",
+        comparison_run_id: "comparison-1",
+        status: "completed",
+        total_recommendations: 1,
+        critical_recommendations: 0,
+        warning_recommendations: 1,
+        info_recommendations: 0,
+        category_counts_json: {},
+        effort_bucket_counts_json: {},
+        started_at: "2026-03-21T00:29:00Z",
+        completed_at: "2026-03-21T00:30:00Z",
+        duration_ms: 60000,
+        error_summary: null,
+        created_by_principal_id: "principal-1",
+        created_at: "2026-03-21T00:29:00Z",
+        updated_at: "2026-03-21T00:30:00Z",
+      },
+      recommendations: { items: [buildRecommendation({ id: "rec-1", title: "Fix title tags" })], total: 1 },
+      latest_narrative: {
+        id: "narrative-1",
+        business_id: "biz-1",
+        site_id: "site-1",
+        recommendation_run_id: "run-1",
+        version: 2,
+        status: "completed",
+        narrative_text: "Narrative for run 1.",
+        top_themes_json: ["titles"],
+        sections_json: { summary: "AI summary." },
+        provider_name: "provider",
+        model_name: "model",
+        prompt_version: "v2",
+        error_message: null,
+        created_by_principal_id: "principal-1",
+        created_at: "2026-03-21T00:33:00Z",
+        updated_at: "2026-03-21T00:33:00Z",
+      },
+      tuning_suggestions: [
+        {
+          setting: "competitor_candidate_min_relevance_score",
+          current_value: 35,
+          recommended_value: 30,
+          reason: "Low relevance exclusions are high.",
+          linked_recommendation_ids: ["rec-1"],
+          confidence: "medium",
+        },
+      ],
+    };
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(summaryPayload);
+    mockUpdateBusinessSettings.mockResolvedValue(
+      buildBusinessSettings({ competitor_candidate_min_relevance_score: 30 }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    const aiSection = await screen.findByTestId("ai-opportunities-section");
+    await user.click(within(aiSection).getByRole("button", { name: "View Recommended Action" }));
+    await user.click(screen.getByRole("button", { name: "Apply Suggestion" }));
+
+    const recentChangesPanel = await screen.findByTestId("recent-changes-panel");
+    expect(within(recentChangesPanel).getByText("From AI Recommendation")).toBeInTheDocument();
+    expect(within(recentChangesPanel).getByText("Fix title tags")).toBeInTheDocument();
   });
 
   it("shows safe in-progress state when no completed recommendation run exists yet", async () => {
