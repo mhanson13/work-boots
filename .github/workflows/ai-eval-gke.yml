@@ -1,0 +1,198 @@
+name: ai-eval-gke
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target non-production overlay"
+        required: true
+        default: "dev"
+        type: choice
+        options: ["dev"]
+
+concurrency:
+  group: ai-eval-gke-${{ github.event.inputs.environment || 'dev' }}
+  cancel-in-progress: false
+
+jobs:
+  run-eval:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      TARGET_OVERLAY: ${{ github.event.inputs.environment || 'dev' }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      KUBERNETES_CLUSTER_NAME: ${{ secrets.KUBERNETES_CLUSTER_NAME }}
+      KUBERNETES_CLUSTER_LOCATION: ${{ secrets.KUBERNETES_CLUSTER_LOCATION }}
+      KUBERNETES_CLUSTER_LOCATION_TYPE: ${{ secrets.KUBERNETES_CLUSTER_LOCATION_TYPE }}
+      OIDC_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.OIDC_WORKLOAD_IDENTITY_PROVIDER }}
+      DEPLOY_SERVICE_ACCOUNT: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate required inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            GCP_PROJECT_ID
+            KUBERNETES_CLUSTER_NAME
+            KUBERNETES_CLUSTER_LOCATION
+            KUBERNETES_CLUSTER_LOCATION_TYPE
+            OIDC_WORKLOAD_IDENTITY_PROVIDER
+            DEPLOY_SERVICE_ACCOUNT
+          )
+          for name in "${required[@]}"; do
+            if [ -z "${!name//[[:space:]]/}" ]; then
+              echo "::error::${name} is empty."
+              exit 1
+            fi
+          done
+          LOCATION_TYPE="$(echo "${KUBERNETES_CLUSTER_LOCATION_TYPE}" | tr '[:upper:]' '[:lower:]')"
+          if [ "${LOCATION_TYPE}" != "region" ] && [ "${LOCATION_TYPE}" != "zone" ]; then
+            echo "::error::KUBERNETES_CLUSTER_LOCATION_TYPE must be region or zone."
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.OIDC_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubectl for GKE
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOCATION_TYPE="$(echo "${KUBERNETES_CLUSTER_LOCATION_TYPE}" | tr '[:upper:]' '[:lower:]')"
+          if [ "${LOCATION_TYPE}" = "zone" ]; then
+            gcloud container clusters get-credentials "${KUBERNETES_CLUSTER_NAME}" --zone "${KUBERNETES_CLUSTER_LOCATION}" --project "${GCP_PROJECT_ID}"
+          else
+            gcloud container clusters get-credentials "${KUBERNETES_CLUSTER_NAME}" --region "${KUBERNETES_CLUSTER_LOCATION}" --project "${GCP_PROJECT_ID}"
+          fi
+
+      - name: Resolve namespace
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${TARGET_OVERLAY}" != "dev" ]; then
+            echo "::error::Only dev overlay is supported for this workflow."
+            exit 1
+          fi
+          echo "namespace=work-boots-dev" >> "$GITHUB_OUTPUT"
+
+      - name: Validate API rollout and resolve pod
+        id: pod
+        shell: bash
+        run: |
+          set -euo pipefail
+          NAMESPACE="${{ steps.target.outputs.namespace }}"
+          kubectl -n "${NAMESPACE}" rollout status deployment/work-boots-api --timeout=5m
+          POD="$(kubectl -n "${NAMESPACE}" get pods -l app=work-boots-api --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')"
+          if [ -z "${POD}" ]; then
+            echo "::error::No running work-boots-api pod found in namespace ${NAMESPACE}."
+            exit 1
+          fi
+          echo "pod=${POD}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify runtime classification and provider env
+        shell: bash
+        run: |
+          set -euo pipefail
+          NAMESPACE="${{ steps.target.outputs.namespace }}"
+          POD="${{ steps.pod.outputs.pod }}"
+          kubectl -n "${NAMESPACE}" exec "${POD}" -- sh -lc 'env | grep -E "^(APP_ENV|ENVIRONMENT|AI_PROVIDER_NAME|AI_MODEL_NAME)="'
+          kubectl -n "${NAMESPACE}" exec "${POD}" -- sh -lc 'if [ -n "${AI_PROVIDER_API_KEY:-}" ]; then echo "AI_PROVIDER_API_KEY=present"; else echo "AI_PROVIDER_API_KEY=missing"; exit 1; fi'
+          kubectl -n "${NAMESPACE}" exec "${POD}" -- sh -lc 'if [ -n "${AI_EVAL_ALLOW_REAL_PROVIDER:-}" ]; then echo "AI_EVAL_ALLOW_REAL_PROVIDER=configured"; else echo "AI_EVAL_ALLOW_REAL_PROVIDER=not-set"; fi'
+
+      - name: Run competitor real eval
+        shell: bash
+        run: |
+          set -euo pipefail
+          NAMESPACE="${{ steps.target.outputs.namespace }}"
+          POD="${{ steps.pod.outputs.pod }}"
+          set +e
+          kubectl -n "${NAMESPACE}" exec "${POD}" -- sh -lc \
+            'APP_ENV=development ENVIRONMENT=development AI_EVAL_ALLOW_REAL_PROVIDER=true python -m app.cli.seo_ai_quality_eval --mode real --pipeline competitor --json --output-file /tmp/ai-eval-competitor-real.json'
+          EXIT_CODE=$?
+          set -e
+          if [ "${EXIT_CODE}" -eq 2 ]; then
+            echo "::error::Competitor real eval failed to execute."
+            exit 2
+          fi
+
+      - name: Run recommendations real eval
+        shell: bash
+        run: |
+          set -euo pipefail
+          NAMESPACE="${{ steps.target.outputs.namespace }}"
+          POD="${{ steps.pod.outputs.pod }}"
+          set +e
+          kubectl -n "${NAMESPACE}" exec "${POD}" -- sh -lc \
+            'APP_ENV=development ENVIRONMENT=development AI_EVAL_ALLOW_REAL_PROVIDER=true python -m app.cli.seo_ai_quality_eval --mode real --pipeline recommendations --json --output-file /tmp/ai-eval-recommendations-real.json'
+          EXIT_CODE=$?
+          set -e
+          if [ "${EXIT_CODE}" -eq 2 ]; then
+            echo "::error::Recommendation real eval failed to execute."
+            exit 2
+          fi
+
+      - name: Copy eval artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          NAMESPACE="${{ steps.target.outputs.namespace }}"
+          POD="${{ steps.pod.outputs.pod }}"
+          mkdir -p artifacts
+          kubectl -n "${NAMESPACE}" cp "${POD}:/tmp/ai-eval-competitor-real.json" "./artifacts/ai-eval-competitor-real.json"
+          kubectl -n "${NAMESPACE}" cp "${POD}:/tmp/ai-eval-recommendations-real.json" "./artifacts/ai-eval-recommendations-real.json"
+
+      - name: Print eval summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          files = [
+              Path("artifacts/ai-eval-competitor-real.json"),
+              Path("artifacts/ai-eval-recommendations-real.json"),
+          ]
+          lines = ["## AI Eval Baseline Summary", ""]
+          for path in files:
+              payload = json.loads(path.read_text(encoding="utf-8"))
+              report = payload["reports"][0]
+              lines.extend(
+                  [
+                      f"### {report['pipeline']}",
+                      f"- eval_mode: {report['eval_mode']}",
+                      f"- provider_name: {report['provider_name']}",
+                      f"- model_name: {report['model_name']}",
+                      f"- aggregate_score: {report['aggregate_score']}",
+                      f"- total_cases: {report['total_cases']}",
+                      f"- passed_cases: {report['passed_cases']}",
+                      f"- failed_cases: {report['failed_cases']}",
+                      "",
+                  ]
+              )
+          Path("summary.md").write_text("\n".join(lines), encoding="utf-8")
+          print("\n".join(lines))
+          PY
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload eval artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-eval-real-baseline-${{ github.run_id }}
+          path: artifacts/*.json
+          if-no-files-found: error
