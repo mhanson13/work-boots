@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { PageContainer } from "../../../components/layout/PageContainer";
+import { SectionCard } from "../../../components/layout/SectionCard";
 import { useOperatorContext } from "../../../components/useOperatorContext";
 import {
   ApiRequestError,
@@ -266,25 +268,35 @@ export default function CompetitorSetDetailPage() {
   }, [competitorSetId, context.businessId, context.error, context.loading, context.token, requestedSiteId]);
 
   if (context.loading) {
-    return <section className="panel">Loading competitor set detail...</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Loading competitor set detail...</SectionCard>
+      </PageContainer>
+    );
   }
   if (context.error) {
-    return <section className="panel">Unable to load tenant context. Refresh and sign in again.</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Unable to load tenant context. Refresh and sign in again.</SectionCard>
+      </PageContainer>
+    );
   }
   if (!competitorSetId) {
     return (
-      <section className="panel stack">
-        <h1>Competitor Set Detail</h1>
-        <p className="hint warning">Competitor set identifier is missing.</p>
-        <p>
-          <Link href={backToListHref}>Back to Competitor Sets</Link>
-        </p>
-      </section>
+      <PageContainer>
+        <SectionCard>
+          <h1>Competitor Set Detail</h1>
+          <p className="hint warning">Competitor set identifier is missing.</p>
+          <p>
+            <Link href={backToListHref}>Back to Competitor Sets</Link>
+          </p>
+        </SectionCard>
+      </PageContainer>
     );
   }
 
   return (
-    <section className="stack">
+    <PageContainer>
       <div className="panel stack">
         <p>
           <Link href={backToListHref}>Back to Competitor Sets</Link>
@@ -324,7 +336,7 @@ export default function CompetitorSetDetailPage() {
 
           <div className="panel stack">
             <h2>Related SEO Navigation</h2>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+            <div className="row-wrap">
               <Link href="/sites">View Sites</Link>
               <Link href="/audits">View Audit Runs</Link>
               <Link href="/recommendations">View Recommendation Queue</Link>
@@ -531,6 +543,6 @@ export default function CompetitorSetDetailPage() {
           </div>
         </>
       ) : null}
-    </section>
+    </PageContainer>
   );
 }

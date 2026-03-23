@@ -158,7 +158,7 @@ export default function AuditsPage() {
                   key={run.id}
                   role="link"
                   tabIndex={0}
-                  style={{ cursor: "pointer" }}
+                  className="clickable-row"
                   onClick={() => router.push(`/audits/${run.id}`)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { PageContainer } from "../../../../../../components/layout/PageContainer";
+import { SectionCard } from "../../../../../../components/layout/SectionCard";
 import { useOperatorContext } from "../../../../../../components/useOperatorContext";
 import {
   ApiRequestError,
@@ -354,26 +356,36 @@ export default function RecommendationNarrativeDetailPage() {
   ]);
 
   if (context.loading) {
-    return <section className="panel">Loading recommendation narrative detail...</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Loading recommendation narrative detail...</SectionCard>
+      </PageContainer>
+    );
   }
   if (context.error) {
-    return <section className="panel">Unable to load tenant context. Refresh and sign in again.</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Unable to load tenant context. Refresh and sign in again.</SectionCard>
+      </PageContainer>
+    );
   }
   if (!recommendationRunId || !narrativeId) {
     return (
-      <section className="panel stack">
-        <h1>Recommendation Narrative Detail</h1>
-        <p className="hint warning">Recommendation run or narrative identifier is missing.</p>
-        <p>
-          <Link href={backToRecommendationsHref}>Back to Recommendations</Link>
-        </p>
-      </section>
+      <PageContainer>
+        <SectionCard>
+          <h1>Recommendation Narrative Detail</h1>
+          <p className="hint warning">Recommendation run or narrative identifier is missing.</p>
+          <p>
+            <Link href={backToRecommendationsHref}>Back to Recommendations</Link>
+          </p>
+        </SectionCard>
+      </PageContainer>
     );
   }
 
   return (
-    <section className="stack">
-      <div className="panel stack">
+    <PageContainer>
+      <SectionCard>
         <p>
           <Link href={narrativeHistoryHref}>Back to Narrative History</Link>
         </p>
@@ -400,11 +412,11 @@ export default function RecommendationNarrativeDetailPage() {
           <p className="hint warning">Recommendation narrative not found or not accessible in your tenant scope.</p>
         ) : null}
         {!loading && error ? <p className="hint error">{error}</p> : null}
-      </div>
+      </SectionCard>
 
       {!loading && !notFound && !error && run && narrative ? (
         <>
-          <div className="panel stack">
+          <SectionCard>
             <h2>Narrative Metadata</h2>
             <p>Version: {narrative.version}</p>
             <p>Status: {narrative.status}</p>
@@ -416,9 +428,9 @@ export default function RecommendationNarrativeDetailPage() {
             <p>Created: {formatDateTime(narrative.created_at)}</p>
             <p>Updated: {formatDateTime(narrative.updated_at)}</p>
             <p>Error: {narrative.error_message || "-"}</p>
-          </div>
+          </SectionCard>
 
-          <div className="panel stack">
+          <SectionCard>
             <h2>Run Lineage Context</h2>
             <p>
               Business ID: <code>{run.business_id}</code>
@@ -431,7 +443,7 @@ export default function RecommendationNarrativeDetailPage() {
             <p>Created: {formatDateTime(run.created_at)}</p>
             <p>Started: {formatDateTime(run.started_at)}</p>
             <p>Completed: {formatDateTime(run.completed_at)}</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+            <div className="link-row">
               <Link href={parentRunHref}>Parent Recommendation Run</Link>
               <Link href={narrativeHistoryHref}>Narrative History</Link>
               <Link href={backToRecommendationsHref}>Recommendation Queue</Link>
@@ -440,9 +452,9 @@ export default function RecommendationNarrativeDetailPage() {
                 <Link href={buildComparisonRunHref(run.comparison_run_id, run.site_id)}>Linked Comparison Run</Link>
               ) : null}
             </div>
-          </div>
+          </SectionCard>
 
-          <div className="panel stack">
+          <SectionCard>
             <h2>Themes</h2>
             {narrative.top_themes_json.length === 0 ? (
               <p className="hint muted">No top themes were recorded for this narrative version.</p>
@@ -453,67 +465,69 @@ export default function RecommendationNarrativeDetailPage() {
                 ))}
               </ul>
             )}
-          </div>
+          </SectionCard>
 
-          <div className="panel stack">
+          <SectionCard>
             <h2>Sections</h2>
             {narrativeSections.length === 0 ? (
               <p className="hint muted">No structured sections were returned for this narrative version.</p>
             ) : (
               <div className="stack">
                 {narrativeSections.map(([sectionName, sectionValue]) => (
-                  <div key={sectionName} className="panel stack" style={{ padding: "0.75rem" }}>
+                  <div key={sectionName} className="panel stack panel-compact">
                     <h3>{sectionName}</h3>
-                    <pre style={{ margin: 0, whiteSpace: "pre-wrap", overflowX: "auto" }}>
+                    <pre className="pre-scroll">
                       {formatStructuredValue(sectionValue)}
                     </pre>
                   </div>
                 ))}
               </div>
             )}
-          </div>
+          </SectionCard>
 
-          <div className="panel stack">
+          <SectionCard>
             <h2>Narrative Text</h2>
-            <p style={{ whiteSpace: "pre-wrap" }}>{narrative.narrative_text || "No narrative text returned."}</p>
-          </div>
+            <p className="pre-wrap">{narrative.narrative_text || "No narrative text returned."}</p>
+          </SectionCard>
 
-          <div className="panel stack">
+          <SectionCard>
             <h2>Produced Recommendations ({report?.recommendations.total || 0})</h2>
             {producedRecommendations.length === 0 ? (
               <p className="hint muted">No produced recommendations are available for this run.</p>
             ) : (
               <>
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Title</th>
-                      <th>Priority</th>
-                      <th>Status</th>
-                      <th>Category</th>
-                      <th>Source</th>
-                      <th>Rationale</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {producedRecommendations.map((item) => (
-                      <tr key={item.id}>
-                        <td>
-                          <Link href={buildRecommendationDetailHref(item)}>{item.title}</Link>
-                          <br />
-                          <span className="hint muted"><code>{item.id}</code></span>
-                        </td>
-                        <td>
-                          {item.priority_score} ({item.priority_band})
-                        </td>
-                        <td>{item.status}</td>
-                        <td>{item.category}</td>
-                        <td>{deriveRecommendationSourceType(item)}</td>
-                        <td>{truncateText(item.rationale, RECOMMENDATION_RATIONALE_PREVIEW_LIMIT)}</td>
+                <div className="table-container">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Title</th>
+                        <th>Priority</th>
+                        <th>Status</th>
+                        <th>Category</th>
+                        <th>Source</th>
+                        <th>Rationale</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {producedRecommendations.map((item) => (
+                        <tr key={item.id}>
+                          <td>
+                            <Link href={buildRecommendationDetailHref(item)}>{item.title}</Link>
+                            <br />
+                            <span className="hint muted"><code>{item.id}</code></span>
+                          </td>
+                          <td>
+                            {item.priority_score} ({item.priority_band})
+                          </td>
+                          <td>{item.status}</td>
+                          <td>{item.category}</td>
+                          <td>{deriveRecommendationSourceType(item)}</td>
+                          <td>{truncateText(item.rationale, RECOMMENDATION_RATIONALE_PREVIEW_LIMIT)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
                 {(report?.recommendations.total || 0) > producedRecommendations.length ? (
                   <p className="hint muted">
                     Showing the top {producedRecommendations.length} recommendations by priority out of{" "}
@@ -522,9 +536,9 @@ export default function RecommendationNarrativeDetailPage() {
                 ) : null}
               </>
             )}
-          </div>
+          </SectionCard>
         </>
       ) : null}
-    </section>
+    </PageContainer>
   );
 }

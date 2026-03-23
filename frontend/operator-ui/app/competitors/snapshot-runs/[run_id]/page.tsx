@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { PageContainer } from "../../../../components/layout/PageContainer";
+import { SectionCard } from "../../../../components/layout/SectionCard";
 import { useOperatorContext } from "../../../../components/useOperatorContext";
 import {
   ApiRequestError,
@@ -353,25 +355,35 @@ export default function SnapshotRunDetailPage() {
   ]);
 
   if (context.loading) {
-    return <section className="panel">Loading snapshot run detail...</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Loading snapshot run detail...</SectionCard>
+      </PageContainer>
+    );
   }
   if (context.error) {
-    return <section className="panel">Unable to load tenant context. Refresh and sign in again.</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Unable to load tenant context. Refresh and sign in again.</SectionCard>
+      </PageContainer>
+    );
   }
   if (!snapshotRunId) {
     return (
-      <section className="panel stack">
-        <h1>Snapshot Run Detail</h1>
-        <p className="hint warning">Snapshot run identifier is missing.</p>
-        <p>
-          <Link href={backToListHref}>Back to Competitor Sets</Link>
-        </p>
-      </section>
+      <PageContainer>
+        <SectionCard>
+          <h1>Snapshot Run Detail</h1>
+          <p className="hint warning">Snapshot run identifier is missing.</p>
+          <p>
+            <Link href={backToListHref}>Back to Competitor Sets</Link>
+          </p>
+        </SectionCard>
+      </PageContainer>
     );
   }
 
   return (
-    <section className="stack">
+    <PageContainer>
       <div className="panel stack">
         <p>
           <Link href={backToSetHref}>Back to Competitor Set</Link>
@@ -465,7 +477,7 @@ export default function SnapshotRunDetailPage() {
 
           <div className="panel stack">
             <h2>Related Navigation</h2>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+            <div className="row-wrap">
               <Link href={backToSetHref}>Parent Competitor Set</Link>
               <Link href="/recommendations">Recommendation Queue</Link>
               <Link href="/audits">Audit Runs</Link>
@@ -577,12 +589,11 @@ export default function SnapshotRunDetailPage() {
             ) : linkedRecommendationRuns.length === 0 ? (
               <>
                 <p className="hint muted">
-                  Linked comparison run IDs:{" "}
-                  {relatedComparisonRunIds.map((item) => (
-                    <code key={item} style={{ marginRight: "0.45rem" }}>
-                      {item}
-                    </code>
-                  ))}
+                  Linked comparison run IDs:{" "}<span className="inline-code-list">
+                    {relatedComparisonRunIds.map((item) => (
+                      <code key={item}>{item}</code>
+                    ))}
+                  </span>
                 </p>
                 <p className="hint muted">
                   No recommendation runs are currently linked to this snapshot run lineage.
@@ -591,24 +602,22 @@ export default function SnapshotRunDetailPage() {
             ) : relatedRecommendations.length === 0 ? (
               <>
                 <p className="hint muted">
-                  Linked recommendation run IDs:{" "}
-                  {linkedRecommendationRunIds.map((item) => (
-                    <code key={item} style={{ marginRight: "0.45rem" }}>
-                      {item}
-                    </code>
-                  ))}
+                  Linked recommendation run IDs:{" "}<span className="inline-code-list">
+                    {linkedRecommendationRunIds.map((item) => (
+                      <code key={item}>{item}</code>
+                    ))}
+                  </span>
                 </p>
                 <p className="hint muted">No recommendations were found for the linked recommendation runs.</p>
               </>
             ) : (
               <>
                 <p className="hint muted">
-                  Linked recommendation run IDs:{" "}
-                  {linkedRecommendationRunIds.map((item) => (
-                    <code key={item} style={{ marginRight: "0.45rem" }}>
-                      {item}
-                    </code>
-                  ))}
+                  Linked recommendation run IDs:{" "}<span className="inline-code-list">
+                    {linkedRecommendationRunIds.map((item) => (
+                      <code key={item}>{item}</code>
+                    ))}
+                  </span>
                 </p>
                 <table className="table">
                   <thead>
@@ -644,12 +653,11 @@ export default function SnapshotRunDetailPage() {
                 </table>
                 {truncatedRecommendationRunIds.length > 0 ? (
                   <p className="hint muted">
-                    Recommendation linkage is currently truncated for run IDs{" "}
-                    {truncatedRecommendationRunIds.map((item) => (
-                      <code key={item} style={{ marginRight: "0.45rem" }}>
-                        {item}
-                      </code>
-                    ))}
+                    Recommendation linkage is currently truncated for run IDs{" "}<span className="inline-code-list">
+                      {truncatedRecommendationRunIds.map((item) => (
+                        <code key={item}>{item}</code>
+                      ))}
+                    </span>
                     after the first {RELATED_RECOMMENDATION_PAGE_SIZE} items per run.
                   </p>
                 ) : null}
@@ -658,6 +666,6 @@ export default function SnapshotRunDetailPage() {
           </div>
         </>
       ) : null}
-    </section>
+    </PageContainer>
   );
 }

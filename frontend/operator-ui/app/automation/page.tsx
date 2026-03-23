@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { PageContainer } from "../../components/layout/PageContainer";
+import { SectionCard } from "../../components/layout/SectionCard";
 import { useOperatorContext } from "../../components/useOperatorContext";
 import { fetchAutomationRuns } from "../../lib/api/client";
 import type { AutomationRun } from "../../lib/api/types";
@@ -42,60 +44,72 @@ export default function AutomationPage() {
   }, [context.businessId, context.error, context.loading, context.selectedSiteId, context.token]);
 
   if (context.loading) {
-    return <section className="panel">Loading automation...</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Loading automation...</SectionCard>
+      </PageContainer>
+    );
   }
   if (context.error) {
-    return <section className="panel">Error: {context.error}</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Error: {context.error}</SectionCard>
+      </PageContainer>
+    );
   }
 
   return (
-    <section className="panel stack">
-      <h1>Automation Run History</h1>
-      <label htmlFor="site-picker-automation">Site</label>
-      <select
-        id="site-picker-automation"
-        value={context.selectedSiteId || ""}
-        onChange={(event) => context.setSelectedSiteId(event.target.value)}
-      >
-        {context.sites.map((site) => (
-          <option key={site.id} value={site.id}>
-            {site.display_name}
-          </option>
-        ))}
-      </select>
-
-      {loadingItems ? <p>Loading automation runs...</p> : null}
-      {itemsError ? <p style={{ color: "#b91c1c" }}>{itemsError}</p> : null}
-
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Run ID</th>
-            <th>Status</th>
-            <th>Trigger</th>
-            <th>Started</th>
-            <th>Finished</th>
-            <th>Error</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.id}>
-              <td>{item.id}</td>
-              <td>{item.status}</td>
-              <td>{item.trigger_source}</td>
-              <td>{item.started_at || "-"}</td>
-              <td>{item.finished_at || "-"}</td>
-              <td>{item.error_message || "-"}</td>
-            </tr>
+    <PageContainer>
+      <SectionCard>
+        <h1>Automation Run History</h1>
+        <label htmlFor="site-picker-automation">Site</label>
+        <select
+          id="site-picker-automation"
+          value={context.selectedSiteId || ""}
+          onChange={(event) => context.setSelectedSiteId(event.target.value)}
+        >
+          {context.sites.map((site) => (
+            <option key={site.id} value={site.id}>
+              {site.display_name}
+            </option>
           ))}
-          {items.length === 0 && !loadingItems ? (
-            <tr>
-              <td colSpan={6}>No automation runs found for this site.</td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
-    </section>
+        </select>
+
+        {loadingItems ? <p className="hint muted">Loading automation runs...</p> : null}
+        {itemsError ? <p className="hint error">{itemsError}</p> : null}
+
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Run ID</th>
+                <th>Status</th>
+                <th>Trigger</th>
+                <th>Started</th>
+                <th>Finished</th>
+                <th>Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.id}</td>
+                  <td>{item.status}</td>
+                  <td>{item.trigger_source}</td>
+                  <td>{item.started_at || "-"}</td>
+                  <td>{item.finished_at || "-"}</td>
+                  <td>{item.error_message || "-"}</td>
+                </tr>
+              ))}
+              {items.length === 0 && !loadingItems ? (
+                <tr>
+                  <td colSpan={6}>No automation runs found for this site.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+    </PageContainer>
   );
 }

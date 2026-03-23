@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { PageContainer } from "../../../components/layout/PageContainer";
+import { SectionCard } from "../../../components/layout/SectionCard";
 import { useOperatorContext } from "../../../components/useOperatorContext";
 import {
   ApiRequestError,
@@ -338,8 +340,8 @@ export default function RecommendationDetailPage() {
   }
 
   return (
-    <section className="stack">
-      <div className="panel stack">
+    <PageContainer>
+      <SectionCard>
         <p>
           <Link href={backToRecommendationsHref}>Back to Recommendations</Link>
         </p>
@@ -358,17 +360,17 @@ export default function RecommendationDetailPage() {
           <p className="hint warning">Recommendation not found or not accessible in your tenant scope.</p>
         ) : null}
         {!loading && error ? <p className="hint error">{error}</p> : null}
-      </div>
+      </SectionCard>
 
       {!loading && !notFound && !error && recommendation ? (
         <>
-          <div className="panel stack">
+          <SectionCard>
             <h2>Recommendation Context</h2>
             <p>{recommendation.title}</p>
             <p>{recommendation.rationale}</p>
-          </div>
+          </SectionCard>
 
-          <div className="panel stack">
+          <SectionCard>
             <h2>Priority and Status</h2>
             <p>
               Priority: {recommendation.priority_score} ({recommendation.priority_band})
@@ -376,11 +378,11 @@ export default function RecommendationDetailPage() {
             <p>Status: {recommendation.status}</p>
             <p>Category: {recommendation.category}</p>
             <p>Source Type: {recommendationSourceType(recommendation)}</p>
-          </div>
+          </SectionCard>
 
-          <div className="panel stack">
+          <SectionCard>
             <h2>Actions</h2>
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            <div className="row-wrap-tight">
               <button
                 className="primary"
                 type="button"
@@ -411,7 +413,7 @@ export default function RecommendationDetailPage() {
               maxLength={2000}
               disabled={actionLoading}
             />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem" }}>
+            <div className="row-space-between">
               <small className="hint muted">{noteDraft.length}/2000 characters</small>
               <button
                 type="button"
@@ -425,14 +427,14 @@ export default function RecommendationDetailPage() {
             </div>
             {actionSuccess ? <p className="hint">{actionSuccess}</p> : null}
             {actionError ? <p className="hint error">{actionError}</p> : null}
-          </div>
+          </SectionCard>
 
-          <div className="panel stack">
+          <SectionCard>
             <h2>Saved Note</h2>
             <p>{recommendation.decision_reason || "No operator note saved yet."}</p>
-          </div>
+          </SectionCard>
 
-          <div className="panel stack">
+          <SectionCard>
             <h2>Lineage</h2>
             <p>
               Audit Run ID:{" "}
@@ -460,9 +462,9 @@ export default function RecommendationDetailPage() {
                 <code>{recommendation.recommendation_run_id}</code>
               </Link>
             </p>
-          </div>
+          </SectionCard>
 
-          <div className="panel stack">
+          <SectionCard>
             <h2>Tenant Scope</h2>
             <p>
               Business ID: <code>{recommendation.business_id}</code>
@@ -472,9 +474,9 @@ export default function RecommendationDetailPage() {
             </p>
             <p>Created: {formatDateTime(recommendation.created_at)}</p>
             <p>Updated: {formatDateTime(recommendation.updated_at)}</p>
-          </div>
+          </SectionCard>
         </>
       ) : null}
-    </section>
+    </PageContainer>
   );
 }

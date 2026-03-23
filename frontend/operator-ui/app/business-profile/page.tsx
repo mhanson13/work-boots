@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { PageContainer } from "../../components/layout/PageContainer";
+import { SectionCard } from "../../components/layout/SectionCard";
 import { useOperatorContext } from "../../components/useOperatorContext";
 import {
   ApiRequestError,
@@ -240,15 +242,23 @@ export default function BusinessProfilePage() {
   }
 
   if (context.loading || loading) {
-    return <section className="panel">Loading Google Business Profile...</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Loading Google Business Profile...</SectionCard>
+      </PageContainer>
+    );
   }
   if (context.error) {
-    return <section className="panel">Error: {context.error}</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Error: {context.error}</SectionCard>
+      </PageContainer>
+    );
   }
 
   return (
-    <section className="stack">
-      <div className="panel stack">
+    <PageContainer>
+      <SectionCard>
         <h1>Google Business Profile</h1>
         <p>
           Connection status:{" "}
@@ -260,7 +270,7 @@ export default function BusinessProfilePage() {
           Business scope: <code>{context.businessId}</code>
         </p>
 
-        <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+        <div className="row-wrap-tight">
           <button className="primary" onClick={() => void handleConnect()} disabled={actionLoading}>
             {connectionUiState === "connected" ? "Reconnect Google" : "Connect Google Business Profile"}
           </button>
@@ -282,56 +292,58 @@ export default function BusinessProfilePage() {
           <p className="hint muted">No Google Business Profile connection exists for this business.</p>
         ) : null}
         {error ? <p className="hint error">{error}</p> : null}
-      </div>
+      </SectionCard>
 
-      <div className="panel stack">
+      <SectionCard>
         <h2>Locations</h2>
         {connectionUiState !== "connected" ? (
           <p className="hint muted">Connect Google Business Profile to load locations.</p>
         ) : locations.length === 0 ? (
           <p className="hint muted">No locations were returned for this Google Business Profile account.</p>
         ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Location</th>
-                <th>Account</th>
-                <th>Status</th>
-                <th>Next action</th>
-                <th>Verification</th>
-              </tr>
-            </thead>
-            <tbody>
-              {locations.map((location) => {
-                const badge = locationBadge(location);
-                return (
-                  <tr key={`${location.account_id}:${location.location_id}`}>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{location.title}</div>
-                      <div style={{ color: "#475569", fontSize: "0.85rem" }}>
-                        {location.address || "No address provided"}
-                      </div>
-                    </td>
-                    <td>{location.account_name}</td>
-                    <td>
-                      <span className={`badge ${badge.className}`}>{badge.label}</span>
-                    </td>
-                    <td>{location.verification.guidance.cta_label ?? location.verification.guidance.title}</td>
-                    <td>
-                      <button onClick={() => void loadVerificationStatus(location.location_id)}>
-                        {selectedLocationId === location.location_id ? "Refresh status" : "Manage verification"}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Location</th>
+                  <th>Account</th>
+                  <th>Status</th>
+                  <th>Next action</th>
+                  <th>Verification</th>
+                </tr>
+              </thead>
+              <tbody>
+                {locations.map((location) => {
+                  const badge = locationBadge(location);
+                  return (
+                    <tr key={`${location.account_id}:${location.location_id}`}>
+                      <td>
+                        <div className="text-strong">{location.title}</div>
+                        <div className="text-muted-small">
+                          {location.address || "No address provided"}
+                        </div>
+                      </td>
+                      <td>{location.account_name}</td>
+                      <td>
+                        <span className={`badge ${badge.className}`}>{badge.label}</span>
+                      </td>
+                      <td>{location.verification.guidance.cta_label ?? location.verification.guidance.title}</td>
+                      <td>
+                        <button type="button" onClick={() => void loadVerificationStatus(location.location_id)}>
+                          {selectedLocationId === location.location_id ? "Refresh status" : "Manage verification"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
-      </div>
+      </SectionCard>
 
       {selectedLocation ? (
-        <div className="panel stack">
+        <SectionCard>
           <h2>Verification Workflow: {selectedLocation.title}</h2>
           {verificationLoading ? <p className="hint muted">Loading verification workflow...</p> : null}
           {verificationStatus ? (
@@ -339,32 +351,32 @@ export default function BusinessProfilePage() {
               <p>
                 Workflow state: <VerificationStatusBadge state={verificationStatus.verification_state} />
               </p>
-              <div className="stack" style={{ gap: "0.35rem" }}>
-                <p style={{ fontWeight: 600 }}>{verificationStatus.guidance.title}</p>
+              <div className="stack-tight">
+                <p className="text-strong">{verificationStatus.guidance.title}</p>
                 <p className="hint muted">{verificationStatus.guidance.summary}</p>
                 {verificationStatus.guidance.instructions.length > 0 ? (
-                  <ol style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                  <ol className="list-compact-reset">
                     {verificationStatus.guidance.instructions.map((item, index) => (
                       <li key={`instruction-${index}`}>{item}</li>
                     ))}
                   </ol>
                 ) : null}
                 {verificationStatus.guidance.tips.length > 0 ? (
-                  <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                  <ul className="list-compact-reset">
                     {verificationStatus.guidance.tips.map((item, index) => (
                       <li key={`tip-${index}`}>{item}</li>
                     ))}
                   </ul>
                 ) : null}
                 {verificationStatus.guidance.warnings.length > 0 ? (
-                  <ul style={{ margin: 0, paddingLeft: "1.1rem", color: "#991b1b" }}>
+                  <ul className="list-compact-reset list-warning">
                     {verificationStatus.guidance.warnings.map((item, index) => (
                       <li key={`warning-${index}`}>{item}</li>
                     ))}
                   </ul>
                 ) : null}
                 {verificationStatus.guidance.troubleshooting.length > 0 ? (
-                  <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                  <ul className="list-compact-reset">
                     {verificationStatus.guidance.troubleshooting.map((item, index) => (
                       <li key={`troubleshooting-${index}`}>{item}</li>
                     ))}
@@ -397,11 +409,11 @@ export default function BusinessProfilePage() {
           ) : null}
           {verificationError ? <p className="hint error">{verificationError}</p> : null}
           {verificationErrorGuidance ? (
-            <div className="stack" style={{ gap: "0.35rem" }}>
-              <p style={{ fontWeight: 600 }}>{verificationErrorGuidance.title}</p>
+            <div className="stack-tight">
+              <p className="text-strong">{verificationErrorGuidance.title}</p>
               <p className="hint muted">{verificationErrorGuidance.summary}</p>
               {verificationErrorGuidance.instructions.length > 0 ? (
-                <ol style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                <ol className="list-compact-reset">
                   {verificationErrorGuidance.instructions.map((item, index) => (
                     <li key={`error-instruction-${index}`}>{item}</li>
                   ))}
@@ -409,9 +421,9 @@ export default function BusinessProfilePage() {
               ) : null}
             </div>
           ) : null}
-        </div>
+        </SectionCard>
       ) : null}
-    </section>
+    </PageContainer>
   );
 }
 

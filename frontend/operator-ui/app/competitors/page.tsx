@@ -4,6 +4,8 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { PageContainer } from "../../components/layout/PageContainer";
+import { SectionCard } from "../../components/layout/SectionCard";
 import { useOperatorContext } from "../../components/useOperatorContext";
 import {
   ApiRequestError,
@@ -401,157 +403,177 @@ function CompetitorsPageContent() {
   }, [businessId, contextError, contextLoading, selectedSiteId, token]);
 
   if (contextLoading) {
-    return <section className="panel">Loading competitor intelligence...</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Loading competitor intelligence...</SectionCard>
+      </PageContainer>
+    );
   }
   if (contextError) {
-    return <section className="panel">Unable to load tenant context. Refresh and sign in again.</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Unable to load tenant context. Refresh and sign in again.</SectionCard>
+      </PageContainer>
+    );
   }
   if (sites.length === 0) {
     return (
-      <section className="panel stack">
-        <h1>Competitors</h1>
-        <p className="hint muted">No SEO sites are configured yet. Add a site first to view competitors.</p>
-      </section>
+      <PageContainer>
+        <SectionCard>
+          <h1>Competitors</h1>
+          <p className="hint muted">No SEO sites are configured yet. Add a site first to view competitors.</p>
+        </SectionCard>
+      </PageContainer>
     );
   }
 
   return (
-    <section className="panel stack">
-      <h1>Competitor Intelligence</h1>
-      <label htmlFor="site-picker-competitors">Site</label>
-      <select
-        id="site-picker-competitors"
-        value={selectedSiteId || ""}
-        onChange={(event) => setSelectedSiteId(event.target.value)}
-      >
-        {sites.map((site) => (
-          <option key={site.id} value={site.id}>
-            {site.display_name}
-          </option>
-        ))}
-      </select>
-
-      <div className="panel stack">
-        <h2 style={{ margin: 0 }}>Readiness</h2>
-        <p className="hint muted">
-          Selected Site:{" "}
-          <strong>{selectedSite?.display_name || selectedSiteId || "No site selected"}</strong>
-          {selectedSiteId ? (
-            <>
-              {" "}
-              (<code>{selectedSiteId}</code>)
-            </>
-          ) : null}
-        </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
-          <span className="hint muted">Active Sets: {activeSetCount}/{competitorSetCount}</span>
-          <span className="hint muted">Competitor Domains: {totalDomainCount}</span>
-          <span className="hint muted">Active Domains: {activeDomainCount}</span>
-        </div>
-        <p className="hint muted">
-          Latest Snapshot Run:{" "}
-          {latestSnapshotRun ? (
-            <>
-              <strong>{formatRunStatus(latestSnapshotRun.status)}</strong>{" "}
-              ({formatDateTime(latestSnapshotRun.completed_at || latestSnapshotRun.updated_at || latestSnapshotRun.created_at)})
-              {" "}for {latestSnapshotRun.competitor_set_name}{" "}
-              <Link href={buildSnapshotRunHref(latestSnapshotRun)}>View</Link>
-            </>
-          ) : (
-            "none"
-          )}
-        </p>
-        <p className="hint muted">
-          Latest Comparison Run:{" "}
-          {latestComparisonRun ? (
-            <>
-              <strong>{formatRunStatus(latestComparisonRun.status)}</strong>{" "}
-              ({formatDateTime(latestComparisonRun.completed_at || latestComparisonRun.updated_at || latestComparisonRun.created_at)})
-              {" "}for {latestComparisonRun.competitor_set_name}{" "}
-              <Link href={buildComparisonRunHref(latestComparisonRun)}>View</Link>
-            </>
-          ) : (
-            "none"
-          )}
-        </p>
-        {readinessWarning ? <p className="hint warning">{readinessWarning}</p> : null}
-        <p className="hint muted">{readinessGuidance}</p>
-      </div>
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
-        <span className="hint muted">Competitor Sets: {competitorSetCount}</span>
-        <span className="hint muted">Domains Across Sets: {totalDomainCount}</span>
-      </div>
-
-      {loadingCompetitors ? <p className="hint muted">Loading competitors...</p> : null}
-      {competitorsError ? <p className="hint error">{competitorsError}</p> : null}
-
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Set</th>
-            <th>Business</th>
-            <th>Site</th>
-            <th>Location</th>
-            <th>Status</th>
-            <th>Domains</th>
-            <th>Provenance</th>
-            <th>Created By</th>
-            <th>Created</th>
-            <th>Updated</th>
-            <th>Latest Domain Update</th>
-          </tr>
-        </thead>
-        <tbody>
-          {competitorSets.map((item) => (
-            <tr
-              key={item.id}
-              role="link"
-              tabIndex={0}
-              style={{ cursor: "pointer" }}
-              onClick={() => router.push(buildSetDetailHref(item))}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  router.push(buildSetDetailHref(item));
-                }
-              }}
-            >
-              <td>
-                <strong>{item.name}</strong>
-                <br />
-                <span className="hint muted">{item.id}</span>
-              </td>
-              <td>{item.business_id}</td>
-              <td>{item.site_id}</td>
-              <td>{formatLocation(item.city, item.state)}</td>
-              <td>{item.is_active ? "active" : "inactive"}</td>
-              <td>
-                {item.active_domain_count}/{item.domain_count} active
-              </td>
-              <td>{item.source_summary}</td>
-              <td>{item.created_by_principal_id || "-"}</td>
-              <td>{formatDateTime(item.created_at)}</td>
-              <td>{formatDateTime(item.updated_at)}</td>
-              <td>{formatDateTime(item.latest_domain_updated_at)}</td>
-            </tr>
+    <PageContainer>
+      <SectionCard>
+        <h1>Competitor Intelligence</h1>
+        <label htmlFor="site-picker-competitors">Site</label>
+        <select
+          id="site-picker-competitors"
+          value={selectedSiteId || ""}
+          onChange={(event) => setSelectedSiteId(event.target.value)}
+        >
+          {sites.map((site) => (
+            <option key={site.id} value={site.id}>
+              {site.display_name}
+            </option>
           ))}
-          {!loadingCompetitors && competitorSets.length === 0 ? (
-            <tr>
-              <td colSpan={11}>
-                {tableEmptyReason}
-              </td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
-    </section>
+        </select>
+
+        <div className="panel stack">
+          <h2 className="heading-reset">Readiness</h2>
+          <p className="hint muted">
+            Selected Site:{" "}
+            <strong>{selectedSite?.display_name || selectedSiteId || "No site selected"}</strong>
+            {selectedSiteId ? (
+              <>
+                {" "}
+                (<code>{selectedSiteId}</code>)
+              </>
+            ) : null}
+          </p>
+          <div className="row-wrap">
+            <span className="hint muted">Active Sets: {activeSetCount}/{competitorSetCount}</span>
+            <span className="hint muted">Competitor Domains: {totalDomainCount}</span>
+            <span className="hint muted">Active Domains: {activeDomainCount}</span>
+          </div>
+          <p className="hint muted">
+            Latest Snapshot Run:{" "}
+            {latestSnapshotRun ? (
+              <>
+                <strong>{formatRunStatus(latestSnapshotRun.status)}</strong>{" "}
+                ({formatDateTime(latestSnapshotRun.completed_at || latestSnapshotRun.updated_at || latestSnapshotRun.created_at)})
+                {" "}for {latestSnapshotRun.competitor_set_name}{" "}
+                <Link href={buildSnapshotRunHref(latestSnapshotRun)}>View</Link>
+              </>
+            ) : (
+              "none"
+            )}
+          </p>
+          <p className="hint muted">
+            Latest Comparison Run:{" "}
+            {latestComparisonRun ? (
+              <>
+                <strong>{formatRunStatus(latestComparisonRun.status)}</strong>{" "}
+                ({formatDateTime(latestComparisonRun.completed_at || latestComparisonRun.updated_at || latestComparisonRun.created_at)})
+                {" "}for {latestComparisonRun.competitor_set_name}{" "}
+                <Link href={buildComparisonRunHref(latestComparisonRun)}>View</Link>
+              </>
+            ) : (
+              "none"
+            )}
+          </p>
+          {readinessWarning ? <p className="hint warning">{readinessWarning}</p> : null}
+          <p className="hint muted">{readinessGuidance}</p>
+        </div>
+
+        <div className="row-wrap">
+          <span className="hint muted">Competitor Sets: {competitorSetCount}</span>
+          <span className="hint muted">Domains Across Sets: {totalDomainCount}</span>
+        </div>
+
+        {loadingCompetitors ? <p className="hint muted">Loading competitors...</p> : null}
+        {competitorsError ? <p className="hint error">{competitorsError}</p> : null}
+
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Set</th>
+                <th>Business</th>
+                <th>Site</th>
+                <th>Location</th>
+                <th>Status</th>
+                <th>Domains</th>
+                <th>Provenance</th>
+                <th>Created By</th>
+                <th>Created</th>
+                <th>Updated</th>
+                <th>Latest Domain Update</th>
+              </tr>
+            </thead>
+            <tbody>
+              {competitorSets.map((item) => (
+                <tr
+                  key={item.id}
+                  role="link"
+                  tabIndex={0}
+                  className="clickable-row"
+                  onClick={() => router.push(buildSetDetailHref(item))}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      router.push(buildSetDetailHref(item));
+                    }
+                  }}
+                >
+                  <td>
+                    <strong>{item.name}</strong>
+                    <br />
+                    <span className="hint muted">{item.id}</span>
+                  </td>
+                  <td>{item.business_id}</td>
+                  <td>{item.site_id}</td>
+                  <td>{formatLocation(item.city, item.state)}</td>
+                  <td>{item.is_active ? "active" : "inactive"}</td>
+                  <td>
+                    {item.active_domain_count}/{item.domain_count} active
+                  </td>
+                  <td>{item.source_summary}</td>
+                  <td>{item.created_by_principal_id || "-"}</td>
+                  <td>{formatDateTime(item.created_at)}</td>
+                  <td>{formatDateTime(item.updated_at)}</td>
+                  <td>{formatDateTime(item.latest_domain_updated_at)}</td>
+                </tr>
+              ))}
+              {!loadingCompetitors && competitorSets.length === 0 ? (
+                <tr>
+                  <td colSpan={11}>
+                    {tableEmptyReason}
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+    </PageContainer>
   );
 }
 
 export default function CompetitorsPage() {
   return (
-    <Suspense fallback={<section className="panel">Loading competitor intelligence...</section>}>
+    <Suspense
+      fallback={(
+        <PageContainer>
+          <SectionCard as="div">Loading competitor intelligence...</SectionCard>
+        </PageContainer>
+      )}
+    >
       <CompetitorsPageContent />
     </Suspense>
   );

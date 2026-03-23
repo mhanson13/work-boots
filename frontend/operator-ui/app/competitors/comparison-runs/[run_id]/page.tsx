@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { PageContainer } from "../../../../components/layout/PageContainer";
+import { SectionCard } from "../../../../components/layout/SectionCard";
 import { useOperatorContext } from "../../../../components/useOperatorContext";
 import {
   ApiRequestError,
@@ -325,25 +327,35 @@ export default function ComparisonRunDetailPage() {
   ]);
 
   if (context.loading) {
-    return <section className="panel">Loading comparison run detail...</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Loading comparison run detail...</SectionCard>
+      </PageContainer>
+    );
   }
   if (context.error) {
-    return <section className="panel">Unable to load tenant context. Refresh and sign in again.</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Unable to load tenant context. Refresh and sign in again.</SectionCard>
+      </PageContainer>
+    );
   }
   if (!comparisonRunId) {
     return (
-      <section className="panel stack">
-        <h1>Comparison Run Detail</h1>
-        <p className="hint warning">Comparison run identifier is missing.</p>
-        <p>
-          <Link href={backToListHref}>Back to Competitor Sets</Link>
-        </p>
-      </section>
+      <PageContainer>
+        <SectionCard>
+          <h1>Comparison Run Detail</h1>
+          <p className="hint warning">Comparison run identifier is missing.</p>
+          <p>
+            <Link href={backToListHref}>Back to Competitor Sets</Link>
+          </p>
+        </SectionCard>
+      </PageContainer>
     );
   }
 
   return (
-    <section className="stack">
+    <PageContainer>
       <div className="panel stack">
         <p>
           <Link href={backToSetHref}>Back to Competitor Set</Link>
@@ -395,7 +407,7 @@ export default function ComparisonRunDetailPage() {
 
           <div className="panel stack">
             <h2>Related Navigation</h2>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+            <div className="row-wrap">
               <Link href={backToSetHref}>Parent Competitor Set</Link>
               <Link href={buildSnapshotRunHref(run.snapshot_run_id)}>Snapshot Run</Link>
               <Link href="/recommendations">Recommendation Queue</Link>
@@ -446,11 +458,8 @@ export default function ComparisonRunDetailPage() {
 
           <div className="panel stack">
             <h2>Finding Distributions</h2>
-            <div
-              className="stack"
-              style={{ gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", alignItems: "start" }}
-            >
-              <div className="panel stack" style={{ padding: "0.75rem" }}>
+            <div className="metrics-grid">
+              <div className="panel stack panel-compact">
                 <h3>By Type</h3>
                 {typeCounts.length === 0 ? (
                   <p className="hint muted">No type counts are available.</p>
@@ -467,7 +476,7 @@ export default function ComparisonRunDetailPage() {
                   </table>
                 )}
               </div>
-              <div className="panel stack" style={{ padding: "0.75rem" }}>
+              <div className="panel stack panel-compact">
                 <h3>By Category</h3>
                 {categoryCounts.length === 0 ? (
                   <p className="hint muted">No category counts are available.</p>
@@ -484,7 +493,7 @@ export default function ComparisonRunDetailPage() {
                   </table>
                 )}
               </div>
-              <div className="panel stack" style={{ padding: "0.75rem" }}>
+              <div className="panel stack panel-compact">
                 <h3>By Severity</h3>
                 {severityCounts.length === 0 ? (
                   <p className="hint muted">No severity counts are available.</p>
@@ -590,24 +599,22 @@ export default function ComparisonRunDetailPage() {
             ) : relatedRecommendations.length === 0 ? (
               <>
                 <p className="hint muted">
-                  Linked recommendation run IDs:{" "}
-                  {linkedRecommendationRunIds.map((item) => (
-                    <code key={item} style={{ marginRight: "0.45rem" }}>
-                      {item}
-                    </code>
-                  ))}
+                  Linked recommendation run IDs:{" "}<span className="inline-code-list">
+                    {linkedRecommendationRunIds.map((item) => (
+                      <code key={item}>{item}</code>
+                    ))}
+                  </span>
                 </p>
                 <p className="hint muted">No recommendations were found for the linked recommendation runs.</p>
               </>
             ) : (
               <>
                 <p className="hint muted">
-                  Linked recommendation run IDs:{" "}
-                  {linkedRecommendationRunIds.map((item) => (
-                    <code key={item} style={{ marginRight: "0.45rem" }}>
-                      {item}
-                    </code>
-                  ))}
+                  Linked recommendation run IDs:{" "}<span className="inline-code-list">
+                    {linkedRecommendationRunIds.map((item) => (
+                      <code key={item}>{item}</code>
+                    ))}
+                  </span>
                 </p>
                 <table className="table">
                   <thead>
@@ -643,12 +650,11 @@ export default function ComparisonRunDetailPage() {
                 </table>
                 {truncatedRecommendationRunIds.length > 0 ? (
                   <p className="hint muted">
-                    Recommendation linkage is currently truncated for run IDs{" "}
-                    {truncatedRecommendationRunIds.map((item) => (
-                      <code key={item} style={{ marginRight: "0.45rem" }}>
-                        {item}
-                      </code>
-                    ))}
+                    Recommendation linkage is currently truncated for run IDs{" "}<span className="inline-code-list">
+                      {truncatedRecommendationRunIds.map((item) => (
+                        <code key={item}>{item}</code>
+                      ))}
+                    </span>
                     after the first {RELATED_RECOMMENDATION_PAGE_SIZE} items per run.
                   </p>
                 ) : null}
@@ -657,6 +663,6 @@ export default function ComparisonRunDetailPage() {
           </div>
         </>
       ) : null}
-    </section>
+    </PageContainer>
   );
 }

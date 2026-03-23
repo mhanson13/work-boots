@@ -48,8 +48,8 @@ export function VerificationMethodsList({
     return <p className="hint muted">No verification methods are currently available for this location.</p>;
   }
   return (
-    <label style={{ display: "grid", gap: "0.3rem", maxWidth: "28rem" }}>
-      <span style={{ fontSize: "0.85rem", color: "#334155" }}>Verification method</span>
+    <label className="label-stack label-stack-medium">
+      <span className="text-muted-small">Verification method</span>
       <select value={selectedOptionId} onChange={(event) => onChange(event.target.value)} disabled={disabled}>
         <option value="">Select a method</option>
         {methods.map((method) => (
@@ -72,7 +72,7 @@ export function VerificationStartAction({
   disabledRefresh,
 }: VerificationStartActionProps) {
   return (
-    <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+    <div className="row-wrap-tight">
       <button className="primary" onClick={onStart} disabled={disabledStart}>
         Start verification
       </button>
@@ -95,9 +95,9 @@ export function VerificationCodeEntry({
 }: VerificationCodeEntryProps) {
   const showHint = actionRequired === "enter_code";
   return (
-    <div className="stack" style={{ gap: "0.5rem" }}>
-      <label style={{ display: "grid", gap: "0.3rem", maxWidth: "16rem" }}>
-        <span style={{ fontSize: "0.85rem", color: "#334155" }}>Verification code</span>
+    <div className="stack-medium">
+      <label className="label-stack label-stack-small">
+        <span className="text-muted-small">Verification code</span>
         <input
           type="text"
           value={code}

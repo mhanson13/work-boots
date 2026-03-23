@@ -4,6 +4,8 @@ import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import { PageContainer } from "../../components/layout/PageContainer";
+import { SectionCard } from "../../components/layout/SectionCard";
 import { useOperatorContext } from "../../components/useOperatorContext";
 import {
   ApiRequestError,
@@ -801,44 +803,49 @@ function RecommendationsPageContent() {
   ]);
 
   if (context.loading) {
-    return <section className="panel">Loading recommendations...</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Loading recommendations...</SectionCard>
+      </PageContainer>
+    );
   }
   if (context.error) {
-    return <section className="panel">Unable to load tenant context. Refresh and sign in again.</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Unable to load tenant context. Refresh and sign in again.</SectionCard>
+      </PageContainer>
+    );
   }
   if (context.sites.length === 0) {
     return (
-      <section className="panel stack">
-        <h1>Recommendation Workflow</h1>
-        <p className="hint muted">No SEO sites are configured yet. Add a site first to view recommendations.</p>
-      </section>
+      <PageContainer>
+        <SectionCard>
+          <h1>Recommendation Workflow</h1>
+          <p className="hint muted">No SEO sites are configured yet. Add a site first to view recommendations.</p>
+        </SectionCard>
+      </PageContainer>
     );
   }
 
   return (
-    <section className="panel stack">
-      <h1>Recommendation Workflow</h1>
-      <label htmlFor="site-picker-recommendations">Site</label>
-      <select
-        id="site-picker-recommendations"
-        value={context.selectedSiteId || ""}
-        onChange={(event) => context.setSelectedSiteId(event.target.value)}
-      >
-        {context.sites.map((site) => (
-          <option key={site.id} value={site.id}>
-            {site.display_name}
-          </option>
-        ))}
-      </select>
+    <PageContainer>
+      <SectionCard>
+        <h1>Recommendation Workflow</h1>
+        <label htmlFor="site-picker-recommendations">Site</label>
+        <select
+          id="site-picker-recommendations"
+          value={context.selectedSiteId || ""}
+          onChange={(event) => context.setSelectedSiteId(event.target.value)}
+        >
+          {context.sites.map((site) => (
+            <option key={site.id} value={site.id}>
+              {site.display_name}
+            </option>
+          ))}
+        </select>
 
-      <div
-        className="stack"
-        style={{
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          alignItems: "end",
-        }}
-      >
-        <div className="stack" style={{ gap: "0.35rem" }}>
+        <div className="grid-fit-180">
+          <div className="stack-tight">
           <label htmlFor="recommendation-preset">Preset</label>
           <select
             id="recommendation-preset"
@@ -857,8 +864,8 @@ function RecommendationsPageContent() {
               </option>
             ))}
           </select>
-        </div>
-        <div className="stack" style={{ gap: "0.35rem" }}>
+          </div>
+          <div className="stack-tight">
           <label htmlFor="recommendation-filter-status">Status</label>
           <select
             id="recommendation-filter-status"
@@ -876,8 +883,8 @@ function RecommendationsPageContent() {
               </option>
             ))}
           </select>
-        </div>
-        <div className="stack" style={{ gap: "0.35rem" }}>
+          </div>
+          <div className="stack-tight">
           <label htmlFor="recommendation-filter-priority">Priority</label>
           <select
             id="recommendation-filter-priority"
@@ -895,8 +902,8 @@ function RecommendationsPageContent() {
               </option>
             ))}
           </select>
-        </div>
-        <div className="stack" style={{ gap: "0.35rem" }}>
+          </div>
+          <div className="stack-tight">
           <label htmlFor="recommendation-filter-category">Category</label>
           <select
             id="recommendation-filter-category"
@@ -914,8 +921,8 @@ function RecommendationsPageContent() {
               </option>
             ))}
           </select>
-        </div>
-        <div className="stack" style={{ gap: "0.35rem" }}>
+          </div>
+          <div className="stack-tight">
           <label htmlFor="recommendation-sort">Sort</label>
           <select
             id="recommendation-sort"
@@ -928,48 +935,42 @@ function RecommendationsPageContent() {
               </option>
             ))}
           </select>
+          </div>
+          <button
+            type="button"
+            onClick={() => updateFilterParams(DEFAULT_FILTERS)}
+            disabled={loadingItems || !hasActiveFilters}
+          >
+            Clear Filters
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => updateFilterParams(DEFAULT_FILTERS)}
-          disabled={loadingItems || !hasActiveFilters}
-        >
-          Clear Filters
-        </button>
-      </div>
 
-      <div
-        className="stack"
-        style={{
-          gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-          gap: "0.5rem",
-        }}
-      >
-        <div className="panel stack" style={{ padding: "0.6rem", gap: "0.2rem" }}>
+        <div className="grid-fit-120">
+          <div className="panel stack panel-metric stack-micro">
           <span className="hint muted">Total Filtered</span>
           <strong>{queueSummary.total}</strong>
-        </div>
-        <div className="panel stack" style={{ padding: "0.6rem", gap: "0.2rem" }}>
+          </div>
+          <div className="panel stack panel-metric stack-micro">
           <span className="hint muted">Open</span>
           <strong>{queueSummary.open}</strong>
-        </div>
-        <div className="panel stack" style={{ padding: "0.6rem", gap: "0.2rem" }}>
+          </div>
+          <div className="panel stack panel-metric stack-micro">
           <span className="hint muted">Accepted</span>
           <strong>{queueSummary.accepted}</strong>
-        </div>
-        <div className="panel stack" style={{ padding: "0.6rem", gap: "0.2rem" }}>
+          </div>
+          <div className="panel stack panel-metric stack-micro">
           <span className="hint muted">Dismissed</span>
           <strong>{queueSummary.dismissed}</strong>
-        </div>
-        <div className="panel stack" style={{ padding: "0.6rem", gap: "0.2rem" }}>
+          </div>
+          <div className="panel stack panel-metric stack-micro">
           <span className="hint muted">High Priority</span>
           <strong>{queueSummary.highPriority}</strong>
+          </div>
         </div>
-      </div>
-      <p className="hint muted">Summary cards reflect all filtered results across pages.</p>
+        <p className="hint muted">Summary cards reflect all filtered results across pages.</p>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "end" }}>
-        <div className="stack" style={{ gap: "0.35rem", minWidth: "140px" }}>
+        <div className="row-wrap-end">
+          <div className="stack-tight min-width-140">
           <label htmlFor="recommendation-page-size">Results per page</label>
           <select
             id="recommendation-page-size"
@@ -982,8 +983,8 @@ function RecommendationsPageContent() {
               </option>
             ))}
           </select>
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+          </div>
+          <div className="row-wrap-tight">
           <button
             type="button"
             onClick={() => goToPage(activePage - 1)}
@@ -1001,128 +1002,137 @@ function RecommendationsPageContent() {
           >
             Next
           </button>
-        </div>
-        <span className="hint muted" style={{ marginLeft: "auto" }}>
+          </div>
+          <span className="hint muted push-right">
           Showing {firstVisiblePosition}-{lastVisiblePosition} of {resolvedTotalRecommendations}
-        </span>
-      </div>
+          </span>
+        </div>
 
-      {loadingItems ? <p className="hint muted">Loading recommendations...</p> : null}
-      {itemsError ? <p className="hint error">{itemsError}</p> : null}
-      {bulkActionSuccess ? <p className="hint">{bulkActionSuccess}</p> : null}
-      {bulkActionError ? <p className="hint error">{bulkActionError}</p> : null}
+        {loadingItems ? <p className="hint muted">Loading recommendations...</p> : null}
+        {itemsError ? <p className="hint error">{itemsError}</p> : null}
+        {bulkActionSuccess ? <p className="hint">{bulkActionSuccess}</p> : null}
+        {bulkActionError ? <p className="hint error">{bulkActionError}</p> : null}
 
-      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
-        <button
-          type="button"
-          className="primary"
-          disabled={selectedCount === 0 || bulkActionInFlight !== null}
-          onClick={() => {
-            void handleBulkStatusUpdate("accepted");
-          }}
-        >
-          {bulkActionInFlight === "accepted" ? "Applying..." : "Accept Selected"}
-        </button>
-        <button
-          type="button"
-          disabled={selectedCount === 0 || bulkActionInFlight !== null}
-          onClick={() => {
-            void handleBulkStatusUpdate("dismissed");
-          }}
-        >
-          {bulkActionInFlight === "dismissed" ? "Applying..." : "Dismiss Selected"}
-        </button>
-        <span className="hint muted">{selectedCount} selected on this page</span>
-      </div>
+        <div className="row-wrap-tight">
+          <button
+            type="button"
+            className="primary"
+            disabled={selectedCount === 0 || bulkActionInFlight !== null}
+            onClick={() => {
+              void handleBulkStatusUpdate("accepted");
+            }}
+          >
+            {bulkActionInFlight === "accepted" ? "Applying..." : "Accept Selected"}
+          </button>
+          <button
+            type="button"
+            disabled={selectedCount === 0 || bulkActionInFlight !== null}
+            onClick={() => {
+              void handleBulkStatusUpdate("dismissed");
+            }}
+          >
+            {bulkActionInFlight === "dismissed" ? "Applying..." : "Dismiss Selected"}
+          </button>
+          <span className="hint muted">{selectedCount} selected on this page</span>
+        </div>
 
-      <table className="table">
-        <thead>
-          <tr>
-            <th>
-              <input
-                type="checkbox"
-                aria-label="Select all displayed recommendations"
-                checked={allDisplayedSelected}
-                onChange={(event) => toggleSelectAllDisplayed(event.target.checked)}
-                disabled={items.length === 0 || bulkActionInFlight !== null}
-              />
-            </th>
-            <th>Title</th>
-            <th>Summary</th>
-            <th>Status</th>
-            <th>Category</th>
-            <th>Priority</th>
-            <th>Source</th>
-            <th>Recommendation Run</th>
-            <th>Business</th>
-            <th>Site</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr
-              key={item.id}
-              role="link"
-              tabIndex={0}
-              style={{ cursor: "pointer" }}
-              onClick={() => router.push(buildRecommendationDetailHref(item))}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  router.push(buildRecommendationDetailHref(item));
-                }
-              }}
-            >
-              <td>
-                <input
-                  type="checkbox"
-                  aria-label={`Select recommendation ${item.id}`}
-                  checked={selectedRecommendationIds.includes(item.id)}
-                  disabled={bulkActionInFlight !== null}
-                  onClick={(event) => event.stopPropagation()}
-                  onKeyDown={(event) => event.stopPropagation()}
-                  onChange={() => toggleRecommendationSelection(item.id)}
-                />
-              </td>
-              <td>{item.title}</td>
-              <td>{item.rationale}</td>
-              <td>{item.status}</td>
-              <td>{item.category}</td>
-              <td>
-                {item.priority_score} ({item.priority_band})
-              </td>
-              <td>{deriveSourceType(item)}</td>
-              <td>
-                <Link
-                  href={buildRecommendationRunDetailHref(item)}
-                  onClick={(event) => event.stopPropagation()}
-                  onKeyDown={(event) => event.stopPropagation()}
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>
+                  <input
+                    type="checkbox"
+                    aria-label="Select all displayed recommendations"
+                    checked={allDisplayedSelected}
+                    onChange={(event) => toggleSelectAllDisplayed(event.target.checked)}
+                    disabled={items.length === 0 || bulkActionInFlight !== null}
+                  />
+                </th>
+                <th>Title</th>
+                <th>Summary</th>
+                <th>Status</th>
+                <th>Category</th>
+                <th>Priority</th>
+                <th>Source</th>
+                <th>Recommendation Run</th>
+                <th>Business</th>
+                <th>Site</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr
+                  key={item.id}
+                  role="link"
+                  tabIndex={0}
+                  className="clickable-row"
+                  onClick={() => router.push(buildRecommendationDetailHref(item))}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      router.push(buildRecommendationDetailHref(item));
+                    }
+                  }}
                 >
-                  <code>{item.recommendation_run_id}</code>
-                </Link>
-              </td>
-              <td>{item.business_id}</td>
-              <td>{item.site_id}</td>
-            </tr>
-          ))}
-          {items.length === 0 && !loadingItems ? (
-            <tr>
-              <td colSpan={10}>
-                {hasActiveFilters
-                  ? "No recommendations match the current filters."
-                  : "No recommendations found for this site."}
-              </td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
-    </section>
+                  <td>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select recommendation ${item.id}`}
+                      checked={selectedRecommendationIds.includes(item.id)}
+                      disabled={bulkActionInFlight !== null}
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      onChange={() => toggleRecommendationSelection(item.id)}
+                    />
+                  </td>
+                  <td>{item.title}</td>
+                  <td>{item.rationale}</td>
+                  <td>{item.status}</td>
+                  <td>{item.category}</td>
+                  <td>
+                    {item.priority_score} ({item.priority_band})
+                  </td>
+                  <td>{deriveSourceType(item)}</td>
+                  <td>
+                    <Link
+                      href={buildRecommendationRunDetailHref(item)}
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
+                      <code>{item.recommendation_run_id}</code>
+                    </Link>
+                  </td>
+                  <td>{item.business_id}</td>
+                  <td>{item.site_id}</td>
+                </tr>
+              ))}
+              {items.length === 0 && !loadingItems ? (
+                <tr>
+                  <td colSpan={10}>
+                    {hasActiveFilters
+                      ? "No recommendations match the current filters."
+                      : "No recommendations found for this site."}
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+    </PageContainer>
   );
 }
 
 export default function RecommendationsPage() {
   return (
-    <Suspense fallback={<section className="panel">Loading recommendations...</section>}>
+    <Suspense
+      fallback={
+        <PageContainer>
+          <SectionCard as="div">Loading recommendations...</SectionCard>
+        </PageContainer>
+      }
+    >
       <RecommendationsPageContent />
     </Suspense>
   );

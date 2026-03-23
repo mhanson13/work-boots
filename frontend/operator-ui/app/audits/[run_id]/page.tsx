@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { PageContainer } from "../../../components/layout/PageContainer";
+import { SectionCard } from "../../../components/layout/SectionCard";
 import { useOperatorContext } from "../../../components/useOperatorContext";
 import {
   ApiRequestError,
@@ -388,25 +390,35 @@ export default function AuditRunDetailPage() {
   }, [context.businessId, context.error, context.loading, context.token, runId]);
 
   if (context.loading) {
-    return <section className="panel">Loading audit run detail...</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Loading audit run detail...</SectionCard>
+      </PageContainer>
+    );
   }
   if (context.error) {
-    return <section className="panel">Unable to load tenant context. Refresh and sign in again.</section>;
+    return (
+      <PageContainer>
+        <SectionCard as="div">Unable to load tenant context. Refresh and sign in again.</SectionCard>
+      </PageContainer>
+    );
   }
   if (!runId) {
     return (
-      <section className="panel stack">
-        <h1>Audit Run Detail</h1>
-        <p className="hint warning">Audit run identifier is missing.</p>
-        <p>
-          <Link href="/audits">Back to Audit Runs</Link>
-        </p>
-      </section>
+      <PageContainer>
+        <SectionCard>
+          <h1>Audit Run Detail</h1>
+          <p className="hint warning">Audit run identifier is missing.</p>
+          <p>
+            <Link href="/audits">Back to Audit Runs</Link>
+          </p>
+        </SectionCard>
+      </PageContainer>
     );
   }
 
   return (
-    <section className="stack">
+    <PageContainer>
       <div className="panel stack">
         <p>
           <Link href="/audits">Back to Audit Runs</Link>
@@ -465,7 +477,7 @@ export default function AuditRunDetailPage() {
               </p>
             )}
             <p>Error Summary: {run.error_summary || "-"}</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+            <div className="row-wrap">
               <Link href="/recommendations">Recommendation Queue</Link>
               <Link href="/audits">Audit Runs</Link>
               <Link href={`/competitors?site_id=${encodeURIComponent(run.site_id)}`}>Competitor Sets</Link>
@@ -558,11 +570,8 @@ export default function AuditRunDetailPage() {
             <p>
               Loaded findings: <strong>{findings.length}</strong>
             </p>
-            <div
-              className="stack"
-              style={{ gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", alignItems: "start" }}
-            >
-              <div className="panel stack" style={{ padding: "0.75rem" }}>
+            <div className="metrics-grid">
+              <div className="panel stack panel-compact">
                 <h3>By Severity</h3>
                 {findingSeverityEntries.length === 0 ? (
                   <p className="hint muted">No severity counts are available.</p>
@@ -579,7 +588,7 @@ export default function AuditRunDetailPage() {
                   </table>
                 )}
               </div>
-              <div className="panel stack" style={{ padding: "0.75rem" }}>
+              <div className="panel stack panel-compact">
                 <h3>By Category</h3>
                 {findingCategoryEntries.length === 0 ? (
                   <p className="hint muted">No category counts are available.</p>
@@ -815,6 +824,6 @@ export default function AuditRunDetailPage() {
           </div>
         </>
       ) : null}
-    </section>
+    </PageContainer>
   );
 }
