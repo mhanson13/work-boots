@@ -13,6 +13,9 @@ patches:
         path: /data/ENVIRONMENT
         value: development
       - op: replace
+        path: /data/APP_ENV
+        value: development
+      - op: replace
         path: /data/NEXT_PUBLIC_API_BASE_URL
         value: https://dev.workboots.example.com
       - op: replace
