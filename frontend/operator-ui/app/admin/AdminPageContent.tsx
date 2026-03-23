@@ -888,7 +888,7 @@ export default function AdminPage() {
           </select>
 
           <div className="form-actions">
-            <button className="primary" type="submit" disabled={submitting}>
+            <button className="button button-primary" type="submit" disabled={submitting}>
               {submitting ? "Creating..." : "Create User"}
             </button>
           </div>
@@ -979,7 +979,7 @@ export default function AdminPage() {
 
           <div className="form-actions">
             <button
-              className="primary"
+              className="button button-primary"
               type="submit"
               disabled={
                 identitySubmitting ||
@@ -1021,7 +1021,7 @@ export default function AdminPage() {
           </p>
           <div className="form-actions">
             <button
-              className="primary"
+              className="button button-primary"
               type="submit"
               disabled={businessSettingsLoading || crawlPageLimitSubmitting}
             >
@@ -1104,7 +1104,7 @@ export default function AdminPage() {
           </p>
           <div className="form-actions">
             <button
-              className="primary"
+              className="button button-primary"
               type="submit"
               disabled={businessSettingsLoading || candidateQualitySubmitting}
             >
@@ -1189,6 +1189,11 @@ export default function AdminPage() {
                             <button
                               key={identity.id}
                               type="button"
+                              className={
+                                identity.is_active
+                                  ? "button button-danger button-inline"
+                                  : "button button-secondary button-inline"
+                              }
                               disabled={!!actingIdentityId || !!actingPrincipalId}
                               onClick={() => {
                                 void handleToggleIdentityActive(identity);
@@ -1209,6 +1214,11 @@ export default function AdminPage() {
                     <td>
                       <button
                         type="button"
+                        className={
+                          user.is_active
+                            ? "button button-danger button-inline"
+                            : "button button-secondary button-inline"
+                        }
                         disabled={!!actingPrincipalId || !!actingIdentityId}
                         onClick={() => {
                           void handleToggleUserActive(user);

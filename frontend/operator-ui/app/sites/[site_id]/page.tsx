@@ -55,6 +55,7 @@ const MAX_RECOMMENDATION_RUN_ROWS = 8;
 const NARRATIVE_LOOKUP_LIMIT = 5;
 const MAX_TIMELINE_EVENTS = 20;
 const TIMELINE_INITIAL_VISIBLE_COUNT = 10;
+const AI_OPPORTUNITY_INITIAL_COUNT = 3;
 const COMPETITOR_PROFILE_DRAFT_CANDIDATE_COUNT = 5;
 const COMPETITOR_PROFILE_POLL_INTERVAL_MS = 2000;
 const COMPETITOR_PROFILE_POLL_MAX_ATTEMPTS = 30;
@@ -136,6 +137,13 @@ type StartHereAction =
       detail: string;
       whyThisFirst: string;
     };
+
+interface AiOpportunityItem {
+  recommendation: Recommendation;
+  linkedSuggestions: RecommendationTuningSuggestion[];
+  whyThisMatters: string | null;
+  isSourceAi: boolean;
+}
 
 function formatDateTime(value: string | null): string {
   if (!value) {
@@ -262,6 +270,17 @@ function truncateText(value: string | null | undefined, limit: number): string {
   return `${normalized.slice(0, limit - 1)}…`;
 }
 
+function truncateOptionalText(value: string | null | undefined, limit: number): string | null {
+  const normalized = (value || "").trim();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized.length <= limit) {
+    return normalized;
+  }
+  return `${normalized.slice(0, limit - 1)}…`;
+}
+
 function formatFailureCategory(value: string | null | undefined): string {
   const normalized = (value || "").trim().toLowerCase();
   if (!normalized) {
@@ -327,6 +346,41 @@ function recommendationImpactBadgeClass(
     default:
       return "badge badge-muted";
   }
+}
+
+function recommendationHasAiSource(item: Recommendation): boolean {
+  const sourceValue = (item as unknown as { source?: unknown }).source;
+  return typeof sourceValue === "string" && sourceValue.trim().toLowerCase() === "ai";
+}
+
+function recommendationExpectedOutcome(item: Recommendation): string {
+  const sourceType = recommendationSourceType(item);
+  const normalizedSeverity = item.severity.trim().toLowerCase() || "unknown";
+  const normalizedCategory = item.category.trim() || "General";
+  let scopeLabel = "site recommendation quality";
+  if (sourceType === "audit") {
+    scopeLabel = "audit issue coverage";
+  } else if (sourceType === "comparison") {
+    scopeLabel = "competitive gap coverage";
+  } else if (sourceType === "mixed") {
+    scopeLabel = "audit and competitive gap coverage";
+  }
+  return `${normalizedCategory} improvement with ${item.priority_band} priority (${item.priority_score}) and ${item.effort_bucket} effort, likely improving ${scopeLabel} and reducing ${normalizedSeverity} risk.`;
+}
+
+function narrativeSummaryText(narrative: RecommendationNarrative | null): string | null {
+  if (!narrative) {
+    return null;
+  }
+  const sections = narrative.sections_json;
+  if (sections && typeof sections === "object" && !Array.isArray(sections)) {
+    const summaryValue = (sections as Record<string, unknown>).summary;
+    if (typeof summaryValue === "string" && summaryValue.trim()) {
+      return summaryValue.trim();
+    }
+  }
+  const narrativeText = (narrative.narrative_text || "").trim();
+  return narrativeText || null;
 }
 
 function buildTuningPreviewKey(
@@ -494,6 +548,8 @@ export default function SiteWorkspacePage() {
   const [tuningApplyErrorByKey, setTuningApplyErrorByKey] = useState<Record<string, string>>({});
   const [tuningApplyLoadingKey, setTuningApplyLoadingKey] = useState<string | null>(null);
   const [startHereFocusedTargetId, setStartHereFocusedTargetId] = useState<string | null>(null);
+  const [showAllAiOpportunities, setShowAllAiOpportunities] = useState(false);
+  const [expandedAiOpportunityIds, setExpandedAiOpportunityIds] = useState<Set<string>>(() => new Set());
 
   const [competitorProfileGenerationRuns, setCompetitorProfileGenerationRuns] = useState<CompetitorProfileGenerationRun[]>([]);
   const [competitorProfileSummary, setCompetitorProfileSummary] =
@@ -636,6 +692,46 @@ export default function SiteWorkspacePage() {
     tuningPreviewByKey,
   ]);
 
+  // AI opportunities are an advisory overlay built from existing recommendation payload fields.
+  const aiOpportunities = useMemo<AiOpportunityItem[]>(() => {
+    const narrativeSummary = narrativeSummaryText(latestCompletedRecommendationNarrative);
+    return latestCompletedRecommendations
+      .map((recommendation) => {
+        const linkedSuggestions = latestCompletedTuningSuggestions.filter((suggestion) =>
+          suggestion.linked_recommendation_ids.includes(recommendation.id),
+        );
+        const isSourceAi = recommendationHasAiSource(recommendation);
+        const hasNarrativeContext = narrativeSummary !== null;
+        const hasAiSignals = isSourceAi || linkedSuggestions.length > 0 || hasNarrativeContext;
+        if (!hasAiSignals) {
+          return null;
+        }
+        const linkedReason = linkedSuggestions
+          .map((suggestion) => suggestion.reason.trim())
+          .find((value) => Boolean(value));
+        return {
+          recommendation,
+          linkedSuggestions,
+          whyThisMatters: linkedReason || narrativeSummary,
+          isSourceAi,
+        };
+      })
+      .filter((value): value is AiOpportunityItem => value !== null);
+  }, [
+    latestCompletedRecommendationNarrative,
+    latestCompletedRecommendations,
+    latestCompletedTuningSuggestions,
+  ]);
+
+  const visibleAiOpportunities = useMemo(() => {
+    if (showAllAiOpportunities) {
+      return aiOpportunities;
+    }
+    return aiOpportunities.slice(0, AI_OPPORTUNITY_INITIAL_COUNT);
+  }, [aiOpportunities, showAllAiOpportunities]);
+
+  const hiddenAiOpportunityCount = aiOpportunities.length - visibleAiOpportunities.length;
+
   const startHereAction = useMemo<StartHereAction>(() => {
     const confidenceWeight: Record<RecommendationTuningSuggestion["confidence"], number> = {
       low: 0,
@@ -756,6 +852,23 @@ export default function SiteWorkspacePage() {
     latestCompletedTuningSuggestions,
     tuningPreviewByKey,
   ]);
+
+  useEffect(() => {
+    setShowAllAiOpportunities(false);
+    setExpandedAiOpportunityIds(new Set());
+  }, [latestCompletedRecommendationRun?.id]);
+
+  function toggleAiOpportunityExpansion(recommendationId: string): void {
+    setExpandedAiOpportunityIds((current) => {
+      const next = new Set(current);
+      if (next.has(recommendationId)) {
+        next.delete(recommendationId);
+      } else {
+        next.add(recommendationId);
+      }
+      return next;
+    });
+  }
 
   function focusActionTarget(targetId: string): void {
     const target = document.getElementById(targetId);
@@ -1963,12 +2076,105 @@ export default function SiteWorkspacePage() {
           <span className="hint">{startHereAction.detail}</span>
           <span className="hint muted">Why this first: {startHereAction.whyThisFirst}</span>
           {startHereAction.kind !== "none" ? (
-            <button type="button" className="button button-secondary" onClick={() => void handleStartHereAction()}>
+            <button type="button" className="button button-primary" onClick={() => void handleStartHereAction()}>
               {startHereAction.buttonLabel}
             </button>
           ) : null}
         </div>
       </SectionCard>
+
+      {aiOpportunities.length > 0 ? (
+        <SectionCard>
+          <h2>AI Opportunities</h2>
+          <p className="hint muted">AI suggestions are advisory and should be reviewed.</p>
+          <div className="stack" data-testid="ai-opportunities-section">
+            {/* AI opportunity cards keep deterministic recommendations authoritative while exposing advisory AI context. */}
+            {visibleAiOpportunities.map((opportunity) => {
+              const { recommendation, linkedSuggestions, whyThisMatters, isSourceAi } = opportunity;
+              const isExpanded = expandedAiOpportunityIds.has(recommendation.id);
+              const whyText =
+                whyThisMatters || "AI narrative guidance is available for this recommendation run.";
+              const collapsedWhyText = truncateOptionalText(whyText, 180) || whyText;
+              return (
+                <article key={recommendation.id} className="panel panel-compact stack" data-testid="ai-opportunity-card">
+                  <div className="stack-tight">
+                    <div className="link-row">
+                      <strong>
+                        <Link href={buildRecommendationDetailHref(recommendation.id, selectedSite.id)}>
+                          {recommendation.title}
+                        </Link>
+                      </strong>
+                      <span className="badge badge-success">AI Suggested</span>
+                    </div>
+                    <span className="hint muted">
+                      {recommendation.category} • {recommendation.severity} • {recommendation.priority_band} priority
+                    </span>
+                    {isSourceAi ? <span className="hint muted">AI source flag present on this recommendation.</span> : null}
+                  </div>
+
+                  <div className="stack-tight">
+                    <span className="hint muted">Why this matters</span>
+                    <span className="hint">{isExpanded ? whyText : collapsedWhyText}</span>
+                  </div>
+
+                  <div className="stack-tight">
+                    <span className="hint muted">Expected outcome</span>
+                    <span className="hint">{recommendationExpectedOutcome(recommendation)}</span>
+                  </div>
+
+                  {isExpanded ? (
+                    <div className="stack-tight">
+                      {linkedSuggestions.length > 0 ? (
+                        <>
+                          <span className="hint muted">Supporting signals</span>
+                          <ul>
+                            {linkedSuggestions.map((suggestion) => (
+                              <li key={`${recommendation.id}-${suggestion.setting}-${suggestion.recommended_value}`}>
+                                <span className="hint">
+                                  {formatTuningSettingLabel(suggestion.setting)}: {suggestion.current_value} -&gt;{" "}
+                                  {suggestion.recommended_value} ({suggestion.confidence})
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      ) : null}
+                      {latestCompletedRecommendationNarrative?.top_themes_json.length ? (
+                        <span className="hint muted">
+                          Related context: {latestCompletedRecommendationNarrative.top_themes_json.join(", ")}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <div className="form-actions">
+                    <button
+                      type="button"
+                      className="button button-tertiary button-inline"
+                      onClick={() => toggleAiOpportunityExpansion(recommendation.id)}
+                    >
+                      {isExpanded ? "Hide details" : "View details"}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+          {aiOpportunities.length > AI_OPPORTUNITY_INITIAL_COUNT ? (
+            <div className="form-actions">
+              <button
+                type="button"
+                className="button button-secondary button-inline"
+                onClick={() => setShowAllAiOpportunities((current) => !current)}
+              >
+                {showAllAiOpportunities
+                  ? "Show fewer AI opportunities"
+                  : `View more AI opportunities (${hiddenAiOpportunityCount} more)`}
+              </button>
+            </div>
+          ) : null}
+        </SectionCard>
+      ) : null}
 
       <SectionCard>
         <h2>Site Activity Timeline</h2>
@@ -2063,6 +2269,7 @@ export default function SiteWorkspacePage() {
                   <div className="form-actions">
                     <button
                       type="button"
+                      className="button button-secondary button-inline"
                       onClick={() => setExpandedTimeline((current) => !current)}
                     >
                       {expandedTimeline ? "Show less" : "Show more"}
@@ -2225,6 +2432,7 @@ export default function SiteWorkspacePage() {
         <div className="form-actions">
           <button
             type="button"
+            className="button button-primary"
             onClick={() => void handleGenerateCompetitorProfiles()}
             disabled={loadingWorkspace || generationInFlight || retryInFlight || competitorProfileLoading}
           >
@@ -2233,6 +2441,7 @@ export default function SiteWorkspacePage() {
           {latestCompetitorProfileRun?.status === "failed" ? (
             <button
               type="button"
+              className="button button-secondary"
               onClick={() => void handleRetryCompetitorProfileRun()}
               disabled={loadingWorkspace || generationInFlight || retryInFlight || competitorProfileLoading}
             >
@@ -2395,6 +2604,7 @@ export default function SiteWorkspacePage() {
                             <div className="form-actions">
                               <button
                                 type="button"
+                                className="button button-primary button-inline"
                                 onClick={() => void handleAcceptCompetitorProfileDraft(draft.id)}
                                 disabled={!editable || actionDisabled}
                               >
@@ -2402,6 +2612,7 @@ export default function SiteWorkspacePage() {
                               </button>
                               <button
                                 type="button"
+                                className="button button-danger button-inline"
                                 onClick={() => void handleRejectCompetitorProfileDraft(draft.id)}
                                 disabled={!editable || actionDisabled}
                               >
@@ -2409,6 +2620,7 @@ export default function SiteWorkspacePage() {
                               </button>
                               <button
                                 type="button"
+                                className="button button-tertiary button-inline"
                                 onClick={() => handleStartDraftEdit(draft)}
                                 disabled={!editable || actionDisabled}
                               >
@@ -2530,6 +2742,7 @@ export default function SiteWorkspacePage() {
                               <div className="form-actions">
                                 <button
                                   type="button"
+                                  className="button button-secondary button-inline"
                                   onClick={() => void handleSaveDraftEdit(draft.id)}
                                   disabled={editActionInFlight || draftActionTargetId === draft.id}
                                 >
@@ -2537,6 +2750,7 @@ export default function SiteWorkspacePage() {
                                 </button>
                                 <button
                                   type="button"
+                                  className="button button-primary button-inline"
                                   onClick={() =>
                                     void handleAcceptCompetitorProfileDraft(
                                       draft.id,
@@ -2549,6 +2763,7 @@ export default function SiteWorkspacePage() {
                                 </button>
                                 <button
                                   type="button"
+                                  className="button button-tertiary button-inline"
                                   onClick={() => handleCancelDraftEdit()}
                                   disabled={editActionInFlight || draftActionTargetId === draft.id}
                                 >
@@ -2778,7 +2993,7 @@ export default function SiteWorkspacePage() {
                         <span className="hint muted">Confidence: {suggestion.confidence}</span>
                         <button
                           type="button"
-                          className="button button-tertiary"
+                          className="button button-tertiary button-inline"
                           onClick={() =>
                             handlePreviewTuningSuggestion(
                               latestCompletedRecommendationRun.id,
@@ -2792,7 +3007,7 @@ export default function SiteWorkspacePage() {
                         </button>
                         <button
                           type="button"
-                          className="button button-secondary"
+                          className="button button-primary button-inline"
                           onClick={() =>
                             handleApplyTuningSuggestion(
                               latestCompletedRecommendationRun.id,

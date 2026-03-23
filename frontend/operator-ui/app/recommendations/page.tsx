@@ -938,6 +938,7 @@ function RecommendationsPageContent() {
           </div>
           <button
             type="button"
+            className="button button-secondary"
             onClick={() => updateFilterParams(DEFAULT_FILTERS)}
             disabled={loadingItems || !hasActiveFilters}
           >
@@ -987,6 +988,7 @@ function RecommendationsPageContent() {
           <div className="row-wrap-tight">
           <button
             type="button"
+            className="button button-secondary button-inline"
             onClick={() => goToPage(activePage - 1)}
             disabled={loadingItems || activePage <= DEFAULT_PAGE}
           >
@@ -997,6 +999,7 @@ function RecommendationsPageContent() {
           </span>
           <button
             type="button"
+            className="button button-secondary button-inline"
             onClick={() => goToPage(activePage + 1)}
             disabled={loadingItems || activePage >= totalPages}
           >
@@ -1016,7 +1019,7 @@ function RecommendationsPageContent() {
         <div className="row-wrap-tight">
           <button
             type="button"
-            className="primary"
+            className="button button-primary"
             disabled={selectedCount === 0 || bulkActionInFlight !== null}
             onClick={() => {
               void handleBulkStatusUpdate("accepted");
@@ -1026,6 +1029,7 @@ function RecommendationsPageContent() {
           </button>
           <button
             type="button"
+            className="button button-secondary"
             disabled={selectedCount === 0 || bulkActionInFlight !== null}
             onClick={() => {
               void handleBulkStatusUpdate("dismissed");

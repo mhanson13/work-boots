@@ -13,5 +13,13 @@ Prefer shared utility classes from `app/globals.css` for common layout patterns:
 - `table-container`, `table-container-compact`
 - `panel-compact`, `stack-*` spacing classes
 
+Use shared button variants from `app/globals.css` instead of page-level button tweaks:
+
+- `button button-primary` for main CTA
+- `button button-secondary` for supporting actions
+- `button button-danger` for destructive/admin-sensitive actions
+- `button button-tertiary` for low-emphasis utility actions
+- add `button-inline` for compact table/action-column buttons
+
 Avoid one-off layout wrappers and inline styling (`style={{ ... }}`) in `app/` and `components/`.
 The regression guardrail test in `lib/validation/layout-guardrails.test.ts` enforces this and allows only explicitly documented exceptions.

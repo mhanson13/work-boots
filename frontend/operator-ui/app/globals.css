@@ -26,6 +26,25 @@
   --auth-bg-strong: #f8fbff;
   --auth-accent-soft: #d1fae5;
   --auth-error: #b91c1c;
+  --button-secondary-bg: #edf3fc;
+  --button-secondary-border: #9bb1d2;
+  --button-secondary-text: #0f172a;
+  --button-secondary-hover-bg: #dde8f8;
+  --button-primary-bg: #0f766e;
+  --button-primary-border: #0f766e;
+  --button-primary-text: #f8fafc;
+  --button-primary-hover-bg: #0e5f59;
+  --button-danger-bg: #b42318;
+  --button-danger-border: #991b1b;
+  --button-danger-text: #fff1f2;
+  --button-danger-hover-bg: #971d16;
+  --button-tertiary-bg: transparent;
+  --button-tertiary-border: #b9c8de;
+  --button-tertiary-text: #334155;
+  --button-tertiary-hover-bg: #e9f0fb;
+  --button-disabled-bg: #dbe3f0;
+  --button-disabled-border: #c2cee1;
+  --button-disabled-text: #64748b;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -57,6 +76,25 @@
     --auth-bg-strong: #101b2f;
     --auth-accent-soft: #0e2b28;
     --auth-error: #fca5a5;
+    --button-secondary-bg: #1a2a43;
+    --button-secondary-border: #425f86;
+    --button-secondary-text: #e2e8f0;
+    --button-secondary-hover-bg: #243651;
+    --button-primary-bg: #0f766e;
+    --button-primary-border: #2dd4bf;
+    --button-primary-text: #ecfeff;
+    --button-primary-hover-bg: #0f615b;
+    --button-danger-bg: #7f1d1d;
+    --button-danger-border: #ef4444;
+    --button-danger-text: #fee2e2;
+    --button-danger-hover-bg: #991b1b;
+    --button-tertiary-bg: transparent;
+    --button-tertiary-border: #4e6588;
+    --button-tertiary-text: #cbd5e1;
+    --button-tertiary-hover-bg: #1f3049;
+    --button-disabled-bg: #1d2c42;
+    --button-disabled-border: #334865;
+    --button-disabled-text: #8095b5;
   }
 }
 
@@ -349,19 +387,112 @@ main {
   vertical-align: middle;
 }
 
-button {
-  border: 1px solid var(--border);
-  background: #fff;
-  color: var(--text);
-  border-radius: 8px;
-  padding: 0.55rem 0.85rem;
+button,
+.button {
+  border: 1px solid var(--button-secondary-border);
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+  border-radius: 10px;
+  padding: 0.52rem 0.9rem;
+  min-height: 2.2rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.2;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  transition:
+    background-color 0.14s ease,
+    border-color 0.14s ease,
+    color 0.14s ease,
+    box-shadow 0.14s ease,
+    transform 0.04s ease;
 }
 
-button.primary {
-  background: var(--accent);
-  color: white;
-  border-color: var(--accent);
+button:hover:not(:disabled),
+.button:hover:not(:disabled) {
+  background: var(--button-secondary-hover-bg);
+}
+
+button:focus-visible,
+.button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button:active:not(:disabled),
+.button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+button.primary,
+button.button-primary,
+.button.button-primary {
+  background: var(--button-primary-bg);
+  color: var(--button-primary-text);
+  border-color: var(--button-primary-border);
+}
+
+button.primary:hover:not(:disabled),
+button.button-primary:hover:not(:disabled),
+.button.button-primary:hover:not(:disabled) {
+  background: var(--button-primary-hover-bg);
+}
+
+button.button-secondary,
+.button.button-secondary {
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+  border-color: var(--button-secondary-border);
+}
+
+button.button-danger,
+button.danger,
+button.destructive,
+.button.button-danger {
+  background: var(--button-danger-bg);
+  color: var(--button-danger-text);
+  border-color: var(--button-danger-border);
+}
+
+button.button-danger:hover:not(:disabled),
+button.danger:hover:not(:disabled),
+button.destructive:hover:not(:disabled),
+.button.button-danger:hover:not(:disabled) {
+  background: var(--button-danger-hover-bg);
+}
+
+button.button-tertiary,
+.button.button-tertiary {
+  background: var(--button-tertiary-bg);
+  color: var(--button-tertiary-text);
+  border-color: var(--button-tertiary-border);
+}
+
+button.button-tertiary:hover:not(:disabled),
+.button.button-tertiary:hover:not(:disabled) {
+  background: var(--button-tertiary-hover-bg);
+}
+
+button.button-inline,
+.button.button-inline {
+  min-height: 1.9rem;
+  padding: 0.35rem 0.68rem;
+  font-size: 0.82rem;
+  border-radius: 8px;
+}
+
+button:disabled,
+.button:disabled,
+.button[aria-disabled="true"] {
+  cursor: not-allowed;
+  background: var(--button-disabled-bg);
+  border-color: var(--button-disabled-border);
+  color: var(--button-disabled-text);
+  box-shadow: none;
+  opacity: 1;
 }
 
 input, select, textarea {

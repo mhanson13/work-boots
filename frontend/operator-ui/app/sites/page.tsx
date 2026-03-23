@@ -402,7 +402,7 @@ export default function SitesPage() {
             placeholder="Example Site"
           />
           <div className="form-actions">
-            <button className="primary" type="submit" disabled={submitLoading}>
+            <button className="button button-primary" type="submit" disabled={submitLoading}>
               {submitLoading ? "Adding site..." : "Add Site"}
             </button>
           </div>
@@ -456,6 +456,7 @@ export default function SitesPage() {
                   <td>
                     <button
                       type="button"
+                      className="button button-secondary button-inline"
                       disabled={!!triggeringSiteId || !site.is_active}
                       onClick={() => {
                         void handleTriggerAudit(site);
@@ -472,6 +473,11 @@ export default function SitesPage() {
                     <td>
                       <button
                         type="button"
+                        className={
+                          site.is_active
+                            ? "button button-danger button-inline"
+                            : "button button-secondary button-inline"
+                        }
                         disabled={!!siteActionSiteId}
                         onClick={() => {
                           void handleToggleSiteActive(site);
