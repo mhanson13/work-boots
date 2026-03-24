@@ -101,6 +101,20 @@ Fallback rules:
 - Keep legacy `narrative_text` rendering intact.
 - Keep the UI concise and operator-oriented; avoid technical backend terminology.
 
+## EEAT Metadata Presentation
+
+Recommendation/workspace payloads may include additive deterministic EEAT metadata:
+
+- recommendation-level: `eeat_categories`, `primary_eeat_category`
+- workspace-level: `eeat_gap_summary`
+
+Frontend guidance:
+- Render recommendation `eeat_categories` as compact chips near recommendation metadata.
+- Render `eeat_gap_summary` as a compact secondary panel near narrative/apply/freshness context.
+- Keep EEAT copy operator-friendly and non-numeric (no score treatment).
+- Do not render empty EEAT containers when fields are absent/null.
+- Keep existing recommendation layout intact; this is additive context only.
+
 ## Prompt Inspection UX
 
 The workspace can render optional debug prompt-inspection panels when API payloads include:

@@ -21,6 +21,25 @@ Only normalized competitor output is consumed:
 - The model is instructed to use provided competitor gaps to improve specificity.
 - The model is also instructed not to invent competitor facts beyond provided context.
 
+## Deterministic EEAT Classification (Additive)
+
+Recommendation payloads now include deterministic EEAT metadata:
+
+- `eeat_categories` (list)
+- `primary_eeat_category` (nullable)
+
+EEAT meaning in this product context:
+- `experience`: proof of real work and outcomes
+- `expertise`: visible methods, capability, and process quality
+- `authoritativeness`: third-party recognition/validation
+- `trustworthiness`: verifiable business legitimacy
+
+### Classification Rules
+- Classification is deterministic and additive.
+- Mapping uses structured signal labels/types only (for example rule keys and structured evidence labels).
+- Ambiguous/unsupported signals are omitted instead of guessed.
+- No new AI calls are used for EEAT classification.
+
 ## Operator-Visible Competitor Influence
 
 Recommendation narrative API responses now include an optional top-level field:
@@ -182,6 +201,27 @@ Shape:
 - apply timestamp: latest applied tuning preview event `applied_at`
 
 No AI calls, thresholds, or fuzzy inference are used.
+
+## Workspace EEAT Gap Summary
+
+Workspace summary responses may include optional `eeat_gap_summary` metadata when deterministic support exists:
+
+```json
+{
+  "top_gap_categories": ["trustworthiness", "experience"],
+  "supporting_signals": [
+    "Recommendation: Publish license and insurance proof",
+    "Competitor signal: Add verified review badges"
+  ],
+  "message": "Visible EEAT gaps: Trustworthiness, Experience. Competitor signals suggest these areas are weaker on the site."
+}
+```
+
+Behavior:
+- Derived from existing structured recommendation and competitor signal metadata only.
+- Highlights visible EEAT areas that appear weaker on the site versus competitor-informed signals.
+- Omitted when evidence is insufficient for deterministic classification.
+- Not a numeric score and not a ranking engine.
 
 ## Prompt Preview (Debug / Inspection)
 

@@ -55,6 +55,9 @@ Behavior is intentionally conservative:
   `competitor_influence`.
 - Recommendation narrative responses may include optional `signal_summary` framing where
   competitor context is one bounded evidence source among site/references/themes signals.
+- Workspace recommendation summaries may include optional deterministic `eeat_gap_summary`
+  metadata where competitor-supported signals contribute to visible Experience/Expertise/
+  Authoritativeness/Trustworthiness gap framing.
 
 ## Prompt Preview (Debug / Inspection)
 

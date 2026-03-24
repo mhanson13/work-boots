@@ -78,6 +78,8 @@ from app.schemas.seo_competitor import (
 )
 from app.schemas.ai_prompt import build_ai_prompt_preview_read
 from app.schemas.seo_recommendation import (
+    SEORecommendationEEATCategory,
+    SEORecommendationEEATGapSummaryRead,
     SEORecommendationAnalysisFreshnessRead,
     SEORecommendationApplyOutcomeRead,
     SEORecommendationBacklogRead,
@@ -97,6 +99,7 @@ from app.schemas.seo_recommendation import (
     SEORecommendationRunReportRead,
     SEORecommendationTuningSuggestionRead,
     SEORecommendationWorkflowUpdateRequest,
+    infer_eeat_categories_from_signals,
 )
 from app.repositories.seo_competitor_profile_generation_repository import (
     SEOCompetitorProfileGenerationRepository,
@@ -175,6 +178,8 @@ _WORKSPACE_SETTING_LABELS = {
 _WORKSPACE_APPLY_OUTCOME_LABEL_MAX_CHARS = 180
 _WORKSPACE_APPLY_OUTCOME_EXPECTED_MAX_CHARS = 260
 _WORKSPACE_APPLY_OUTCOME_REFLECT_MAX_CHARS = 220
+_WORKSPACE_EEAT_GAP_MAX_SIGNALS = 6
+_WORKSPACE_EEAT_GAP_SIGNAL_MAX_CHARS = 140
 logger = logging.getLogger(__name__)
 
 
@@ -457,6 +462,92 @@ def _derive_workspace_analysis_freshness(
             "message": message,
         }
     )
+
+
+def _format_eeat_category_label(category: SEORecommendationEEATCategory) -> str:
+    if category == "experience":
+        return "Experience"
+    if category == "expertise":
+        return "Expertise"
+    if category == "authoritativeness":
+        return "Authoritativeness"
+    return "Trustworthiness"
+
+
+def _build_workspace_eeat_gap_summary(
+    *,
+    recommendations: list[SEORecommendationRead],
+    latest_narrative_read: SEORecommendationNarrativeRead | None,
+) -> SEORecommendationEEATGapSummaryRead | None:
+    categories: list[SEORecommendationEEATCategory] = []
+    seen_categories: set[str] = set()
+    supporting_signals: list[str] = []
+    seen_signals: set[str] = set()
+
+    def add_category(value: SEORecommendationEEATCategory) -> None:
+        if value in seen_categories:
+            return
+        seen_categories.add(value)
+        categories.append(value)
+
+    def add_signal(value: object) -> None:
+        if len(supporting_signals) >= _WORKSPACE_EEAT_GAP_MAX_SIGNALS:
+            return
+        compacted = _compact_workspace_text(value, max_length=_WORKSPACE_EEAT_GAP_SIGNAL_MAX_CHARS)
+        if compacted is None:
+            return
+        key = compacted.lower()
+        if key in seen_signals:
+            return
+        seen_signals.add(key)
+        supporting_signals.append(compacted)
+
+    for recommendation in recommendations:
+        evidence_json = recommendation.evidence_json if isinstance(recommendation.evidence_json, dict) else None
+        evidence_sources = evidence_json.get("sources") if isinstance(evidence_json, dict) else None
+        has_comparison_source = False
+        if isinstance(evidence_sources, list):
+            has_comparison_source = any(str(item or "").strip().lower() == "comparison" for item in evidence_sources)
+        if not has_comparison_source:
+            continue
+        for category in recommendation.eeat_categories:
+            add_category(category)
+        add_signal(f"Recommendation: {recommendation.title}")
+
+    if latest_narrative_read is not None and latest_narrative_read.competitor_influence is not None:
+        influence = latest_narrative_read.competitor_influence
+        if influence.used:
+            competitor_signals: list[object] = []
+            competitor_signals.extend(influence.top_opportunities)
+            if influence.summary:
+                competitor_signals.append(influence.summary)
+            for category in infer_eeat_categories_from_signals(competitor_signals):
+                add_category(category)
+            for opportunity in influence.top_opportunities:
+                add_signal(f"Competitor signal: {opportunity}")
+
+    if not categories:
+        return None
+
+    category_labels = [_format_eeat_category_label(category) for category in categories]
+    if len(category_labels) == 1:
+        message = f"Visible EEAT gap: {category_labels[0]}. Competitor signals suggest this area is weaker on the site."
+    else:
+        message = (
+            f"Visible EEAT gaps: {', '.join(category_labels)}. "
+            "Competitor signals suggest these areas are weaker on the site."
+        )
+
+    try:
+        return SEORecommendationEEATGapSummaryRead.model_validate(
+            {
+                "top_gap_categories": categories,
+                "supporting_signals": supporting_signals,
+                "message": message,
+            }
+        )
+    except Exception:  # noqa: BLE001
+        return None
 
 
 @router.get("/sites", response_model=SEOSiteListResponse)
@@ -894,6 +985,7 @@ def get_seo_recommendation_workspace_summary(
     tuning_suggestions: list[SEORecommendationTuningSuggestionRead] = []
     apply_outcome: SEORecommendationApplyOutcomeRead | None = None
     analysis_freshness: SEORecommendationAnalysisFreshnessRead | None = None
+    eeat_gap_summary: SEORecommendationEEATGapSummaryRead | None = None
     competitor_prompt_preview = None
     recommendation_prompt_preview = None
     latest_applied_preview_event = (
@@ -976,6 +1068,10 @@ def get_seo_recommendation_workspace_summary(
                 model=recommendation_prompt_preview_data.model_name,
                 prompt_version=recommendation_prompt_preview_data.prompt_version,
             )
+        eeat_gap_summary = _build_workspace_eeat_gap_summary(
+            recommendations=serialized_items,
+            latest_narrative_read=latest_narrative_read,
+        )
 
     latest_competitor_runs = seo_competitor_profile_generation_repository.list_runs_for_business_site(
         scoped_business_id,
@@ -1035,6 +1131,7 @@ def get_seo_recommendation_workspace_summary(
         tuning_suggestions=tuning_suggestions,
         apply_outcome=apply_outcome,
         analysis_freshness=analysis_freshness,
+        eeat_gap_summary=eeat_gap_summary,
         competitor_prompt_preview=competitor_prompt_preview,
         recommendation_prompt_preview=recommendation_prompt_preview,
     )

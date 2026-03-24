@@ -593,6 +593,12 @@ export interface RecommendationNarrativeSignalSummary {
   reference_signal_used: boolean;
 }
 
+export type RecommendationEEATCategory =
+  | "experience"
+  | "expertise"
+  | "authoritativeness"
+  | "trustworthiness";
+
 export interface RecommendationApplyOutcome {
   applied: boolean;
   applied_at: string | null;
@@ -718,8 +724,15 @@ export interface RecommendationWorkspaceSummaryResponse {
   tuning_suggestions: RecommendationTuningSuggestion[];
   apply_outcome?: RecommendationApplyOutcome | null;
   analysis_freshness?: RecommendationAnalysisFreshness | null;
+  eeat_gap_summary?: RecommendationEEATGapSummary | null;
   competitor_prompt_preview?: AIPromptPreview | null;
   recommendation_prompt_preview?: AIPromptPreview | null;
+}
+
+export interface RecommendationEEATGapSummary {
+  top_gap_categories: RecommendationEEATCategory[];
+  supporting_signals: string[];
+  message: string;
 }
 
 export interface Recommendation {
@@ -737,6 +750,8 @@ export interface Recommendation {
   effort_bucket: string;
   title: string;
   rationale: string;
+  eeat_categories: RecommendationEEATCategory[];
+  primary_eeat_category: RecommendationEEATCategory | null;
   decision_reason: string | null;
   created_at: string;
   updated_at: string;

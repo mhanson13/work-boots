@@ -78,6 +78,8 @@ function buildRecommendation(id: string, title: string): Recommendation {
     effort_bucket: "small",
     title,
     rationale: `Rationale for ${title}`,
+    eeat_categories: [],
+    primary_eeat_category: null,
     decision_reason: null,
     created_at: "2026-03-21T10:00:00Z",
     updated_at: "2026-03-21T10:00:00Z",

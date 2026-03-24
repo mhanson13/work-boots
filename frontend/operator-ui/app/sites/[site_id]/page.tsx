@@ -41,6 +41,8 @@ import type {
   CompetitorSnapshotRun,
   RecommendationAnalysisFreshness,
   RecommendationApplyOutcome,
+  RecommendationEEATCategory,
+  RecommendationEEATGapSummary,
   Recommendation,
   RecommendationListResponse,
   RecommendationNarrative,
@@ -365,6 +367,78 @@ function recommendationImpactBadgeClass(
     default:
       return "badge badge-muted";
   }
+}
+
+const EEAT_CATEGORY_ORDER: RecommendationEEATCategory[] = [
+  "experience",
+  "expertise",
+  "authoritativeness",
+  "trustworthiness",
+];
+
+function formatEEATCategory(category: RecommendationEEATCategory): string {
+  switch (category) {
+    case "experience":
+      return "Experience";
+    case "expertise":
+      return "Expertise";
+    case "authoritativeness":
+      return "Authoritativeness";
+    case "trustworthiness":
+      return "Trustworthiness";
+    default:
+      return category;
+  }
+}
+
+function normalizeEEATCategories(
+  categories: RecommendationEEATCategory[] | null | undefined,
+  limit = 4,
+): RecommendationEEATCategory[] {
+  if (!Array.isArray(categories) || limit <= 0) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const normalized: RecommendationEEATCategory[] = [];
+  for (const category of EEAT_CATEGORY_ORDER) {
+    if (!categories.includes(category)) {
+      continue;
+    }
+    if (seen.has(category)) {
+      continue;
+    }
+    seen.add(category);
+    normalized.push(category);
+    if (normalized.length >= limit) {
+      break;
+    }
+  }
+  return normalized;
+}
+
+interface RecommendationEEATGapSummaryView {
+  categories: RecommendationEEATCategory[];
+  supportingSignals: string[];
+  message: string;
+}
+
+function normalizeRecommendationEEATGapSummary(
+  value: RecommendationEEATGapSummary | null | undefined,
+): RecommendationEEATGapSummaryView | null {
+  if (!value) {
+    return null;
+  }
+  const categories = normalizeEEATCategories(value.top_gap_categories, 4);
+  const supportingSignals = normalizeBoundedStringList(value.supporting_signals, 6, 120);
+  const message = truncateOptionalText(value.message, 260);
+  if (!message || categories.length === 0) {
+    return null;
+  }
+  return {
+    categories,
+    supportingSignals,
+    message,
+  };
 }
 
 function recommendationHasAiSource(item: Recommendation): boolean {
@@ -911,6 +985,8 @@ export default function SiteWorkspacePage() {
     useState<RecommendationTuningSuggestion[]>([]);
   const [latestRecommendationApplyOutcome, setLatestRecommendationApplyOutcome] =
     useState<RecommendationApplyOutcome | null>(null);
+  const [latestRecommendationEEATGapSummary, setLatestRecommendationEEATGapSummary] =
+    useState<RecommendationEEATGapSummary | null>(null);
   const [latestRecommendationAnalysisFreshness, setLatestRecommendationAnalysisFreshness] =
     useState<RecommendationAnalysisFreshness | null>(null);
   const [latestCompetitorPromptPreview, setLatestCompetitorPromptPreview] = useState<PromptPreviewView | null>(null);
@@ -1262,11 +1338,30 @@ export default function SiteWorkspacePage() {
     () => normalizeRecommendationApplyOutcome(latestRecommendationApplyOutcome),
     [latestRecommendationApplyOutcome],
   );
+  const recommendationEEATGapSummary = useMemo(
+    () => normalizeRecommendationEEATGapSummary(latestRecommendationEEATGapSummary),
+    [latestRecommendationEEATGapSummary],
+  );
 
   const recommendationAnalysisFreshness = useMemo(
     () => normalizeRecommendationAnalysisFreshness(latestRecommendationAnalysisFreshness),
     [latestRecommendationAnalysisFreshness],
   );
+  const narrativeEEATFocusCategories = useMemo(() => {
+    const ranked = [...latestCompletedRecommendations].sort((left, right) => {
+      if (right.priority_score !== left.priority_score) {
+        return right.priority_score - left.priority_score;
+      }
+      return right.updated_at.localeCompare(left.updated_at);
+    });
+    for (const recommendation of ranked) {
+      const categories = normalizeEEATCategories(recommendation.eeat_categories);
+      if (categories.length > 0) {
+        return categories;
+      }
+    }
+    return [] as RecommendationEEATCategory[];
+  }, [latestCompletedRecommendations]);
 
   useEffect(() => {
     setShowAllAiOpportunities(false);
@@ -1382,6 +1477,7 @@ export default function SiteWorkspacePage() {
     setLatestCompletedRecommendationNarrative(summary.latest_narrative);
     setLatestCompletedTuningSuggestions(summary.tuning_suggestions);
     setLatestRecommendationApplyOutcome(summary.apply_outcome || null);
+    setLatestRecommendationEEATGapSummary(summary.eeat_gap_summary || null);
     setLatestRecommendationAnalysisFreshness(summary.analysis_freshness || null);
     setLatestCompetitorPromptPreview(
       normalizePromptPreview(summary.competitor_prompt_preview, "competitor"),
@@ -2056,6 +2152,7 @@ export default function SiteWorkspacePage() {
       setLatestCompletedRecommendationNarrative(null);
       setLatestCompletedTuningSuggestions([]);
       setLatestRecommendationApplyOutcome(null);
+      setLatestRecommendationEEATGapSummary(null);
       setLatestRecommendationAnalysisFreshness(null);
       setRecommendationWorkspaceSummaryState(null);
       setLatestCompletedRecommendationsError(null);
@@ -2101,6 +2198,7 @@ export default function SiteWorkspacePage() {
       setLatestCompletedRecommendationNarrative(null);
       setLatestCompletedTuningSuggestions([]);
       setLatestRecommendationApplyOutcome(null);
+      setLatestRecommendationEEATGapSummary(null);
       setLatestRecommendationAnalysisFreshness(null);
       setRecommendationWorkspaceSummaryState(null);
       setLatestCompletedRecommendationsError(null);
@@ -2141,6 +2239,7 @@ export default function SiteWorkspacePage() {
       setLatestCompletedRecommendationNarrative(null);
       setLatestCompletedTuningSuggestions([]);
       setLatestRecommendationApplyOutcome(null);
+      setLatestRecommendationEEATGapSummary(null);
       setLatestRecommendationAnalysisFreshness(null);
       setRecommendationWorkspaceSummaryState(null);
       setLatestCompletedRecommendationsError(null);
@@ -2330,6 +2429,7 @@ export default function SiteWorkspacePage() {
         setLatestCompletedRecommendationNarrative(null);
         setLatestCompletedTuningSuggestions([]);
         setLatestRecommendationApplyOutcome(null);
+        setLatestRecommendationEEATGapSummary(null);
         setLatestRecommendationAnalysisFreshness(null);
         setLatestCompetitorPromptPreview(null);
         setLatestRecommendationPromptPreview(null);
@@ -3540,6 +3640,7 @@ export default function SiteWorkspacePage() {
                   <tbody>
                     {latestCompletedRecommendations.map((item, index) => {
                       const impactLabel = recommendationImpactLabel(item, index);
+                      const eeatCategories = normalizeEEATCategories(item.eeat_categories);
                       const rowId = recommendationRowId(item.id);
                       return (
                         <tr
@@ -3554,6 +3655,18 @@ export default function SiteWorkspacePage() {
                               <>
                                 <span className={recommendationImpactBadgeClass(impactLabel)}>{impactLabel}</span>
                                 <br />
+                              </>
+                            ) : null}
+                            {eeatCategories.length > 0 ? (
+                              <>
+                                <span className="hint muted">EEAT impact</span>
+                                <div className="link-row" data-testid="recommendation-eeat-badges">
+                                  {eeatCategories.map((category) => (
+                                    <span key={`${item.id}-${category}`} className="badge badge-muted">
+                                      {formatEEATCategory(category)}
+                                    </span>
+                                  ))}
+                                </div>
                               </>
                             ) : null}
                             <span className="hint muted"><code>{item.id}</code></span>
@@ -3608,6 +3721,11 @@ export default function SiteWorkspacePage() {
                     <strong>{narrativeActionSummary.primaryAction}</strong>
                     {narrativeActionSummary.whyItMatters ? (
                       <span className="hint">Why this matters: {narrativeActionSummary.whyItMatters}</span>
+                    ) : null}
+                    {narrativeEEATFocusCategories.length > 0 ? (
+                      <span className="hint muted">
+                        EEAT focus: {narrativeEEATFocusCategories.map((category) => formatEEATCategory(category)).join(", ")}
+                      </span>
                     ) : null}
                     {narrativeActionSummary.firstStep ? (
                       <span className="hint success">Start here: {narrativeActionSummary.firstStep}</span>
@@ -3664,6 +3782,31 @@ export default function SiteWorkspacePage() {
                       {narrativeSignalSummary.competitorSignalUsed ? "yes" : "no"}; references{" "}
                       {narrativeSignalSummary.referenceSignalUsed ? "yes" : "no"}.
                     </span>
+                  </div>
+                ) : null}
+                {recommendationEEATGapSummary ? (
+                  <div className="panel panel-compact stack-tight" data-testid="narrative-eeat-gap-summary">
+                    <span className="hint muted">EEAT gap summary</span>
+                    <div className="link-row">
+                      {recommendationEEATGapSummary.categories.map((category) => (
+                        <span key={`eeat-gap-${category}`} className="badge badge-warn">
+                          {formatEEATCategory(category)}
+                        </span>
+                      ))}
+                    </div>
+                    <span className="hint">{recommendationEEATGapSummary.message}</span>
+                    {recommendationEEATGapSummary.supportingSignals.length > 0 ? (
+                      <div className="stack-tight">
+                        <span className="hint muted">Supporting signals</span>
+                        <div className="link-row">
+                          {recommendationEEATGapSummary.supportingSignals.map((signal) => (
+                            <span key={signal} className="badge badge-muted">
+                              {signal}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 {recommendationApplyOutcome ? (

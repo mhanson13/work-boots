@@ -204,6 +204,8 @@ function buildRecommendation(
     effort_bucket: "small",
     title: "Fix title tags",
     rationale: "Title tags are missing core keywords.",
+    eeat_categories: [],
+    primary_eeat_category: null,
     decision_reason: null,
     created_at: "2026-03-21T00:30:00Z",
     updated_at: "2026-03-21T00:31:00Z",
@@ -730,6 +732,8 @@ function seedRichWorkspaceData(): void {
         effort_bucket: "small",
         title: "Fix title tags",
         rationale: "Title tags are missing core keywords.",
+        eeat_categories: [],
+        primary_eeat_category: null,
         decision_reason: null,
         created_at: "2026-03-21T00:30:00Z",
         updated_at: "2026-03-21T00:31:00Z",
@@ -943,6 +947,8 @@ function seedRichWorkspaceData(): void {
           effort_bucket: "small",
           title: "Fix title tags",
           rationale: "Title tags are missing core keywords.",
+          eeat_categories: [],
+          primary_eeat_category: null,
           decision_reason: null,
           created_at: "2026-03-21T00:30:00Z",
           updated_at: "2026-03-21T00:31:00Z",
@@ -1765,6 +1771,8 @@ describe("site workspace timeline controls", () => {
             effort_bucket: "small",
             title: "Fix title tags",
             rationale: "Title tags are missing core keywords.",
+            eeat_categories: [],
+            primary_eeat_category: null,
             decision_reason: null,
             created_at: "2026-03-21T00:30:00Z",
             updated_at: "2026-03-21T00:31:00Z",
@@ -1965,6 +1973,8 @@ describe("site workspace timeline controls", () => {
             effort_bucket: "small",
             title: "Fix title tags",
             rationale: "Title tags are missing core keywords.",
+            eeat_categories: [],
+            primary_eeat_category: null,
             decision_reason: null,
             created_at: "2026-03-21T00:30:00Z",
             updated_at: "2026-03-21T00:31:00Z",
@@ -2118,6 +2128,8 @@ describe("site workspace timeline controls", () => {
             effort_bucket: "small",
             title: "Fix title tags",
             rationale: "Title tags are missing core keywords.",
+            eeat_categories: [],
+            primary_eeat_category: null,
             decision_reason: null,
             created_at: "2026-03-21T00:30:00Z",
             updated_at: "2026-03-21T00:31:00Z",
@@ -2315,6 +2327,8 @@ describe("site workspace timeline controls", () => {
             effort_bucket: "small",
             title: "Fix title tags",
             rationale: "Title tags are missing core keywords.",
+            eeat_categories: [],
+            primary_eeat_category: null,
             decision_reason: null,
             created_at: "2026-03-21T00:30:00Z",
             updated_at: "2026-03-21T00:31:00Z",
@@ -2743,6 +2757,72 @@ describe("site workspace timeline controls", () => {
     expect(screen.getByText("Support level: Medium")).toBeInTheDocument();
     expect(screen.queryByTestId("narrative-action-summary")).not.toBeInTheDocument();
     expect(screen.queryByTestId("narrative-competitor-influence")).not.toBeInTheDocument();
+  });
+
+  it("renders recommendation EEAT badges and workspace EEAT gap summary when metadata exists", async () => {
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        recommendations: {
+          items: [
+            buildRecommendation({
+              id: "rec-eeat-1",
+              title: "Publish license and insurance proof",
+              eeat_categories: ["trustworthiness", "authoritativeness"],
+              primary_eeat_category: "trustworthiness",
+            }),
+          ],
+          total: 1,
+        },
+        eeat_gap_summary: {
+          top_gap_categories: ["trustworthiness", "experience"],
+          supporting_signals: [
+            "Competitor signal: add verified review badges",
+            "Recommendation: Publish license and insurance proof",
+          ],
+          message: "Visible EEAT gaps: Trustworthiness, Experience.",
+        },
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("heading", { name: "Latest Completed Run" });
+    const eeatBadges = screen.getByTestId("recommendation-eeat-badges");
+    expect(within(eeatBadges).getByText("Trustworthiness")).toBeInTheDocument();
+    expect(within(eeatBadges).getByText("Authoritativeness")).toBeInTheDocument();
+
+    const gapSummary = screen.getByTestId("narrative-eeat-gap-summary");
+    expect(within(gapSummary).getByText("EEAT gap summary")).toBeInTheDocument();
+    expect(within(gapSummary).getByText("Trustworthiness")).toBeInTheDocument();
+    expect(within(gapSummary).getByText("Experience")).toBeInTheDocument();
+    expect(within(gapSummary).getByText("Visible EEAT gaps: Trustworthiness, Experience.")).toBeInTheDocument();
+  });
+
+  it("keeps workspace EEAT metadata blocks hidden when response omits them", async () => {
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        recommendations: {
+          items: [
+            buildRecommendation({
+              id: "rec-plain-1",
+              title: "Fix title tags",
+              eeat_categories: [],
+              primary_eeat_category: null,
+            }),
+          ],
+          total: 1,
+        },
+        eeat_gap_summary: null,
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("heading", { name: "Latest Completed Run" });
+    expect(screen.queryByTestId("recommendation-eeat-badges")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("narrative-eeat-gap-summary")).not.toBeInTheDocument();
   });
 
   it("renders recommendation apply outcome context when workspace summary includes apply metadata", async () => {

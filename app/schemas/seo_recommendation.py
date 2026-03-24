@@ -28,6 +28,12 @@ SEORecommendationTuningSuggestionConfidence = Literal["low", "medium", "high"]
 SEORecommendationSignalSupportLevel = Literal["low", "medium", "high"]
 SEORecommendationApplyOutcomeSource = Literal["recommendation", "manual"]
 SEORecommendationAnalysisFreshnessStatus = Literal["fresh", "pending_refresh", "unknown"]
+SEORecommendationEEATCategory = Literal[
+    "experience",
+    "expertise",
+    "authoritativeness",
+    "trustworthiness",
+]
 RecommendationTuningSetting = Literal[
     "competitor_candidate_min_relevance_score",
     "competitor_candidate_big_box_penalty",
@@ -53,6 +59,55 @@ _APPLY_OUTCOME_LABEL_MAX_CHARS = 180
 _APPLY_OUTCOME_EXPECTED_CHANGE_MAX_CHARS = 260
 _APPLY_OUTCOME_NEXT_RUN_MAX_CHARS = 220
 _SIGNAL_SUMMARY_EVIDENCE_SOURCE_ORDER = ("site", "competitors", "references", "themes")
+_RECOMMENDATION_EEAT_GAP_SUPPORTING_SIGNALS_MAX_ITEMS = 6
+_RECOMMENDATION_EEAT_GAP_SUPPORTING_SIGNAL_MAX_CHARS = 140
+_EEAT_CATEGORY_ORDER: tuple[SEORecommendationEEATCategory, ...] = (
+    "experience",
+    "expertise",
+    "authoritativeness",
+    "trustworthiness",
+)
+_EXPERIENCE_SIGNAL_KEYWORDS = (
+    "testimonial",
+    "review",
+    "project_story",
+    "project_proof",
+    "portfolio",
+    "case_study",
+    "before_after",
+    "video_proof",
+    "experience_proof",
+)
+_EXPERTISE_SIGNAL_KEYWORDS = (
+    "method",
+    "process",
+    "technical",
+    "capability",
+    "qa_qc",
+    "quality_assurance",
+    "project_management",
+    "scanning_tool",
+    "implementation_detail",
+)
+_AUTHORITATIVENESS_SIGNAL_KEYWORDS = (
+    "award",
+    "association",
+    "membership",
+    "directory_listing",
+    "press",
+    "recognition",
+    "citation",
+)
+_TRUSTWORTHINESS_SIGNAL_KEYWORDS = (
+    "license",
+    "insurance",
+    "bbb",
+    "verified_review",
+    "physical_address",
+    "nap_consistency",
+    "contact_legitimacy",
+    "trust_signal",
+)
 
 
 def _strip_or_none(value: str | None) -> str | None:
@@ -173,6 +228,41 @@ def _compact_text_list(value: Any, *, limit: int, max_length: int) -> list[str]:
         if len(normalized) >= limit:
             break
     return normalized
+
+
+def _normalize_signal_text(value: object, *, max_length: int) -> str | None:
+    normalized = _compact_text(value, max_length=max_length)
+    if normalized is None:
+        return None
+    return normalized.lower()
+
+
+def infer_eeat_categories_from_signals(signal_values: list[object]) -> list[SEORecommendationEEATCategory]:
+    normalized_signals: list[str] = []
+    for signal in signal_values:
+        normalized = _normalize_signal_text(
+            signal,
+            max_length=_RECOMMENDATION_EEAT_GAP_SUPPORTING_SIGNAL_MAX_CHARS,
+        )
+        if normalized is None:
+            continue
+        normalized_signals.append(normalized)
+
+    if not normalized_signals:
+        return []
+
+    matched: set[SEORecommendationEEATCategory] = set()
+    for signal in normalized_signals:
+        if any(keyword in signal for keyword in _EXPERIENCE_SIGNAL_KEYWORDS):
+            matched.add("experience")
+        if any(keyword in signal for keyword in _EXPERTISE_SIGNAL_KEYWORDS):
+            matched.add("expertise")
+        if any(keyword in signal for keyword in _AUTHORITATIVENESS_SIGNAL_KEYWORDS):
+            matched.add("authoritativeness")
+        if any(keyword in signal for keyword in _TRUSTWORTHINESS_SIGNAL_KEYWORDS):
+            matched.add("trustworthiness")
+
+    return [category for category in _EEAT_CATEGORY_ORDER if category in matched]
 
 
 def _first_sentence(value: str | None, *, max_length: int) -> str | None:
@@ -326,6 +416,52 @@ class SEORecommendationAnalysisFreshnessRead(BaseModel):
         return cleaned
 
 
+class SEORecommendationEEATGapSummaryRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    top_gap_categories: list[SEORecommendationEEATCategory] = Field(default_factory=list)
+    supporting_signals: list[str] = Field(default_factory=list)
+    message: str = Field(min_length=1, max_length=260)
+
+    @field_validator("top_gap_categories", mode="before")
+    @classmethod
+    def normalize_top_gap_categories(cls, value: Any) -> list[SEORecommendationEEATCategory]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise TypeError("top_gap_categories must be a list")
+        seen: set[str] = set()
+        normalized: list[SEORecommendationEEATCategory] = []
+        for item in value:
+            category = str(item or "").strip().lower()
+            if category not in _EEAT_CATEGORY_ORDER:
+                continue
+            if category in seen:
+                continue
+            seen.add(category)
+            normalized.append(category)  # type: ignore[arg-type]
+            if len(normalized) >= len(_EEAT_CATEGORY_ORDER):
+                break
+        return normalized
+
+    @field_validator("supporting_signals", mode="before")
+    @classmethod
+    def normalize_supporting_signals(cls, value: Any) -> list[str]:
+        return _compact_text_list(
+            value,
+            limit=_RECOMMENDATION_EEAT_GAP_SUPPORTING_SIGNALS_MAX_ITEMS,
+            max_length=_RECOMMENDATION_EEAT_GAP_SUPPORTING_SIGNAL_MAX_CHARS,
+        )
+
+    @field_validator("message", mode="before")
+    @classmethod
+    def normalize_message(cls, value: Any) -> str:
+        cleaned = _compact_text(value, max_length=260)
+        if cleaned is None:
+            raise ValueError("EEAT gap summary message is required")
+        return cleaned
+
+
 class SEORecommendationRunCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -406,6 +542,8 @@ class SEORecommendationRead(BaseModel):
     resolved_at: datetime | None = None
     updated_by_principal_id: str | None = None
     evidence_json: dict[str, object] | None
+    eeat_categories: list[SEORecommendationEEATCategory] = Field(default_factory=list)
+    primary_eeat_category: SEORecommendationEEATCategory | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -438,6 +576,64 @@ class SEORecommendationRead(BaseModel):
     @classmethod
     def normalize_decision_field(cls, value: Any) -> SEORecommendationDecision | None:
         return _normalize_decision(value)
+
+    @field_validator("eeat_categories", mode="before")
+    @classmethod
+    def normalize_eeat_categories(
+        cls,
+        value: Any,
+    ) -> list[SEORecommendationEEATCategory]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise TypeError("eeat_categories must be a list")
+        seen: set[str] = set()
+        normalized: list[SEORecommendationEEATCategory] = []
+        for item in value:
+            category = str(item or "").strip().lower()
+            if category not in _EEAT_CATEGORY_ORDER:
+                continue
+            if category in seen:
+                continue
+            seen.add(category)
+            normalized.append(category)  # type: ignore[arg-type]
+            if len(normalized) >= len(_EEAT_CATEGORY_ORDER):
+                break
+        return normalized
+
+    @field_validator("primary_eeat_category", mode="before")
+    @classmethod
+    def normalize_primary_eeat_category(
+        cls,
+        value: Any,
+    ) -> SEORecommendationEEATCategory | None:
+        if value is None:
+            return None
+        category = str(value).strip().lower()
+        if category not in _EEAT_CATEGORY_ORDER:
+            return None
+        return category  # type: ignore[return-value]
+
+    @model_validator(mode="after")
+    def derive_eeat_categories(self) -> "SEORecommendationRead":
+        categories = list(self.eeat_categories)
+        if not categories:
+            signals: list[object] = [self.rule_key]
+            if isinstance(self.evidence_json, dict):
+                finding_types = self.evidence_json.get("finding_types")
+                if isinstance(finding_types, list):
+                    signals.extend(finding_types)
+                counts = self.evidence_json.get("counts")
+                if isinstance(counts, dict):
+                    signals.extend(list(counts.keys()))
+            categories = infer_eeat_categories_from_signals(signals)
+            self.eeat_categories = categories
+
+        if self.primary_eeat_category is None and categories:
+            self.primary_eeat_category = categories[0]
+        elif self.primary_eeat_category is not None and self.primary_eeat_category not in categories:
+            self.primary_eeat_category = categories[0] if categories else None
+        return self
 
 
 class SEORecommendationFilteredSummary(BaseModel):
@@ -855,6 +1051,7 @@ class SEORecommendationWorkspaceSummaryRead(BaseModel):
     tuning_suggestions: list[SEORecommendationTuningSuggestionRead] = Field(default_factory=list)
     apply_outcome: SEORecommendationApplyOutcomeRead | None = None
     analysis_freshness: SEORecommendationAnalysisFreshnessRead | None = None
+    eeat_gap_summary: SEORecommendationEEATGapSummaryRead | None = None
     competitor_prompt_preview: AIPromptPreviewRead | None = None
     recommendation_prompt_preview: AIPromptPreviewRead | None = None
 

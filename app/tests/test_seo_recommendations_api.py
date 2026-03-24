@@ -19,6 +19,7 @@ from app.models.seo_competitor_comparison_run import SEOCompetitorComparisonRun
 from app.models.seo_competitor_set import SEOCompetitorSet
 from app.models.seo_competitor_snapshot_run import SEOCompetitorSnapshotRun
 from app.models.seo_competitor_tuning_preview_event import SEOCompetitorTuningPreviewEvent
+from app.models.seo_recommendation import SEORecommendation
 from app.models.seo_recommendation_narrative import SEORecommendationNarrative
 from app.models.seo_recommendation_run import SEORecommendationRun
 
@@ -882,12 +883,15 @@ def test_recommendation_workspace_summary_returns_latest_completed_run(db_sessio
     assert payload["latest_run"]["id"] == run_id
     assert payload["latest_completed_run"]["id"] == run_id
     assert payload["recommendations"]["total"] > 0
+    assert isinstance(payload["recommendations"]["items"][0]["eeat_categories"], list)
+    assert payload["recommendations"]["items"][0]["primary_eeat_category"] is None
     assert payload["latest_narrative"] is None
     assert payload["tuning_suggestions"] == []
     assert payload["apply_outcome"] is None
     assert payload["analysis_freshness"]["status"] == "fresh"
     assert payload["analysis_freshness"]["analysis_generated_at"] is not None
     assert payload["analysis_freshness"]["last_apply_at"] is None
+    assert payload["eeat_gap_summary"] is None
     assert payload["competitor_prompt_preview"] is not None
     assert payload["competitor_prompt_preview"]["prompt_type"] == "competitor"
     assert payload["competitor_prompt_preview"]["system_prompt"]
@@ -980,6 +984,121 @@ def test_recommendation_workspace_summary_includes_latest_narrative_and_bounded_
     assert payload["analysis_freshness"]["status"] == "fresh"
     assert payload["competitor_prompt_preview"] is not None
     assert payload["recommendation_prompt_preview"] is not None
+
+
+def test_recommendation_workspace_summary_derives_eeat_categories_and_gap_summary_from_competitor_signals(
+    db_session, seeded_business
+) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id)
+    audit_run_id = _seed_completed_audit_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+    )
+    run_response = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+        json={"audit_run_id": audit_run_id},
+    )
+    assert run_response.status_code == 201
+    run_id = run_response.json()["id"]
+
+    recommendation_list = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/recommendations"
+    )
+    assert recommendation_list.status_code == 200
+    recommendation_id = recommendation_list.json()["items"][0]["id"]
+    recommendation = db_session.get(SEORecommendation, recommendation_id)
+    assert recommendation is not None
+    recommendation.rule_key = "close_competitor_gap_missing_license_proof"
+    recommendation.title = "Add license and insurance proof to service pages"
+    recommendation.evidence_json = {
+        "sources": ["comparison"],
+        "finding_types": ["missing_license_proof"],
+        "counts": {"missing_license_proof": 1},
+    }
+    db_session.add(recommendation)
+
+    db_session.add(
+        SEORecommendationNarrative(
+            id=str(uuid4()),
+            business_id=seeded_business.id,
+            site_id=site_id,
+            recommendation_run_id=run_id,
+            version=1,
+            status="completed",
+            narrative_text="Narrative summary.",
+            top_themes_json=["trust proof"],
+            sections_json={
+                "competitor_influence": {
+                    "used": True,
+                    "summary": "Competitors show stronger trust proof.",
+                    "top_opportunities": ["Add verified_review badges and license proof"],
+                    "competitor_names": ["Trusted Local Co"],
+                }
+            },
+            provider_name="mock",
+            model_name="mock-model",
+            prompt_version="seo-recommendation-narrative-v2",
+            error_message=None,
+            created_by_principal_id="principal-1",
+        )
+    )
+    db_session.commit()
+
+    summary = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/workspace-summary"
+    )
+    assert summary.status_code == 200
+    payload = summary.json()
+    assert payload["recommendations"]["items"][0]["eeat_categories"] == ["trustworthiness"]
+    assert payload["recommendations"]["items"][0]["primary_eeat_category"] == "trustworthiness"
+    assert payload["eeat_gap_summary"] is not None
+    assert "trustworthiness" in payload["eeat_gap_summary"]["top_gap_categories"]
+    assert payload["eeat_gap_summary"]["message"]
+
+
+def test_recommendation_workspace_summary_omits_eeat_gap_summary_when_competitor_signals_are_insufficient(
+    db_session, seeded_business
+) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id)
+    audit_run_id = _seed_completed_audit_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+    )
+    run_response = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+        json={"audit_run_id": audit_run_id},
+    )
+    assert run_response.status_code == 201
+    run_id = run_response.json()["id"]
+
+    recommendation_list = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/recommendations"
+    )
+    assert recommendation_list.status_code == 200
+    recommendation_id = recommendation_list.json()["items"][0]["id"]
+    recommendation = db_session.get(SEORecommendation, recommendation_id)
+    assert recommendation is not None
+    recommendation.rule_key = "fix_missing_title_tags"
+    recommendation.evidence_json = {
+        "sources": ["audit"],
+        "finding_types": ["missing_title"],
+        "counts": {"missing_title": 1},
+    }
+    db_session.add(recommendation)
+    db_session.commit()
+
+    summary = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/workspace-summary"
+    )
+    assert summary.status_code == 200
+    payload = summary.json()
+    assert payload["recommendations"]["items"][0]["eeat_categories"] == []
+    assert payload["recommendations"]["items"][0]["primary_eeat_category"] is None
+    assert payload["eeat_gap_summary"] is None
 
 
 def test_recommendation_workspace_summary_includes_latest_apply_outcome(db_session, seeded_business) -> None:
