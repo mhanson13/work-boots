@@ -349,12 +349,23 @@ class SEOCompetitorProfileRejectedCandidateRead(BaseModel):
         return _strip_or_none(str(value) if value is not None else None)
 
 
+class SEOCompetitorProfileCandidatePipelineSummaryRead(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    proposed_candidate_count: int = Field(ge=0)
+    rejected_by_eligibility_count: int = Field(ge=0)
+    eligible_candidate_count: int = Field(ge=0)
+    rejected_by_tuning_count: int = Field(ge=0)
+    final_candidate_count: int = Field(ge=0)
+
+
 class SEOCompetitorProfileGenerationRunDetailRead(BaseModel):
     run: SEOCompetitorProfileGenerationRunRead
     drafts: list[SEOCompetitorProfileDraftRead]
     total_drafts: int
     rejected_candidate_count: int = Field(default=0, ge=0)
     rejected_candidates: list[SEOCompetitorProfileRejectedCandidateRead] = Field(default_factory=list)
+    candidate_pipeline_summary: SEOCompetitorProfileCandidatePipelineSummaryRead | None = None
 
 
 class SEOCompetitorProfileGenerationObservabilitySummaryRead(BaseModel):

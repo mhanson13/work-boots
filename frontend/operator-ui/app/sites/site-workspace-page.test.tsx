@@ -4257,6 +4257,7 @@ describe("site workspace ai competitor profile drafts", () => {
     expect(screen.getByText(/Candidate telemetry \(1 runs\): raw 2 \| included 2 \| excluded 0/)).toBeInTheDocument();
     expect(screen.queryByText(/Exclusion reasons:/i)).not.toBeInTheDocument();
     expect(screen.queryByTestId("rejected-competitor-candidates-debug")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("competitor-candidate-pipeline-summary-debug")).not.toBeInTheDocument();
     expect(screen.getAllByTestId("competitor-profile-draft-row")).toHaveLength(2);
     expect(mockFetchCompetitorProfileGenerationRuns).toHaveBeenCalled();
     expect(mockFetchCompetitorProfileGenerationRunDetail).toHaveBeenCalled();
@@ -4368,6 +4369,13 @@ describe("site workspace ai competitor profile drafts", () => {
           summary: "Appears to serve a different region.",
         },
       ],
+      candidate_pipeline_summary: {
+        proposed_candidate_count: 5,
+        rejected_by_eligibility_count: 3,
+        eligible_candidate_count: 2,
+        rejected_by_tuning_count: 1,
+        final_candidate_count: 1,
+      },
     });
 
     render(<SiteWorkspacePage />);
@@ -4382,6 +4390,13 @@ describe("site workspace ai competitor profile drafts", () => {
     expect(
       within(debugBlock).getByText("Showing 2 of 3 rejected candidates."),
     ).toBeInTheDocument();
+    const pipelineDebug = screen.getByTestId("competitor-candidate-pipeline-summary-debug");
+    expect(within(pipelineDebug).getByText(/Candidate pipeline \(debug\)/i)).toBeInTheDocument();
+    expect(within(pipelineDebug).getByText("Proposed: 5")).toBeInTheDocument();
+    expect(within(pipelineDebug).getByText("Rejected by eligibility: 3")).toBeInTheDocument();
+    expect(within(pipelineDebug).getByText("Eligible after filtering: 2")).toBeInTheDocument();
+    expect(within(pipelineDebug).getByText("Removed by tuning: 1")).toBeInTheDocument();
+    expect(within(pipelineDebug).getByText("Final returned: 1")).toBeInTheDocument();
   });
 
   it("triggers generation and refreshes visible drafts", async () => {

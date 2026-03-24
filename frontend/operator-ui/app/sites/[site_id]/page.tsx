@@ -34,6 +34,7 @@ import {
 import type {
   AIPromptPreview,
   BusinessSettings,
+  CompetitorCandidatePipelineSummary,
   CompetitorContextHealth,
   CompetitorComparisonRun,
   CompetitorProfileDraft,
@@ -350,6 +351,26 @@ function normalizeRejectedCompetitorCandidates(
     })
     .filter((candidate): candidate is RejectedCompetitorCandidateDebug => candidate !== null)
     .slice(0, MAX_REJECTED_CANDIDATE_DEBUG_ROWS);
+}
+
+function normalizeCompetitorCandidatePipelineSummary(
+  value: CompetitorCandidatePipelineSummary | null | undefined,
+): CompetitorCandidatePipelineSummary | null {
+  if (!value) {
+    return null;
+  }
+  const proposed = Math.max(0, Number(value.proposed_candidate_count || 0));
+  const rejectedByEligibility = Math.max(0, Number(value.rejected_by_eligibility_count || 0));
+  const eligible = Math.max(0, Number(value.eligible_candidate_count || 0));
+  const rejectedByTuning = Math.max(0, Number(value.rejected_by_tuning_count || 0));
+  const finalCount = Math.max(0, Number(value.final_candidate_count || 0));
+  return {
+    proposed_candidate_count: proposed,
+    rejected_by_eligibility_count: rejectedByEligibility,
+    eligible_candidate_count: eligible,
+    rejected_by_tuning_count: rejectedByTuning,
+    final_candidate_count: finalCount,
+  };
 }
 
 function formatTuningSettingLabel(setting: RecommendationTuningSuggestion["setting"]): string {
@@ -1401,6 +1422,8 @@ export default function SiteWorkspacePage() {
   const [rejectedCompetitorCandidates, setRejectedCompetitorCandidates] = useState<
     RejectedCompetitorCandidateDebug[]
   >([]);
+  const [competitorCandidatePipelineSummary, setCompetitorCandidatePipelineSummary] =
+    useState<CompetitorCandidatePipelineSummary | null>(null);
   const [competitorProfileLoading, setCompetitorProfileLoading] = useState(false);
   const [competitorProfileError, setCompetitorProfileError] = useState<string | null>(null);
   const [competitorProfileSummaryError, setCompetitorProfileSummaryError] = useState<string | null>(null);
@@ -2283,6 +2306,9 @@ export default function SiteWorkspacePage() {
       setCompetitorProfileDrafts(detail.drafts);
       setRejectedCompetitorCandidateCount(Math.max(0, detail.rejected_candidate_count || 0));
       setRejectedCompetitorCandidates(normalizeRejectedCompetitorCandidates(detail.rejected_candidates));
+      setCompetitorCandidatePipelineSummary(
+        normalizeCompetitorCandidatePipelineSummary(detail.candidate_pipeline_summary),
+      );
       setCompetitorProfileActionMessage(
         "Competitor profile generation queued. Drafts will appear after the run completes.",
       );
@@ -2323,6 +2349,9 @@ export default function SiteWorkspacePage() {
       setCompetitorProfileDrafts(detail.drafts);
       setRejectedCompetitorCandidateCount(Math.max(0, detail.rejected_candidate_count || 0));
       setRejectedCompetitorCandidates(normalizeRejectedCompetitorCandidates(detail.rejected_candidates));
+      setCompetitorCandidatePipelineSummary(
+        normalizeCompetitorCandidatePipelineSummary(detail.candidate_pipeline_summary),
+      );
       setCompetitorProfileActionMessage(
         "Retry queued. Drafts will appear after the run completes.",
       );
@@ -3029,6 +3058,9 @@ export default function SiteWorkspacePage() {
             setCompetitorProfileDrafts(detail.drafts);
             setRejectedCompetitorCandidateCount(Math.max(0, detail.rejected_candidate_count || 0));
             setRejectedCompetitorCandidates(normalizeRejectedCompetitorCandidates(detail.rejected_candidates));
+            setCompetitorCandidatePipelineSummary(
+              normalizeCompetitorCandidatePipelineSummary(detail.candidate_pipeline_summary),
+            );
             setCompetitorProfileError(null);
           } catch (error) {
             if (cancelled) {
@@ -3037,6 +3069,7 @@ export default function SiteWorkspacePage() {
             setCompetitorProfileDrafts([]);
             setRejectedCompetitorCandidateCount(0);
             setRejectedCompetitorCandidates([]);
+            setCompetitorCandidatePipelineSummary(null);
             setCompetitorProfileError(safeSectionErrorMessage("AI competitor profiles", error));
           } finally {
             if (!cancelled) {
@@ -3047,6 +3080,7 @@ export default function SiteWorkspacePage() {
           setCompetitorProfileDrafts([]);
           setRejectedCompetitorCandidateCount(0);
           setRejectedCompetitorCandidates([]);
+          setCompetitorCandidatePipelineSummary(null);
           setCompetitorProfileLoading(false);
         }
       } else {
@@ -3055,6 +3089,7 @@ export default function SiteWorkspacePage() {
         setCompetitorProfileDrafts([]);
         setRejectedCompetitorCandidateCount(0);
         setRejectedCompetitorCandidates([]);
+        setCompetitorCandidatePipelineSummary(null);
         setCompetitorProfileLoading(false);
         setCompetitorProfileError(safeSectionErrorMessage("AI competitor profiles", competitorProfileRunsResult.reason));
       }
@@ -3146,6 +3181,7 @@ export default function SiteWorkspacePage() {
           setCompetitorProfileDrafts([]);
           setRejectedCompetitorCandidateCount(0);
           setRejectedCompetitorCandidates([]);
+          setCompetitorCandidatePipelineSummary(null);
           setCompetitorProfilePolling(false);
           return;
         }
@@ -3163,6 +3199,9 @@ export default function SiteWorkspacePage() {
         setCompetitorProfileDrafts(detail.drafts);
         setRejectedCompetitorCandidateCount(Math.max(0, detail.rejected_candidate_count || 0));
         setRejectedCompetitorCandidates(normalizeRejectedCompetitorCandidates(detail.rejected_candidates));
+        setCompetitorCandidatePipelineSummary(
+          normalizeCompetitorCandidatePipelineSummary(detail.candidate_pipeline_summary),
+        );
         setCompetitorProfileError(null);
         if (isCompetitorProfileRunTerminalStatus(detail.run.status)) {
           setCompetitorProfilePolling(false);
@@ -3174,6 +3213,7 @@ export default function SiteWorkspacePage() {
         setCompetitorProfileError(safeSectionErrorMessage("AI competitor profiles", error));
         setRejectedCompetitorCandidateCount(0);
         setRejectedCompetitorCandidates([]);
+        setCompetitorCandidatePipelineSummary(null);
         setCompetitorProfilePolling(false);
       } finally {
         inFlight = false;
@@ -3940,6 +3980,24 @@ export default function SiteWorkspacePage() {
                 candidates.
               </p>
             ) : null}
+          </div>
+        ) : null}
+        {competitorCandidatePipelineSummary ? (
+          <div className="stack" data-testid="competitor-candidate-pipeline-summary-debug">
+            <p className="hint muted">
+              <strong>Candidate pipeline (debug)</strong>
+            </p>
+            <p className="hint muted">Proposed: {competitorCandidatePipelineSummary.proposed_candidate_count}</p>
+            <p className="hint muted">
+              Rejected by eligibility: {competitorCandidatePipelineSummary.rejected_by_eligibility_count}
+            </p>
+            <p className="hint muted">
+              Eligible after filtering: {competitorCandidatePipelineSummary.eligible_candidate_count}
+            </p>
+            <p className="hint muted">
+              Removed by tuning: {competitorCandidatePipelineSummary.rejected_by_tuning_count}
+            </p>
+            <p className="hint muted">Final returned: {competitorCandidatePipelineSummary.final_candidate_count}</p>
           </div>
         ) : null}
         {latestCompetitorProfileRun?.parent_run_id ? (

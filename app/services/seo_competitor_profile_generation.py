@@ -157,6 +157,7 @@ class SEOCompetitorProfileGenerationRunDetail:
     drafts: list[SEOCompetitorProfileDraft]
     rejected_candidate_count: int = 0
     rejected_candidates: list["SEOCompetitorProfileRejectedCandidateDebug"] = field(default_factory=list)
+    candidate_pipeline_summary: "SEOCompetitorProfileCandidatePipelineSummary | None" = None
 
 
 @dataclass(frozen=True)
@@ -173,6 +174,15 @@ class SEOCompetitorProfileRejectedCandidateDebug:
     domain: str
     reasons: tuple[str, ...]
     summary: str | None
+
+
+@dataclass(frozen=True)
+class SEOCompetitorProfileCandidatePipelineSummary:
+    proposed_candidate_count: int
+    rejected_by_eligibility_count: int
+    eligible_candidate_count: int
+    rejected_by_tuning_count: int
+    final_candidate_count: int
 
 
 @dataclass(frozen=True)
@@ -200,6 +210,7 @@ class SEOCompetitorProfileDraftBuildResult:
     exclusion_counts_by_reason: dict[str, int]
     ineligibility_counts_by_reason: dict[str, int]
     rejected_candidates: list[SEOCompetitorProfileRejectedCandidateDebug]
+    candidate_pipeline_summary: SEOCompetitorProfileCandidatePipelineSummary
 
 
 @dataclass(frozen=True)
@@ -565,6 +576,7 @@ class SEOCompetitorProfileGenerationService:
                 drafts=drafts,
                 rejected_candidate_count=max(0, len(draft_result.rejected_candidates)),
                 rejected_candidates=draft_result.rejected_candidates,
+                candidate_pipeline_summary=draft_result.candidate_pipeline_summary,
             )
         except SEOCompetitorProfileProviderError as exc:
             self.session.rollback()
@@ -671,11 +683,13 @@ class SEOCompetitorProfileGenerationService:
         rejected_candidate_count, rejected_candidates = self._extract_rejected_candidates_debug_from_raw_output(
             run.raw_output
         )
+        candidate_pipeline_summary = self._derive_candidate_pipeline_summary_from_run(run)
         return SEOCompetitorProfileGenerationRunDetail(
             run=run,
             drafts=drafts,
             rejected_candidate_count=rejected_candidate_count,
             rejected_candidates=rejected_candidates,
+            candidate_pipeline_summary=candidate_pipeline_summary,
         )
 
     def build_prompt_preview(
@@ -1122,6 +1136,13 @@ class SEOCompetitorProfileGenerationService:
             exclusion_counts_by_reason=exclusion_counts_by_reason,
             ineligibility_counts_by_reason=eligibility_result.ineligibility_counts_by_reason,
             rejected_candidates=rejected_candidates,
+            candidate_pipeline_summary=SEOCompetitorProfileCandidatePipelineSummary(
+                proposed_candidate_count=len(prepared_candidates),
+                rejected_by_eligibility_count=eligibility_result.ineligible_candidate_count,
+                eligible_candidate_count=len(eligibility_result.eligible_candidates),
+                rejected_by_tuning_count=candidate_processing.excluded_candidate_count,
+                final_candidate_count=len(drafts),
+            ),
         )
 
     def _apply_draft_updates(
@@ -1445,6 +1466,34 @@ class SEOCompetitorProfileGenerationService:
             except (TypeError, ValueError):
                 normalized[reason] = 0
         return normalized
+
+    def _derive_candidate_pipeline_summary_from_run(
+        self,
+        run: SEOCompetitorProfileGenerationRun,
+    ) -> SEOCompetitorProfileCandidatePipelineSummary | None:
+        proposed_candidate_count = max(0, int(run.raw_candidate_count or 0))
+        final_candidate_count = max(0, int(run.included_candidate_count or 0))
+        excluded_candidate_count = max(0, int(run.excluded_candidate_count or 0))
+        if proposed_candidate_count <= 0 and final_candidate_count <= 0 and excluded_candidate_count <= 0:
+            return None
+
+        exclusion_counts_by_reason = (
+            run.exclusion_counts_by_reason if isinstance(run.exclusion_counts_by_reason, dict) else {}
+        )
+        rejected_by_eligibility_count = max(
+            0,
+            self._coerce_int(exclusion_counts_by_reason.get("invalid_candidate"), default=0),
+        )
+        eligible_candidate_count = max(0, proposed_candidate_count - rejected_by_eligibility_count)
+        rejected_by_tuning_count = max(0, excluded_candidate_count - rejected_by_eligibility_count)
+
+        return SEOCompetitorProfileCandidatePipelineSummary(
+            proposed_candidate_count=proposed_candidate_count,
+            rejected_by_eligibility_count=rejected_by_eligibility_count,
+            eligible_candidate_count=eligible_candidate_count,
+            rejected_by_tuning_count=rejected_by_tuning_count,
+            final_candidate_count=final_candidate_count,
+        )
 
     def _build_rejected_candidate_debug(
         self,

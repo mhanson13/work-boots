@@ -214,3 +214,24 @@ This visibility is additive and debug-oriented:
 - it does not change admin tuning semantics
 - it does not expose raw page dumps or large fetch payloads
 - it explains why fewer candidates may be returned when invalid domains are filtered out
+
+## Candidate Pipeline Stage Telemetry (Debug)
+
+Competitor run detail payloads can also include bounded pipeline stage counts in
+`candidate_pipeline_summary`:
+
+- `proposed_candidate_count`
+- `rejected_by_eligibility_count`
+- `eligible_candidate_count`
+- `rejected_by_tuning_count`
+- `final_candidate_count`
+
+Stage meanings:
+- `proposed_candidate_count`: normalized AI candidates before deterministic eligibility checks
+- `rejected_by_eligibility_count`: removed by deterministic eligibility rules
+- `eligible_candidate_count`: candidates passed into admin-tuned scoring
+- `rejected_by_tuning_count`: removed by current admin tuning/threshold settings
+- `final_candidate_count`: candidates returned as reviewable drafts
+
+This telemetry is a support/tuning aid only. It does not change ranking, scoring,
+or competitor review workflow semantics.

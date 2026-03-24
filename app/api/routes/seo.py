@@ -43,6 +43,7 @@ from app.schemas.seo_site import (
     SEOSiteUpdateRequest,
 )
 from app.schemas.seo_competitor import (
+    SEOCompetitorProfileCandidatePipelineSummaryRead,
     SEOCompetitorComparisonFindingListResponse,
     SEOCompetitorComparisonFindingRead,
     SEOCompetitorComparisonMetricRollupRead,
@@ -2499,6 +2500,7 @@ def _to_competitor_profile_generation_run_detail_response(
     drafts,
     rejected_candidate_count: int = 0,
     rejected_candidates=None,
+    candidate_pipeline_summary=None,
 ) -> SEOCompetitorProfileGenerationRunDetailRead:
     serialized_drafts = [SEOCompetitorProfileDraftRead.model_validate(item) for item in drafts]
     serialized_rejected_candidates = [
@@ -2511,6 +2513,11 @@ def _to_competitor_profile_generation_run_detail_response(
         total_drafts=len(serialized_drafts),
         rejected_candidate_count=max(0, int(rejected_candidate_count)),
         rejected_candidates=serialized_rejected_candidates,
+        candidate_pipeline_summary=(
+            SEOCompetitorProfileCandidatePipelineSummaryRead.model_validate(candidate_pipeline_summary)
+            if candidate_pipeline_summary is not None
+            else None
+        ),
     )
 
 
@@ -2568,6 +2575,7 @@ def create_competitor_profile_generation_run(
         drafts=result.drafts,
         rejected_candidate_count=result.rejected_candidate_count,
         rejected_candidates=result.rejected_candidates,
+        candidate_pipeline_summary=result.candidate_pipeline_summary,
     )
 
 
@@ -2714,6 +2722,7 @@ def get_competitor_profile_generation_run_detail(
         drafts=detail.drafts,
         rejected_candidate_count=detail.rejected_candidate_count,
         rejected_candidates=detail.rejected_candidates,
+        candidate_pipeline_summary=detail.candidate_pipeline_summary,
     )
 
 
@@ -2771,6 +2780,7 @@ def retry_competitor_profile_generation_run(
         drafts=result.drafts,
         rejected_candidate_count=result.rejected_candidate_count,
         rejected_candidates=result.rejected_candidates,
+        candidate_pipeline_summary=result.candidate_pipeline_summary,
     )
 
 

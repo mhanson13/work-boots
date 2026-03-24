@@ -322,12 +322,21 @@ export interface RejectedCompetitorCandidateDebug {
   summary: string | null;
 }
 
+export interface CompetitorCandidatePipelineSummary {
+  proposed_candidate_count: number;
+  rejected_by_eligibility_count: number;
+  eligible_candidate_count: number;
+  rejected_by_tuning_count: number;
+  final_candidate_count: number;
+}
+
 export interface CompetitorProfileGenerationRunDetailResponse {
   run: CompetitorProfileGenerationRun;
   drafts: CompetitorProfileDraft[];
   total_drafts: number;
   rejected_candidate_count?: number;
   rejected_candidates?: RejectedCompetitorCandidateDebug[];
+  candidate_pipeline_summary?: CompetitorCandidatePipelineSummary | null;
 }
 
 export interface CompetitorProfileGenerationSummaryResponse {

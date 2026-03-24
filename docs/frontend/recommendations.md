@@ -238,6 +238,22 @@ Rendering rules:
 - keep the block secondary/debug-oriented (not a primary operator alert)
 - cap displayed rows and show `showing X of Y` when payload count exceeds rendered rows
 
+## Candidate Pipeline Stage Counts (Debug)
+
+When `candidate_pipeline_summary` is present on competitor run detail payloads, the
+workspace can render a compact debug block with:
+
+- proposed candidates
+- rejected by eligibility
+- eligible after filtering
+- removed by tuning
+- final returned
+
+Rendering rules:
+- keep this in the existing debug area near rejected-candidate details
+- hide the block when summary data is missing
+- treat counts as observability/support data only (not ranking or scoring UX)
+
 ## Weak Location Context ZIP Prompt
 
 When workspace summary metadata indicates weak location context and no stored ZIP:

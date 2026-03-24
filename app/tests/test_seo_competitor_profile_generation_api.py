@@ -1589,6 +1589,13 @@ def test_generation_applies_eligibility_filter_before_admin_tuning(db_session, s
     assert payload["run"]["excluded_candidate_count"] == 2
     assert payload["run"]["exclusion_counts_by_reason"]["invalid_candidate"] == 2
     assert [item["suggested_domain"] for item in payload["drafts"]] == ["valid-local-contractor.com"]
+    assert payload["candidate_pipeline_summary"] == {
+        "proposed_candidate_count": 3,
+        "rejected_by_eligibility_count": 2,
+        "eligible_candidate_count": 1,
+        "rejected_by_tuning_count": 0,
+        "final_candidate_count": 1,
+    }
     assert payload["rejected_candidate_count"] == 2
     rejected_by_domain = {item["domain"]: item for item in payload["rejected_candidates"]}
     assert set(rejected_by_domain.keys()) == {"parked-candidate.com", "offline-candidate.com"}
@@ -1730,6 +1737,13 @@ def test_generation_uses_business_quality_tuning_threshold_settings(db_session, 
     assert high_payload["run"]["included_candidate_count"] == 0
     assert high_payload["run"]["excluded_candidate_count"] == 1
     assert high_payload["run"]["exclusion_counts_by_reason"]["low_relevance"] == 1
+    assert high_payload["candidate_pipeline_summary"] == {
+        "proposed_candidate_count": 1,
+        "rejected_by_eligibility_count": 0,
+        "eligible_candidate_count": 1,
+        "rejected_by_tuning_count": 1,
+        "final_candidate_count": 0,
+    }
 
 
 def test_generation_fails_safely_when_business_quality_tuning_is_invalid(db_session, seeded_business) -> None:
