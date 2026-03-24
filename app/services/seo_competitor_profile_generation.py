@@ -54,6 +54,9 @@ from app.services.seo_competitor_profile_candidate_quality import (
     process_competitor_candidates,
 )
 from app.services.seo_competitor_profile_prompt import SEO_COMPETITOR_PROFILE_PROMPT_VERSION
+from app.services.seo_competitor_profile_prompt import (
+    build_seo_competitor_profile_prompt,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -138,6 +141,14 @@ class SEOCompetitorProfileRetentionPolicy:
 class SEOCompetitorProfileGenerationRunDetail:
     run: SEOCompetitorProfileGenerationRun
     drafts: list[SEOCompetitorProfileDraft]
+
+
+@dataclass(frozen=True)
+class SEOCompetitorPromptPreview:
+    system_prompt: str
+    user_prompt: str
+    model_name: str | None
+    prompt_version: str
 
 
 @dataclass(frozen=True)
@@ -568,6 +579,44 @@ class SEOCompetitorProfileGenerationService:
             generation_run_id,
         )
         return SEOCompetitorProfileGenerationRunDetail(run=run, drafts=drafts)
+
+    def build_prompt_preview(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+        candidate_count: int,
+        prompt_version: str | None = None,
+    ) -> SEOCompetitorPromptPreview | None:
+        try:
+            self._require_business(business_id)
+            site = self._require_site(business_id=business_id, site_id=site_id)
+        except SEOCompetitorProfileGenerationNotFoundError:
+            return None
+
+        bounded_candidate_count = max(1, int(candidate_count))
+        resolved_prompt_version = (
+            self._clean_optional(prompt_version) or self._default_prompt_version()
+        )
+        prompt = build_seo_competitor_profile_prompt(
+            site=site,
+            existing_domains=[
+                item.domain
+                for item in self.seo_competitor_repository.list_domains_for_business_site(
+                    business_id,
+                    site_id,
+                )
+            ],
+            candidate_count=bounded_candidate_count,
+            prompt_version=resolved_prompt_version,
+            prompt_text_competitor=self._provider_prompt_text_competitor(),
+        )
+        return SEOCompetitorPromptPreview(
+            system_prompt=prompt.system_prompt,
+            user_prompt=prompt.user_prompt,
+            model_name=self._clean_optional(self._default_model_name()),
+            prompt_version=prompt.prompt_version,
+        )
 
     def get_observability_summary(
         self,
@@ -1219,6 +1268,13 @@ class SEOCompetitorProfileGenerationService:
     def _default_prompt_version(self) -> str:
         prompt_version = self._clean_optional(str(getattr(self.provider, "prompt_version", "") or ""))
         return prompt_version or SEO_COMPETITOR_PROFILE_PROMPT_VERSION
+
+    def _provider_prompt_text_competitor(self) -> str:
+        prompt_text = getattr(self.provider, "prompt_text_competitor", None)
+        if prompt_text is None:
+            prompt_text = getattr(self.provider, "prompt_text_recommendation", "")
+        cleaned = self._clean_optional(str(prompt_text or ""))
+        return cleaned or ""
 
     def _effective_lookback_days(self, lookback_days: int | None) -> int:
         if lookback_days is None:

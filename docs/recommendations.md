@@ -152,6 +152,38 @@ Shape:
 - If safe derivation is not possible, `apply_outcome` remains `null`.
 - This is deterministic response shaping from existing data; no new AI calls, persistence, or schema changes.
 
+## Prompt Preview (Debug / Inspection)
+
+Workspace summary responses may include optional prompt-inspection metadata:
+
+- `recommendation_prompt_preview` (recommendation narrative prompt)
+- `competitor_prompt_preview` (competitor generation prompt)
+
+Shape:
+
+```json
+{
+  "available": true,
+  "prompt_type": "recommendation",
+  "system_prompt": "...",
+  "user_prompt": "...",
+  "model": "gpt-4o-mini",
+  "prompt_version": "seo-recommendation-narrative-v2",
+  "truncated": false
+}
+```
+
+### Behavior
+- Additive/read-only: no workflow or provider behavior changes.
+- Uses the final constructed prompt content for inspection.
+- Prompt text is sanitized and bounded for safe response/UI handling.
+- If prompt preview cannot be built safely, the field is `null`/absent.
+
+### Operator actions
+- Workspace supports prompt inspection via `View AI prompt`.
+- Prompt content can be copied or downloaded as `.txt`.
+- Copy/download uses the same bounded safe content returned by the API.
+
 ## Recommendation Diversity and De-duplication
 
 Recommendation narrative shaping now applies a small deterministic diversity pass to `sections.next_actions` before persistence:

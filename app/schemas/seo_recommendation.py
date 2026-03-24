@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.schemas.ai_prompt import AIPromptPreviewRead
+
 SEORecommendationRunStatus = Literal["queued", "running", "completed", "failed"]
 SEORecommendationCategory = Literal["SEO", "CONTENT", "STRUCTURE", "TECHNICAL"]
 SEORecommendationSeverity = Literal["INFO", "WARNING", "CRITICAL"]
@@ -825,6 +827,8 @@ class SEORecommendationWorkspaceSummaryRead(BaseModel):
     latest_narrative: SEORecommendationNarrativeRead | None
     tuning_suggestions: list[SEORecommendationTuningSuggestionRead] = Field(default_factory=list)
     apply_outcome: SEORecommendationApplyOutcomeRead | None = None
+    competitor_prompt_preview: AIPromptPreviewRead | None = None
+    recommendation_prompt_preview: AIPromptPreviewRead | None = None
 
 
 class SEORecommendationTuningValuesPatch(BaseModel):

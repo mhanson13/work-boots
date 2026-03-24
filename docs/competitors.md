@@ -55,3 +55,26 @@ Behavior is intentionally conservative:
   `competitor_influence`.
 - Recommendation narrative responses may include optional `signal_summary` framing where
   competitor context is one bounded evidence source among site/references/themes signals.
+
+## Prompt Preview (Debug / Inspection)
+
+Workspace summary responses may include an optional `competitor_prompt_preview` object so operators can inspect the final competitor-generation prompt payload used for AI calls.
+
+### What is shown
+- prompt type (`competitor`)
+- model label (when available)
+- prompt version (when available)
+- final system prompt text
+- final user prompt text
+- truncation flag when bounded output clipping is applied
+
+### What is intentionally not shown
+- provider credentials
+- API keys
+- auth headers
+- environment/secret dumps
+
+### Safety behavior
+- Preview is read-only and optional.
+- Prompt text is sanitized for control characters and bounded for UI-safe rendering.
+- When preview data is unavailable, no prompt preview block is rendered.

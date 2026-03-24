@@ -101,6 +101,31 @@ Fallback rules:
 - Keep legacy `narrative_text` rendering intact.
 - Keep the UI concise and operator-oriented; avoid technical backend terminology.
 
+## Prompt Inspection UX
+
+The workspace can render optional debug prompt-inspection panels when API payloads include:
+
+- `competitor_prompt_preview`
+- `recommendation_prompt_preview`
+
+Placement guidance:
+- keep prompt inspection secondary/debug-oriented
+- render near existing competitor and AI narrative metadata blocks
+- hide entirely when preview payloads are absent
+
+Interaction guidance:
+- use an explicit affordance (`View AI prompt`) to reveal prompt text
+- expose separate system/user prompt sections
+- support:
+  - `Copy Prompt`
+  - `Download Prompt (.txt)`
+
+Safety and fallback:
+- treat prompt preview as read-only diagnostic data
+- do not render empty placeholder containers when unavailable
+- use bounded/sanitized text from the backend only
+- do not expose provider secrets or environment values in UI copy
+
 ## Apply Outcome Visibility
 
 Workspace summary payloads may include optional `apply_outcome` metadata to show what changed after manual tuning apply.

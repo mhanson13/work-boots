@@ -885,6 +885,19 @@ def test_recommendation_workspace_summary_returns_latest_completed_run(db_sessio
     assert payload["latest_narrative"] is None
     assert payload["tuning_suggestions"] == []
     assert payload["apply_outcome"] is None
+    assert payload["competitor_prompt_preview"] is not None
+    assert payload["competitor_prompt_preview"]["prompt_type"] == "competitor"
+    assert payload["competitor_prompt_preview"]["system_prompt"]
+    assert payload["competitor_prompt_preview"]["user_prompt"]
+    assert "Authorization:" not in payload["competitor_prompt_preview"]["system_prompt"]
+    assert "Authorization:" not in payload["competitor_prompt_preview"]["user_prompt"]
+    assert payload["recommendation_prompt_preview"] is not None
+    assert payload["recommendation_prompt_preview"]["prompt_type"] == "recommendation"
+    assert payload["recommendation_prompt_preview"]["model"]
+    assert payload["recommendation_prompt_preview"]["system_prompt"]
+    assert payload["recommendation_prompt_preview"]["user_prompt"]
+    assert "Authorization:" not in payload["recommendation_prompt_preview"]["system_prompt"]
+    assert "Authorization:" not in payload["recommendation_prompt_preview"]["user_prompt"]
 
 
 def test_recommendation_workspace_summary_includes_latest_narrative_and_bounded_suggestions(
@@ -961,6 +974,8 @@ def test_recommendation_workspace_summary_includes_latest_narrative_and_bounded_
     assert payload["tuning_suggestions"][0]["setting"] == "competitor_candidate_min_relevance_score"
     assert payload["tuning_suggestions"][0]["linked_recommendation_ids"] == [recommendation_id]
     assert payload["apply_outcome"] is None
+    assert payload["competitor_prompt_preview"] is not None
+    assert payload["recommendation_prompt_preview"] is not None
 
 
 def test_recommendation_workspace_summary_includes_latest_apply_outcome(db_session, seeded_business) -> None:
@@ -1168,6 +1183,8 @@ def test_recommendation_workspace_summary_handles_in_progress_runs_safely(db_ses
     assert payload["recommendations"]["total"] == 0
     assert payload["latest_narrative"] is None
     assert payload["apply_outcome"] is None
+    assert payload["competitor_prompt_preview"] is not None
+    assert payload["recommendation_prompt_preview"] is None
 
 
 def test_recommendation_workspace_summary_enforces_business_scope(db_session, seeded_business) -> None:

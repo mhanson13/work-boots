@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
+import logging
 
 from app.api.deps import (
     TenantContext,
@@ -74,6 +75,7 @@ from app.schemas.seo_competitor import (
     SEOCompetitorSnapshotRunListResponse,
     SEOCompetitorSnapshotRunRead,
 )
+from app.schemas.ai_prompt import build_ai_prompt_preview_read
 from app.schemas.seo_recommendation import (
     SEORecommendationApplyOutcomeRead,
     SEORecommendationBacklogRead,
@@ -171,6 +173,7 @@ _WORKSPACE_SETTING_LABELS = {
 _WORKSPACE_APPLY_OUTCOME_LABEL_MAX_CHARS = 180
 _WORKSPACE_APPLY_OUTCOME_EXPECTED_MAX_CHARS = 260
 _WORKSPACE_APPLY_OUTCOME_REFLECT_MAX_CHARS = 220
+logger = logging.getLogger(__name__)
 
 
 def _assert_site_match(*, expected_site_id: str, actual_site_id: str, detail: str) -> None:
@@ -840,6 +843,9 @@ def get_seo_recommendation_workspace_summary(
     recommendation_narrative_service: SEORecommendationNarrativeService = Depends(
         get_seo_recommendation_narrative_service
     ),
+    generation_service: SEOCompetitorProfileGenerationService = Depends(
+        get_seo_competitor_profile_generation_service
+    ),
 ) -> SEORecommendationWorkspaceSummaryRead:
     scoped_business_id = resolve_tenant_business_id(
         tenant_context=tenant_context,
@@ -859,6 +865,8 @@ def get_seo_recommendation_workspace_summary(
     latest_narrative_read: SEORecommendationNarrativeRead | None = None
     tuning_suggestions: list[SEORecommendationTuningSuggestionRead] = []
     apply_outcome: SEORecommendationApplyOutcomeRead | None = None
+    competitor_prompt_preview = None
+    recommendation_prompt_preview = None
 
     empty_recommendations = SEORecommendationListResponse(
         items=[],
@@ -917,6 +925,57 @@ def get_seo_recommendation_workspace_summary(
             recommendations=serialized_items,
             tuning_suggestions=tuning_suggestions,
         )
+        try:
+            recommendation_prompt_preview_data = recommendation_narrative_service.build_prompt_preview(
+                business_id=scoped_business_id,
+                site_id=site_id,
+                recommendation_run_id=latest_completed_run.id,
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "Failed to build recommendation prompt preview business_id=%s site_id=%s run_id=%s",
+                scoped_business_id,
+                site_id,
+                latest_completed_run.id,
+            )
+            recommendation_prompt_preview_data = None
+        if recommendation_prompt_preview_data is not None:
+            recommendation_prompt_preview = build_ai_prompt_preview_read(
+                prompt_type="recommendation",
+                system_prompt=recommendation_prompt_preview_data.system_prompt,
+                user_prompt=recommendation_prompt_preview_data.user_prompt,
+                model=recommendation_prompt_preview_data.model_name,
+                prompt_version=recommendation_prompt_preview_data.prompt_version,
+            )
+
+    latest_competitor_runs = seo_competitor_profile_generation_repository.list_runs_for_business_site(
+        scoped_business_id,
+        site_id,
+    )
+    competitor_candidate_count = latest_competitor_runs[0].requested_candidate_count if latest_competitor_runs else 5
+    competitor_prompt_version = latest_competitor_runs[0].prompt_version if latest_competitor_runs else None
+    try:
+        competitor_prompt_preview_data = generation_service.build_prompt_preview(
+            business_id=scoped_business_id,
+            site_id=site_id,
+            candidate_count=competitor_candidate_count,
+            prompt_version=competitor_prompt_version,
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "Failed to build competitor prompt preview business_id=%s site_id=%s",
+            scoped_business_id,
+            site_id,
+        )
+        competitor_prompt_preview_data = None
+    if competitor_prompt_preview_data is not None:
+        competitor_prompt_preview = build_ai_prompt_preview_read(
+            prompt_type="competitor",
+            system_prompt=competitor_prompt_preview_data.system_prompt,
+            user_prompt=competitor_prompt_preview_data.user_prompt,
+            model=competitor_prompt_preview_data.model_name,
+            prompt_version=competitor_prompt_preview_data.prompt_version,
+        )
 
     if latest_run is None:
         state = "no_runs"
@@ -939,6 +998,8 @@ def get_seo_recommendation_workspace_summary(
         latest_narrative=latest_narrative_read,
         tuning_suggestions=tuning_suggestions,
         apply_outcome=apply_outcome,
+        competitor_prompt_preview=competitor_prompt_preview,
+        recommendation_prompt_preview=recommendation_prompt_preview,
     )
 
 

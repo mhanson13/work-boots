@@ -48,6 +48,9 @@ from app.services.seo_recommendation_diversity import (
     normalize_recommendation_narrative_sections,
 )
 from app.services.seo_recommendation_narrative_prompt import SEO_RECOMMENDATION_NARRATIVE_PROMPT_VERSION
+from app.services.seo_recommendation_narrative_prompt import (
+    build_seo_recommendation_narrative_prompt,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -101,6 +104,14 @@ class SEORecommendationTuningImpactPreviewResult:
     telemetry_window: dict[str, object]
     estimated_impact: dict[str, object]
     caveat: str
+
+
+@dataclass(frozen=True)
+class SEORecommendationNarrativePromptPreview:
+    system_prompt: str
+    user_prompt: str
+    model_name: str | None
+    prompt_version: str
 
 
 class SEORecommendationNarrativeService:
@@ -316,6 +327,66 @@ class SEORecommendationNarrativeService:
             raise SEORecommendationNarrativeNotFoundError("Recommendation narrative not found")
         return narrative
 
+    def build_prompt_preview(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+        recommendation_run_id: str,
+    ) -> SEORecommendationNarrativePromptPreview | None:
+        try:
+            business = self._require_business(business_id)
+            run = self._get_run_for_business(
+                business_id=business_id,
+                site_id=site_id,
+                recommendation_run_id=recommendation_run_id,
+            )
+        except SEORecommendationNarrativeNotFoundError:
+            return None
+
+        recommendations = self.seo_recommendation_repository.list_recommendations_for_business_run(
+            business_id,
+            recommendation_run_id,
+        )
+        by_status, by_category, by_severity, by_effort_bucket, by_priority_band = self._summarize(recommendations)
+        backlog = self._build_backlog(recommendations)
+        competitor_telemetry_summary = self._build_competitor_telemetry_summary(
+            business_id=business_id,
+            site_id=site_id,
+        )
+        competitor_context = self._build_competitor_context(
+            business_id=business_id,
+            site_id=site_id,
+        )
+        current_tuning_values = self._build_current_tuning_values(business)
+        prompt_version = (
+            str(getattr(self.provider, "prompt_version", "") or "").strip()
+            or SEO_RECOMMENDATION_NARRATIVE_PROMPT_VERSION
+        )
+        prompt_text_recommendations = self._provider_prompt_text_recommendations()
+        prompt = build_seo_recommendation_narrative_prompt(
+            run=run,
+            recommendations=recommendations,
+            by_status=by_status,
+            by_category=by_category,
+            by_severity=by_severity,
+            by_effort_bucket=by_effort_bucket,
+            by_priority_band=by_priority_band,
+            backlog=backlog,
+            competitor_telemetry_summary=competitor_telemetry_summary,
+            competitor_context=competitor_context,
+            current_tuning_values=current_tuning_values,
+            prompt_version=prompt_version,
+            prompt_text_recommendations=prompt_text_recommendations,
+        )
+        model_name = str(getattr(self.provider, "model_name", "") or "").strip() or None
+        return SEORecommendationNarrativePromptPreview(
+            system_prompt=prompt.system_prompt,
+            user_prompt=prompt.user_prompt,
+            model_name=model_name,
+            prompt_version=prompt.prompt_version,
+        )
+
     def preview_tuning_impact(
         self,
         *,
@@ -486,6 +557,12 @@ class SEORecommendationNarrativeService:
             or SEO_RECOMMENDATION_NARRATIVE_PROMPT_VERSION
         )
         return provider_name, model_name, prompt_version
+
+    def _provider_prompt_text_recommendations(self) -> str:
+        prompt_text = getattr(self.provider, "prompt_text_recommendations", None)
+        if prompt_text is None:
+            prompt_text = getattr(self.provider, "prompt_text_recommendation", "")
+        return str(prompt_text or "").strip()
 
     def _build_current_tuning_values(self, business: Business) -> dict[str, int]:
         raw_values = {

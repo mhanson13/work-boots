@@ -602,6 +602,16 @@ export interface RecommendationApplyOutcome {
   source: "recommendation" | "manual" | null;
 }
 
+export interface AIPromptPreview {
+  available: boolean;
+  prompt_type: "competitor" | "recommendation";
+  system_prompt: string;
+  user_prompt: string;
+  model: string | null;
+  prompt_version: string | null;
+  truncated: boolean;
+}
+
 export type CompetitorCandidateExclusionReason =
   | "duplicate"
   | "low_relevance"
@@ -698,6 +708,8 @@ export interface RecommendationWorkspaceSummaryResponse {
   latest_narrative: RecommendationNarrative | null;
   tuning_suggestions: RecommendationTuningSuggestion[];
   apply_outcome?: RecommendationApplyOutcome | null;
+  competitor_prompt_preview?: AIPromptPreview | null;
+  recommendation_prompt_preview?: AIPromptPreview | null;
 }
 
 export interface Recommendation {

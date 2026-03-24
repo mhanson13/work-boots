@@ -31,6 +31,7 @@ import {
   updateBusinessSettings,
 } from "../../../lib/api/client";
 import type {
+  AIPromptPreview,
   BusinessSettings,
   CompetitorComparisonRun,
   CompetitorProfileDraft,
@@ -571,6 +572,119 @@ function normalizeRecommendationApplyOutcome(
   };
 }
 
+type PromptPreviewType = "competitor" | "recommendation";
+
+interface PromptPreviewView {
+  promptType: PromptPreviewType;
+  systemPrompt: string;
+  userPrompt: string;
+  model: string | null;
+  promptVersion: string | null;
+  truncated: boolean;
+}
+
+function normalizePromptPreview(
+  preview: AIPromptPreview | null | undefined,
+  expectedPromptType: PromptPreviewType,
+): PromptPreviewView | null {
+  if (!preview || !preview.available) {
+    return null;
+  }
+  if (preview.prompt_type !== expectedPromptType) {
+    return null;
+  }
+
+  const systemPrompt = preview.system_prompt.replace(/\r\n?/g, "\n").trim();
+  const userPrompt = preview.user_prompt.replace(/\r\n?/g, "\n").trim();
+  if (!systemPrompt && !userPrompt) {
+    return null;
+  }
+
+  return {
+    promptType: expectedPromptType,
+    systemPrompt,
+    userPrompt,
+    model: truncateOptionalText(preview.model, 128),
+    promptVersion: truncateOptionalText(preview.prompt_version, 64),
+    truncated: Boolean(preview.truncated),
+  };
+}
+
+function promptPreviewTypeLabel(promptType: PromptPreviewType): string {
+  if (promptType === "competitor") {
+    return "Competitor Analysis";
+  }
+  return "Recommendation Narrative";
+}
+
+function buildPromptPreviewExportText(preview: PromptPreviewView): string {
+  const modelLabel = preview.model || "n/a";
+  const promptVersionLabel = preview.promptVersion || "n/a";
+  const truncationLine = preview.truncated ? "Truncated: yes" : "Truncated: no";
+  const systemPromptBlock = preview.systemPrompt || "(empty)";
+  const userPromptBlock = preview.userPrompt || "(empty)";
+
+  return [
+    `Prompt Type: ${promptPreviewTypeLabel(preview.promptType)}`,
+    `Model: ${modelLabel}`,
+    `Prompt Version: ${promptVersionLabel}`,
+    truncationLine,
+    "",
+    "System Prompt:",
+    systemPromptBlock,
+    "",
+    "User Prompt:",
+    userPromptBlock,
+  ].join("\n");
+}
+
+interface PromptPreviewPanelProps {
+  preview: PromptPreviewView;
+  copyFeedback: string | null;
+  onCopy: () => void;
+  onDownload: () => void;
+  testId: string;
+}
+
+function PromptPreviewPanel({
+  preview,
+  copyFeedback,
+  onCopy,
+  onDownload,
+  testId,
+}: PromptPreviewPanelProps) {
+  return (
+    <div className="panel panel-compact stack-tight" data-testid={testId}>
+      <span className="hint muted">Prompt inspection (debug)</span>
+      <span className="hint muted">
+        Read-only preview of the final {promptPreviewTypeLabel(preview.promptType).toLowerCase()} prompt sent to AI.
+      </span>
+      <span className="hint muted">
+        Model: {preview.model || "n/a"} | Prompt: {preview.promptVersion || "n/a"}
+        {preview.truncated ? " | Preview is truncated for safety." : ""}
+      </span>
+      <details>
+        <summary className="hint text-strong">View AI prompt</summary>
+        <div className="stack-tight">
+          <span className="hint muted">System prompt</span>
+          <pre className="pre-scroll">{preview.systemPrompt || "(empty)"}</pre>
+          <span className="hint muted">User prompt</span>
+          <pre className="pre-scroll">{preview.userPrompt || "(empty)"}</pre>
+          <div className="form-actions">
+            <button type="button" className="button button-secondary button-inline" onClick={onCopy}>
+              Copy Prompt
+            </button>
+            <button type="button" className="button button-tertiary button-inline" onClick={onDownload}>
+              Download Prompt (.txt)
+            </button>
+          </div>
+          {copyFeedback ? <span className="hint muted">{copyFeedback}</span> : null}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 function formatNarrativeSupportLevel(value: "low" | "medium" | "high"): string {
   switch (value) {
     case "low":
@@ -740,6 +854,15 @@ export default function SiteWorkspacePage() {
     useState<RecommendationTuningSuggestion[]>([]);
   const [latestRecommendationApplyOutcome, setLatestRecommendationApplyOutcome] =
     useState<RecommendationApplyOutcome | null>(null);
+  const [latestCompetitorPromptPreview, setLatestCompetitorPromptPreview] = useState<PromptPreviewView | null>(null);
+  const [latestRecommendationPromptPreview, setLatestRecommendationPromptPreview] =
+    useState<PromptPreviewView | null>(null);
+  const [promptPreviewCopyFeedbackByType, setPromptPreviewCopyFeedbackByType] = useState<
+    Record<PromptPreviewType, string | null>
+  >({
+    competitor: null,
+    recommendation: null,
+  });
   const [recommendationWorkspaceSummaryState, setRecommendationWorkspaceSummaryState] =
     useState<RecommendationWorkspaceSummaryResponse["state"] | null>(null);
   const [latestCompletedRecommendationsError, setLatestCompletedRecommendationsError] = useState<string | null>(null);
@@ -1195,7 +1318,59 @@ export default function SiteWorkspacePage() {
     setLatestCompletedRecommendationNarrative(summary.latest_narrative);
     setLatestCompletedTuningSuggestions(summary.tuning_suggestions);
     setLatestRecommendationApplyOutcome(summary.apply_outcome || null);
+    setLatestCompetitorPromptPreview(
+      normalizePromptPreview(summary.competitor_prompt_preview, "competitor"),
+    );
+    setLatestRecommendationPromptPreview(
+      normalizePromptPreview(summary.recommendation_prompt_preview, "recommendation"),
+    );
+    setPromptPreviewCopyFeedbackByType({ competitor: null, recommendation: null });
     setLatestCompletedRecommendationsError(null);
+  }
+
+  function previewForType(promptType: PromptPreviewType): PromptPreviewView | null {
+    return promptType === "competitor" ? latestCompetitorPromptPreview : latestRecommendationPromptPreview;
+  }
+
+  async function handleCopyPromptPreview(promptType: PromptPreviewType): Promise<void> {
+    const preview = previewForType(promptType);
+    if (!preview) {
+      return;
+    }
+    const exportText = buildPromptPreviewExportText(preview);
+    try {
+      if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+        throw new Error("clipboard_unavailable");
+      }
+      await navigator.clipboard.writeText(exportText);
+      setPromptPreviewCopyFeedbackByType((current) => ({
+        ...current,
+        [promptType]: "Prompt copied.",
+      }));
+    } catch {
+      setPromptPreviewCopyFeedbackByType((current) => ({
+        ...current,
+        [promptType]: "Prompt copy failed in this browser context.",
+      }));
+    }
+  }
+
+  function handleDownloadPromptPreview(promptType: PromptPreviewType): void {
+    const preview = previewForType(promptType);
+    if (!preview || typeof document === "undefined") {
+      return;
+    }
+    const exportText = buildPromptPreviewExportText(preview);
+    const blob = new Blob([exportText], { type: "text/plain;charset=utf-8" });
+    const blobUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const timestamp = new Date().toISOString().replace(/[:]/g, "-");
+    anchor.href = blobUrl;
+    anchor.download = `${promptType}-ai-prompt-${timestamp}.txt`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(blobUrl);
   }
 
   const workspaceReadinessMessage = useMemo(() => {
@@ -2079,14 +2254,7 @@ export default function SiteWorkspacePage() {
       }
 
       if (recommendationWorkspaceSummaryResult.status === "fulfilled") {
-        const summary = recommendationWorkspaceSummaryResult.value;
-        setRecommendationWorkspaceSummaryState(summary.state);
-        setLatestCompletedRecommendationRun(summary.latest_completed_run);
-        setLatestCompletedRecommendations(summary.recommendations.items);
-        setLatestCompletedRecommendationNarrative(summary.latest_narrative);
-        setLatestCompletedTuningSuggestions(summary.tuning_suggestions);
-        setLatestRecommendationApplyOutcome(summary.apply_outcome || null);
-        setLatestCompletedRecommendationsError(null);
+        applyWorkspaceSummary(recommendationWorkspaceSummaryResult.value);
       } else {
         setRecommendationWorkspaceSummaryState(null);
         setLatestCompletedRecommendationRun(null);
@@ -2094,6 +2262,9 @@ export default function SiteWorkspacePage() {
         setLatestCompletedRecommendationNarrative(null);
         setLatestCompletedTuningSuggestions([]);
         setLatestRecommendationApplyOutcome(null);
+        setLatestCompetitorPromptPreview(null);
+        setLatestRecommendationPromptPreview(null);
+        setPromptPreviewCopyFeedbackByType({ competitor: null, recommendation: null });
         setLatestCompletedRecommendationsError(
           safeSectionErrorMessage("recommendation workspace summary", recommendationWorkspaceSummaryResult.reason),
         );
@@ -2861,6 +3032,15 @@ export default function SiteWorkspacePage() {
             <code>{latestCompetitorProfileRun.prompt_version}</code>
           </p>
         ) : null}
+        {latestCompetitorPromptPreview ? (
+          <PromptPreviewPanel
+            preview={latestCompetitorPromptPreview}
+            copyFeedback={promptPreviewCopyFeedbackByType.competitor}
+            onCopy={() => void handleCopyPromptPreview("competitor")}
+            onDownload={() => handleDownloadPromptPreview("competitor")}
+            testId="competitor-prompt-preview"
+          />
+        ) : null}
         {competitorProfileSummary ? (
           <Fragment>
             <p className="hint muted">
@@ -3324,6 +3504,15 @@ export default function SiteWorkspacePage() {
               </div>
             ) : null}
             <h4>AI Narrative Overlay</h4>
+            {latestRecommendationPromptPreview ? (
+              <PromptPreviewPanel
+                preview={latestRecommendationPromptPreview}
+                copyFeedback={promptPreviewCopyFeedbackByType.recommendation}
+                onCopy={() => void handleCopyPromptPreview("recommendation")}
+                onDownload={() => handleDownloadPromptPreview("recommendation")}
+                testId="recommendation-prompt-preview"
+              />
+            ) : null}
             {latestCompletedRecommendationNarrative ? (
               <div className="stack">
                 <p className="hint muted">

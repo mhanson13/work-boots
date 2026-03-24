@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import SiteWorkspacePage from "./[site_id]/page";
 import { ApiRequestError } from "../../lib/api/client";
 import type {
+  AIPromptPreview,
   BusinessSettings,
   CompetitorComparisonRun,
   CompetitorProfileDraft,
@@ -231,6 +232,21 @@ function buildRecommendationNarrative(
     created_by_principal_id: "principal-1",
     created_at: "2026-03-21T00:33:00Z",
     updated_at: "2026-03-21T00:33:00Z",
+    ...overrides,
+  };
+}
+
+function buildAIPromptPreview(
+  overrides: Partial<AIPromptPreview> = {},
+): AIPromptPreview {
+  return {
+    available: true,
+    prompt_type: "recommendation",
+    system_prompt: "SYSTEM_PROMPT_TEXT",
+    user_prompt: "USER_PROMPT_TEXT",
+    model: "gpt-4o-mini",
+    prompt_version: "v2",
+    truncated: false,
     ...overrides,
   };
 }
@@ -2764,6 +2780,115 @@ describe("site workspace timeline controls", () => {
 
     await screen.findByRole("heading", { name: "AI Narrative Overlay" });
     expect(screen.queryByTestId("narrative-apply-outcome")).not.toBeInTheDocument();
+  });
+
+  it("renders competitor and recommendation prompt preview panels when prompt metadata is available", async () => {
+    seedRichWorkspaceData();
+    const user = userEvent.setup();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        competitor_prompt_preview: buildAIPromptPreview({
+          prompt_type: "competitor",
+          system_prompt: "COMPETITOR_SYSTEM",
+          user_prompt: "COMPETITOR_USER",
+          model: "gpt-4o-mini",
+          prompt_version: "seo-competitor-profile-v1",
+        }),
+        recommendation_prompt_preview: buildAIPromptPreview({
+          prompt_type: "recommendation",
+          system_prompt: "NARRATIVE_SYSTEM",
+          user_prompt: "NARRATIVE_USER",
+          model: "gpt-4o-mini",
+          prompt_version: "seo-recommendation-narrative-v2",
+        }),
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    const competitorPanel = await screen.findByTestId("competitor-prompt-preview");
+    expect(within(competitorPanel).getByText("View AI prompt")).toBeInTheDocument();
+    const recommendationPanel = await screen.findByTestId("recommendation-prompt-preview");
+    await user.click(within(recommendationPanel).getByText("View AI prompt"));
+    expect(within(recommendationPanel).getByText("System prompt")).toBeInTheDocument();
+    expect(within(recommendationPanel).getByText("NARRATIVE_SYSTEM")).toBeInTheDocument();
+    expect(within(recommendationPanel).getByText("NARRATIVE_USER")).toBeInTheDocument();
+  });
+
+  it("hides prompt preview panels when workspace summary has no prompt metadata", async () => {
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        competitor_prompt_preview: null,
+        recommendation_prompt_preview: null,
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("heading", { name: "AI Competitor Profiles" });
+    expect(screen.queryByTestId("competitor-prompt-preview")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("recommendation-prompt-preview")).not.toBeInTheDocument();
+  });
+
+  it("supports prompt copy and download actions with safe export text", async () => {
+    seedRichWorkspaceData();
+    const user = userEvent.setup();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        recommendation_prompt_preview: buildAIPromptPreview({
+          prompt_type: "recommendation",
+          system_prompt: "REC_SYSTEM",
+          user_prompt: "REC_USER",
+        }),
+      }),
+    );
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    const createObjectURLMock = jest.fn(() => "blob:recommendation-prompt");
+    const revokeObjectURLMock = jest.fn();
+    Object.defineProperty(URL, "createObjectURL", {
+      value: createObjectURLMock,
+      configurable: true,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      value: revokeObjectURLMock,
+      configurable: true,
+    });
+    const anchorClickSpy = jest.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+    render(<SiteWorkspacePage />);
+
+    const recommendationPanel = await screen.findByTestId("recommendation-prompt-preview");
+    await user.click(within(recommendationPanel).getByText("View AI prompt"));
+    await user.click(within(recommendationPanel).getByRole("button", { name: "Copy Prompt" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText.mock.calls[0][0]).toContain("Prompt Type: Recommendation Narrative");
+    expect(writeText.mock.calls[0][0]).toContain("System Prompt:");
+    expect(writeText.mock.calls[0][0]).toContain("REC_SYSTEM");
+    expect(writeText.mock.calls[0][0]).toContain("User Prompt:");
+    expect(writeText.mock.calls[0][0]).toContain("REC_USER");
+    expect(within(recommendationPanel).getByText("Prompt copied.")).toBeInTheDocument();
+
+    await user.click(within(recommendationPanel).getByRole("button", { name: "Download Prompt (.txt)" }));
+    expect(createObjectURLMock).toHaveBeenCalledTimes(1);
+    expect(anchorClickSpy).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURLMock).toHaveBeenCalledWith("blob:recommendation-prompt");
+
+    anchorClickSpy.mockRestore();
+    Object.defineProperty(URL, "createObjectURL", {
+      value: originalCreateObjectURL,
+      configurable: true,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      value: originalRevokeObjectURL,
+      configurable: true,
+    });
   });
 
   it("renders ai opportunities only when ai-backed recommendation signals are present", async () => {
