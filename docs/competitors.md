@@ -198,3 +198,19 @@ Operator-facing guidance for these controls is now shown directly in the Admin p
 - The system may return fewer candidates when viable competitors are limited.
 - No external geocoding APIs are used.
 - No provider/model architecture changes were introduced by this quality gate.
+
+## Rejected Candidate Debug Visibility
+
+For admin/debug support workflows, competitor run detail payloads can now include bounded rejected-candidate metadata:
+
+- `rejected_candidate_count`
+- `rejected_candidates[]` with:
+  - `domain`
+  - `reasons[]` (deterministic ineligibility taxonomy)
+  - `summary` (short bounded candidate context, when available)
+
+This visibility is additive and debug-oriented:
+- it does not change eligibility decisions
+- it does not change admin tuning semantics
+- it does not expose raw page dumps or large fetch payloads
+- it explains why fewer candidates may be returned when invalid domains are filtered out

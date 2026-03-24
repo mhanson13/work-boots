@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import json
 import logging
@@ -39,6 +39,7 @@ from app.services.seo_competitor_profile_candidate_quality import (
     BIG_BOX_PENALTY_MIN,
     CompetitorCandidateDomainProbe,
     CompetitorCandidateDomainProbeResult,
+    CompetitorCandidateEligibilityDecision,
     DIRECTORY_PENALTY_MAX,
     DIRECTORY_PENALTY_MIN,
     LOCAL_ALIGNMENT_BONUS_MAX,
@@ -52,6 +53,7 @@ from app.services.seo_competitor_profile_candidate_quality import (
     DEFAULT_LOCAL_ALIGNMENT_BONUS,
     DEFAULT_MIN_RELEVANCE_SCORE,
     EXCLUSION_REASON_KEYS,
+    INELIGIBILITY_REASON_KEYS,
     filter_eligible_competitor_candidates,
     default_exclusion_reason_counts,
     process_competitor_candidates,
@@ -96,6 +98,10 @@ COMPETITOR_DOMAIN_PROBE_TIMEOUT_SECONDS = 4
 COMPETITOR_DOMAIN_PROBE_MAX_RESPONSE_BYTES = 200_000
 COMPETITOR_DOMAIN_PROBE_MAX_REDIRECTS = 3
 COMPETITOR_DOMAIN_PROBE_TEST_TLDS = (".example", ".invalid", ".test", ".localhost")
+REJECTED_CANDIDATE_DEBUG_MAX_ITEMS = 20
+REJECTED_CANDIDATE_DEBUG_SUMMARY_MAX_CHARS = 240
+_REJECTED_CANDIDATE_DEBUG_KEY = "rejected_candidates_debug"
+_REJECTED_CANDIDATE_DEBUG_COUNT_KEY = "rejected_candidate_count"
 
 FAILURE_CATEGORY_TIMEOUT = "timeout"
 FAILURE_CATEGORY_PROVIDER_AUTH = "provider_auth"
@@ -149,6 +155,8 @@ class SEOCompetitorProfileRetentionPolicy:
 class SEOCompetitorProfileGenerationRunDetail:
     run: SEOCompetitorProfileGenerationRun
     drafts: list[SEOCompetitorProfileDraft]
+    rejected_candidate_count: int = 0
+    rejected_candidates: list["SEOCompetitorProfileRejectedCandidateDebug"] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -158,6 +166,13 @@ class SEOCompetitorPromptPreview:
     model_name: str | None
     prompt_version: str
     trusted_site_context: dict[str, object]
+
+
+@dataclass(frozen=True)
+class SEOCompetitorProfileRejectedCandidateDebug:
+    domain: str
+    reasons: tuple[str, ...]
+    summary: str | None
 
 
 @dataclass(frozen=True)
@@ -184,6 +199,7 @@ class SEOCompetitorProfileDraftBuildResult:
     excluded_candidate_count: int
     exclusion_counts_by_reason: dict[str, int]
     ineligibility_counts_by_reason: dict[str, int]
+    rejected_candidates: list[SEOCompetitorProfileRejectedCandidateDebug]
 
 
 @dataclass(frozen=True)
@@ -458,7 +474,7 @@ class SEOCompetitorProfileGenerationService:
             provider_name = self._clean_required_value(output.provider_name, field_name="provider_name")
             model_name = self._clean_required_value(output.model_name, field_name="model_name")
             prompt_version = self._clean_required_value(output.prompt_version, field_name="prompt_version")
-            raw_output = self._sanitize_raw_output(output.raw_response)
+            raw_output = output.raw_response
 
             draft_result = self._build_drafts(
                 site=site,
@@ -484,6 +500,11 @@ class SEOCompetitorProfileGenerationService:
             run.model_name = model_name
             run.prompt_version = prompt_version
             run.failure_category = None
+            raw_output = self._embed_rejected_candidates_debug_in_raw_output(
+                raw_output=raw_output,
+                rejected_candidates=draft_result.rejected_candidates,
+            )
+            raw_output = self._sanitize_raw_output(raw_output)
             run.raw_output = raw_output
             run.error_summary = None
             run.completed_at = utc_now()
@@ -539,7 +560,12 @@ class SEOCompetitorProfileGenerationService:
                     run.id,
                     draft_result.ineligibility_counts_by_reason,
                 )
-            return SEOCompetitorProfileGenerationRunDetail(run=run, drafts=drafts)
+            return SEOCompetitorProfileGenerationRunDetail(
+                run=run,
+                drafts=drafts,
+                rejected_candidate_count=max(0, len(draft_result.rejected_candidates)),
+                rejected_candidates=draft_result.rejected_candidates,
+            )
         except SEOCompetitorProfileProviderError as exc:
             self.session.rollback()
             self._mark_run_failed(
@@ -642,7 +668,15 @@ class SEOCompetitorProfileGenerationService:
             business_id,
             generation_run_id,
         )
-        return SEOCompetitorProfileGenerationRunDetail(run=run, drafts=drafts)
+        rejected_candidate_count, rejected_candidates = self._extract_rejected_candidates_debug_from_raw_output(
+            run.raw_output
+        )
+        return SEOCompetitorProfileGenerationRunDetail(
+            run=run,
+            drafts=drafts,
+            rejected_candidate_count=rejected_candidate_count,
+            rejected_candidates=rejected_candidates,
+        )
 
     def build_prompt_preview(
         self,
@@ -1039,6 +1073,9 @@ class SEOCompetitorProfileGenerationService:
             candidates=prepared_candidates,
             domain_probe=self.candidate_domain_probe,
         )
+        rejected_candidates = self._build_rejected_candidate_debug(
+            decisions=eligibility_result.decisions,
+        )
         quality_tuning = self._resolve_candidate_quality_tuning(business_id=run.business_id)
         candidate_processing = process_competitor_candidates(
             site=site,
@@ -1084,6 +1121,7 @@ class SEOCompetitorProfileGenerationService:
             ),
             exclusion_counts_by_reason=exclusion_counts_by_reason,
             ineligibility_counts_by_reason=eligibility_result.ineligibility_counts_by_reason,
+            rejected_candidates=rejected_candidates,
         )
 
     def _apply_draft_updates(
@@ -1407,6 +1445,136 @@ class SEOCompetitorProfileGenerationService:
             except (TypeError, ValueError):
                 normalized[reason] = 0
         return normalized
+
+    def _build_rejected_candidate_debug(
+        self,
+        *,
+        decisions: list[CompetitorCandidateEligibilityDecision],
+    ) -> list[SEOCompetitorProfileRejectedCandidateDebug]:
+        rejected: list[SEOCompetitorProfileRejectedCandidateDebug] = []
+        for decision in decisions:
+            if decision.is_eligible:
+                continue
+            domain = self._clean_optional(decision.candidate.suggested_domain)
+            if domain is None:
+                continue
+            reasons = self._normalize_rejected_candidate_reasons(decision.ineligibility_reasons)
+            if not reasons:
+                continue
+            rejected.append(
+                SEOCompetitorProfileRejectedCandidateDebug(
+                    domain=domain,
+                    reasons=reasons,
+                    summary=self._build_rejected_candidate_summary(decision.candidate),
+                )
+            )
+            if len(rejected) >= REJECTED_CANDIDATE_DEBUG_MAX_ITEMS:
+                break
+        return rejected
+
+    @staticmethod
+    def _normalize_rejected_candidate_reasons(raw_reasons: tuple[str, ...] | list[str] | object) -> tuple[str, ...]:
+        if not isinstance(raw_reasons, (list, tuple)):
+            return tuple()
+        allowed = set(INELIGIBILITY_REASON_KEYS)
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for raw_reason in raw_reasons:
+            reason = str(raw_reason or "").strip().lower()
+            if not reason or reason not in allowed or reason in seen:
+                continue
+            seen.add(reason)
+            normalized.append(reason)
+        return tuple(normalized)
+
+    def _build_rejected_candidate_summary(self, candidate: CompetitorCandidateInput) -> str | None:
+        for raw_value in (candidate.why_competitor, candidate.summary, candidate.evidence):
+            cleaned = self._clean_optional(raw_value)
+            if not cleaned:
+                continue
+            if len(cleaned) <= REJECTED_CANDIDATE_DEBUG_SUMMARY_MAX_CHARS:
+                return cleaned
+            return cleaned[: REJECTED_CANDIDATE_DEBUG_SUMMARY_MAX_CHARS - 3] + "..."
+        return None
+
+    def _embed_rejected_candidates_debug_in_raw_output(
+        self,
+        *,
+        raw_output: str | None,
+        rejected_candidates: list[SEOCompetitorProfileRejectedCandidateDebug],
+    ) -> str | None:
+        if not raw_output or not rejected_candidates:
+            return raw_output
+        try:
+            parsed = json.loads(raw_output)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return raw_output
+        if not isinstance(parsed, dict):
+            return raw_output
+
+        serialized_rejected: list[dict[str, object]] = []
+        for item in rejected_candidates[:REJECTED_CANDIDATE_DEBUG_MAX_ITEMS]:
+            serialized_rejected.append(
+                {
+                    "domain": item.domain,
+                    "reasons": list(item.reasons),
+                    "summary": item.summary,
+                }
+            )
+        parsed[_REJECTED_CANDIDATE_DEBUG_COUNT_KEY] = max(0, len(rejected_candidates))
+        parsed[_REJECTED_CANDIDATE_DEBUG_KEY] = serialized_rejected
+        try:
+            return json.dumps(parsed, ensure_ascii=True, sort_keys=True)
+        except (TypeError, ValueError):
+            return raw_output
+
+    def _extract_rejected_candidates_debug_from_raw_output(
+        self,
+        raw_output: str | None,
+    ) -> tuple[int, list[SEOCompetitorProfileRejectedCandidateDebug]]:
+        if not raw_output:
+            return 0, []
+        try:
+            parsed = json.loads(raw_output)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return 0, []
+        if not isinstance(parsed, dict):
+            return 0, []
+
+        raw_candidates = parsed.get(_REJECTED_CANDIDATE_DEBUG_KEY)
+        if not isinstance(raw_candidates, list):
+            return 0, []
+
+        rejected_candidates: list[SEOCompetitorProfileRejectedCandidateDebug] = []
+        for raw_item in raw_candidates[:REJECTED_CANDIDATE_DEBUG_MAX_ITEMS]:
+            if not isinstance(raw_item, dict):
+                continue
+            domain = self._clean_optional(
+                str(raw_item.get("domain") or "")
+            )
+            if domain is None:
+                continue
+            reasons = self._normalize_rejected_candidate_reasons(raw_item.get("reasons"))
+            if not reasons:
+                continue
+            summary = self._clean_optional(str(raw_item.get("summary") or "")) if raw_item.get("summary") else None
+            if summary and len(summary) > REJECTED_CANDIDATE_DEBUG_SUMMARY_MAX_CHARS:
+                summary = summary[: REJECTED_CANDIDATE_DEBUG_SUMMARY_MAX_CHARS - 3] + "..."
+            rejected_candidates.append(
+                SEOCompetitorProfileRejectedCandidateDebug(
+                    domain=domain,
+                    reasons=reasons,
+                    summary=summary,
+                )
+            )
+
+        raw_count = parsed.get(_REJECTED_CANDIDATE_DEBUG_COUNT_KEY)
+        try:
+            rejected_candidate_count = max(0, int(raw_count))
+        except (TypeError, ValueError):
+            rejected_candidate_count = len(rejected_candidates)
+        rejected_candidate_count = max(rejected_candidate_count, len(rejected_candidates))
+        return rejected_candidate_count, rejected_candidates
 
     def _evaluate_pending_preview_accuracy_for_completed_run(
         self,

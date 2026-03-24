@@ -1589,6 +1589,13 @@ def test_generation_applies_eligibility_filter_before_admin_tuning(db_session, s
     assert payload["run"]["excluded_candidate_count"] == 2
     assert payload["run"]["exclusion_counts_by_reason"]["invalid_candidate"] == 2
     assert [item["suggested_domain"] for item in payload["drafts"]] == ["valid-local-contractor.com"]
+    assert payload["rejected_candidate_count"] == 2
+    rejected_by_domain = {item["domain"]: item for item in payload["rejected_candidates"]}
+    assert set(rejected_by_domain.keys()) == {"parked-candidate.com", "offline-candidate.com"}
+    assert "parked_domain" in rejected_by_domain["parked-candidate.com"]["reasons"]
+    assert rejected_by_domain["parked-candidate.com"]["summary"] == "Unclear overlap."
+    assert "no_live_site" in rejected_by_domain["offline-candidate.com"]["reasons"]
+    assert rejected_by_domain["offline-candidate.com"]["summary"] == "Unknown overlap."
 
 
 def test_generation_failure_with_all_candidates_excluded_persists_exclusion_telemetry(

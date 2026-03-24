@@ -43,6 +43,8 @@ The Admin panel includes plain-English helper guidance for the four competitor c
 
 These controls tune ranking/thresholding among plausible candidates only. They do not override deterministic eligibility filtering.
 
+For debugging/tuning support, competitor run-detail responses may also include bounded rejected-candidate visibility (`rejected_candidate_count`, `rejected_candidates[]` with domain + deterministic reasons + short summary). This is diagnostic only and does not affect recommendation ranking behavior.
+
 ## Deterministic EEAT Classification (Additive)
 
 Recommendation payloads now include deterministic EEAT metadata:

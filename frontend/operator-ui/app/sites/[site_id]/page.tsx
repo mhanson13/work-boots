@@ -39,6 +39,7 @@ import type {
   CompetitorProfileDraft,
   CompetitorProfileGenerationRun,
   CompetitorProfileGenerationSummaryResponse,
+  RejectedCompetitorCandidateDebug,
   CompetitorSet,
   CompetitorSnapshotRun,
   RecommendationAnalysisFreshness,
@@ -73,6 +74,7 @@ const MAX_RECENT_TUNING_CHANGES = 8;
 const COMPETITOR_PROFILE_DRAFT_CANDIDATE_COUNT = 5;
 const COMPETITOR_PROFILE_POLL_INTERVAL_MS = 2000;
 const COMPETITOR_PROFILE_POLL_MAX_ATTEMPTS = 30;
+const MAX_REJECTED_CANDIDATE_DEBUG_ROWS = 8;
 const ZIP_PROMPT_SESSION_KEY_PREFIX = "workspace:zip-prompt-dismissed";
 
 type SiteTimelineEventType =
@@ -316,6 +318,38 @@ function formatFailureCategory(value: string | null | undefined): string {
     return "-";
   }
   return normalized.replace(/_/g, " ");
+}
+
+function normalizeRejectedCompetitorCandidates(
+  value: RejectedCompetitorCandidateDebug[] | null | undefined,
+): RejectedCompetitorCandidateDebug[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((candidate) => {
+      const domain = (candidate.domain || "").trim().toLowerCase();
+      if (!domain) {
+        return null;
+      }
+      const reasons = Array.isArray(candidate.reasons)
+        ? candidate.reasons
+            .map((reason) => String(reason || "").trim().toLowerCase())
+            .filter((reason) => Boolean(reason))
+        : [];
+      if (reasons.length === 0) {
+        return null;
+      }
+      const uniqueReasons = Array.from(new Set(reasons)).slice(0, 4) as RejectedCompetitorCandidateDebug["reasons"];
+      const summary = truncateOptionalText(candidate.summary, 180);
+      return {
+        domain,
+        reasons: uniqueReasons,
+        summary,
+      };
+    })
+    .filter((candidate): candidate is RejectedCompetitorCandidateDebug => candidate !== null)
+    .slice(0, MAX_REJECTED_CANDIDATE_DEBUG_ROWS);
 }
 
 function formatTuningSettingLabel(setting: RecommendationTuningSuggestion["setting"]): string {
@@ -1363,6 +1397,10 @@ export default function SiteWorkspacePage() {
     useState<CompetitorProfileGenerationSummaryResponse | null>(null);
   const [latestCompetitorProfileRunId, setLatestCompetitorProfileRunId] = useState<string | null>(null);
   const [competitorProfileDrafts, setCompetitorProfileDrafts] = useState<CompetitorProfileDraft[]>([]);
+  const [rejectedCompetitorCandidateCount, setRejectedCompetitorCandidateCount] = useState(0);
+  const [rejectedCompetitorCandidates, setRejectedCompetitorCandidates] = useState<
+    RejectedCompetitorCandidateDebug[]
+  >([]);
   const [competitorProfileLoading, setCompetitorProfileLoading] = useState(false);
   const [competitorProfileError, setCompetitorProfileError] = useState<string | null>(null);
   const [competitorProfileSummaryError, setCompetitorProfileSummaryError] = useState<string | null>(null);
@@ -2243,6 +2281,8 @@ export default function SiteWorkspacePage() {
       });
       setLatestCompetitorProfileRunId(detail.run.id);
       setCompetitorProfileDrafts(detail.drafts);
+      setRejectedCompetitorCandidateCount(Math.max(0, detail.rejected_candidate_count || 0));
+      setRejectedCompetitorCandidates(normalizeRejectedCompetitorCandidates(detail.rejected_candidates));
       setCompetitorProfileActionMessage(
         "Competitor profile generation queued. Drafts will appear after the run completes.",
       );
@@ -2281,6 +2321,8 @@ export default function SiteWorkspacePage() {
       });
       setLatestCompetitorProfileRunId(detail.run.id);
       setCompetitorProfileDrafts(detail.drafts);
+      setRejectedCompetitorCandidateCount(Math.max(0, detail.rejected_candidate_count || 0));
+      setRejectedCompetitorCandidates(normalizeRejectedCompetitorCandidates(detail.rejected_candidates));
       setCompetitorProfileActionMessage(
         "Retry queued. Drafts will appear after the run completes.",
       );
@@ -2985,12 +3027,16 @@ export default function SiteWorkspacePage() {
               return;
             }
             setCompetitorProfileDrafts(detail.drafts);
+            setRejectedCompetitorCandidateCount(Math.max(0, detail.rejected_candidate_count || 0));
+            setRejectedCompetitorCandidates(normalizeRejectedCompetitorCandidates(detail.rejected_candidates));
             setCompetitorProfileError(null);
           } catch (error) {
             if (cancelled) {
               return;
             }
             setCompetitorProfileDrafts([]);
+            setRejectedCompetitorCandidateCount(0);
+            setRejectedCompetitorCandidates([]);
             setCompetitorProfileError(safeSectionErrorMessage("AI competitor profiles", error));
           } finally {
             if (!cancelled) {
@@ -2999,12 +3045,16 @@ export default function SiteWorkspacePage() {
           }
         } else {
           setCompetitorProfileDrafts([]);
+          setRejectedCompetitorCandidateCount(0);
+          setRejectedCompetitorCandidates([]);
           setCompetitorProfileLoading(false);
         }
       } else {
         setCompetitorProfileGenerationRuns([]);
         setLatestCompetitorProfileRunId(null);
         setCompetitorProfileDrafts([]);
+        setRejectedCompetitorCandidateCount(0);
+        setRejectedCompetitorCandidates([]);
         setCompetitorProfileLoading(false);
         setCompetitorProfileError(safeSectionErrorMessage("AI competitor profiles", competitorProfileRunsResult.reason));
       }
@@ -3094,6 +3144,8 @@ export default function SiteWorkspacePage() {
         setLatestCompetitorProfileRunId(latestRun ? latestRun.id : null);
         if (!latestRun) {
           setCompetitorProfileDrafts([]);
+          setRejectedCompetitorCandidateCount(0);
+          setRejectedCompetitorCandidates([]);
           setCompetitorProfilePolling(false);
           return;
         }
@@ -3109,6 +3161,8 @@ export default function SiteWorkspacePage() {
           return;
         }
         setCompetitorProfileDrafts(detail.drafts);
+        setRejectedCompetitorCandidateCount(Math.max(0, detail.rejected_candidate_count || 0));
+        setRejectedCompetitorCandidates(normalizeRejectedCompetitorCandidates(detail.rejected_candidates));
         setCompetitorProfileError(null);
         if (isCompetitorProfileRunTerminalStatus(detail.run.status)) {
           setCompetitorProfilePolling(false);
@@ -3118,6 +3172,8 @@ export default function SiteWorkspacePage() {
           return;
         }
         setCompetitorProfileError(safeSectionErrorMessage("AI competitor profiles", error));
+        setRejectedCompetitorCandidateCount(0);
+        setRejectedCompetitorCandidates([]);
         setCompetitorProfilePolling(false);
       } finally {
         inFlight = false;
@@ -3842,6 +3898,49 @@ export default function SiteWorkspacePage() {
               </p>
             ) : null}
           </Fragment>
+        ) : null}
+        {rejectedCompetitorCandidateCount > 0 && rejectedCompetitorCandidates.length > 0 ? (
+          <div className="stack" data-testid="rejected-competitor-candidates-debug">
+            <p className="hint muted">
+              <strong>Rejected competitor candidates (debug)</strong>: {rejectedCompetitorCandidateCount}
+            </p>
+            <div className="table-container table-container-compact">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Domain</th>
+                    <th>Reasons</th>
+                    <th>Summary</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rejectedCompetitorCandidates.map((candidate) => (
+                    <tr key={`${candidate.domain}-${candidate.reasons.join("-")}`}>
+                      <td>
+                        <code>{candidate.domain}</code>
+                      </td>
+                      <td>
+                        <div className="stack-micro">
+                          {candidate.reasons.map((reason) => (
+                            <span key={`${candidate.domain}-${reason}`} className="badge badge-muted">
+                              {formatFailureCategory(reason)}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="table-cell-wrap">{candidate.summary || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {rejectedCompetitorCandidateCount > rejectedCompetitorCandidates.length ? (
+              <p className="hint muted">
+                Showing {rejectedCompetitorCandidates.length} of {rejectedCompetitorCandidateCount} rejected
+                candidates.
+              </p>
+            ) : null}
+          </div>
         ) : null}
         {latestCompetitorProfileRun?.parent_run_id ? (
           <p className="hint muted">

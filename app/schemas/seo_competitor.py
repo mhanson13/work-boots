@@ -25,6 +25,14 @@ SEOCompetitorProfileExclusionReason = Literal[
     "existing_domain_match",
     "invalid_candidate",
 ]
+SEOCompetitorProfileIneligibilityReason = Literal[
+    "parked_domain",
+    "no_live_site",
+    "weak_business_identity",
+    "out_of_market",
+    "excluded_domain_pattern",
+    "insufficient_overlap_evidence",
+]
 SEOCompetitorProfileDraftReviewStatus = Literal["pending", "edited", "accepted", "rejected"]
 SEOCompetitorProfileCleanupExecutionStatus = Literal["completed", "failed"]
 SEOSummaryStatus = Literal["completed", "failed"]
@@ -44,6 +52,14 @@ _COMPETITOR_PROFILE_EXCLUSION_REASONS: tuple[str, ...] = (
     "big_box_mismatch",
     "existing_domain_match",
     "invalid_candidate",
+)
+_COMPETITOR_PROFILE_INELIGIBILITY_REASONS: tuple[str, ...] = (
+    "parked_domain",
+    "no_live_site",
+    "weak_business_identity",
+    "out_of_market",
+    "excluded_domain_pattern",
+    "insufficient_overlap_evidence",
 )
 
 
@@ -295,10 +311,50 @@ class SEOCompetitorProfileGenerationRunListResponse(BaseModel):
     total: int
 
 
+class SEOCompetitorProfileRejectedCandidateRead(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    domain: str = Field(min_length=1, max_length=255)
+    reasons: list[SEOCompetitorProfileIneligibilityReason] = Field(default_factory=list)
+    summary: str | None = Field(default=None, max_length=240)
+
+    @field_validator("domain", mode="before")
+    @classmethod
+    def normalize_domain(cls, value: Any) -> str:
+        cleaned = _strip_or_none(str(value) if value is not None else None)
+        if cleaned is None:
+            raise ValueError("domain is required")
+        return cleaned
+
+    @field_validator("reasons", mode="before")
+    @classmethod
+    def normalize_reasons(cls, value: Any) -> list[SEOCompetitorProfileIneligibilityReason]:
+        if value is None:
+            return []
+        if not isinstance(value, (list, tuple)):
+            return []
+        normalized: list[SEOCompetitorProfileIneligibilityReason] = []
+        seen: set[str] = set()
+        for raw_reason in value:
+            reason = str(raw_reason or "").strip().lower()
+            if reason not in _COMPETITOR_PROFILE_INELIGIBILITY_REASONS or reason in seen:
+                continue
+            seen.add(reason)
+            normalized.append(reason)  # type: ignore[arg-type]
+        return normalized
+
+    @field_validator("summary", mode="before")
+    @classmethod
+    def normalize_summary(cls, value: Any) -> str | None:
+        return _strip_or_none(str(value) if value is not None else None)
+
+
 class SEOCompetitorProfileGenerationRunDetailRead(BaseModel):
     run: SEOCompetitorProfileGenerationRunRead
     drafts: list[SEOCompetitorProfileDraftRead]
     total_drafts: int
+    rejected_candidate_count: int = Field(default=0, ge=0)
+    rejected_candidates: list[SEOCompetitorProfileRejectedCandidateRead] = Field(default_factory=list)
 
 
 class SEOCompetitorProfileGenerationObservabilitySummaryRead(BaseModel):

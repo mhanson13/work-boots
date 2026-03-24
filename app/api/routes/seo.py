@@ -63,6 +63,7 @@ from app.schemas.seo_competitor import (
     SEOCompetitorProfileGenerationRunListResponse,
     SEOCompetitorProfileGenerationObservabilitySummaryRead,
     SEOCompetitorProfileGenerationRunRead,
+    SEOCompetitorProfileRejectedCandidateRead,
     SEOCompetitorDomainCreateRequest,
     SEOCompetitorDomainListResponse,
     SEOCompetitorDomainRead,
@@ -2496,12 +2497,20 @@ def _to_competitor_profile_generation_run_detail_response(
     *,
     run,
     drafts,
+    rejected_candidate_count: int = 0,
+    rejected_candidates=None,
 ) -> SEOCompetitorProfileGenerationRunDetailRead:
     serialized_drafts = [SEOCompetitorProfileDraftRead.model_validate(item) for item in drafts]
+    serialized_rejected_candidates = [
+        SEOCompetitorProfileRejectedCandidateRead.model_validate(item)
+        for item in (rejected_candidates or [])
+    ]
     return SEOCompetitorProfileGenerationRunDetailRead(
         run=SEOCompetitorProfileGenerationRunRead.model_validate(run),
         drafts=serialized_drafts,
         total_drafts=len(serialized_drafts),
+        rejected_candidate_count=max(0, int(rejected_candidate_count)),
+        rejected_candidates=serialized_rejected_candidates,
     )
 
 
@@ -2557,6 +2566,8 @@ def create_competitor_profile_generation_run(
     return _to_competitor_profile_generation_run_detail_response(
         run=result.run,
         drafts=result.drafts,
+        rejected_candidate_count=result.rejected_candidate_count,
+        rejected_candidates=result.rejected_candidates,
     )
 
 
@@ -2701,6 +2712,8 @@ def get_competitor_profile_generation_run_detail(
     return _to_competitor_profile_generation_run_detail_response(
         run=detail.run,
         drafts=detail.drafts,
+        rejected_candidate_count=detail.rejected_candidate_count,
+        rejected_candidates=detail.rejected_candidates,
     )
 
 
@@ -2756,6 +2769,8 @@ def retry_competitor_profile_generation_run(
     return _to_competitor_profile_generation_run_detail_response(
         run=result.run,
         drafts=result.drafts,
+        rejected_candidate_count=result.rejected_candidate_count,
+        rejected_candidates=result.rejected_candidates,
     )
 
 

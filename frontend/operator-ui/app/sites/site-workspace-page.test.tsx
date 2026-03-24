@@ -4256,6 +4256,7 @@ describe("site workspace ai competitor profile drafts", () => {
     expect(screen.getByText(/Last 30d: queued 0 \| running 0 \| completed 1 \| failed 0/)).toBeInTheDocument();
     expect(screen.getByText(/Candidate telemetry \(1 runs\): raw 2 \| included 2 \| excluded 0/)).toBeInTheDocument();
     expect(screen.queryByText(/Exclusion reasons:/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("rejected-competitor-candidates-debug")).not.toBeInTheDocument();
     expect(screen.getAllByTestId("competitor-profile-draft-row")).toHaveLength(2);
     expect(mockFetchCompetitorProfileGenerationRuns).toHaveBeenCalled();
     expect(mockFetchCompetitorProfileGenerationRunDetail).toHaveBeenCalled();
@@ -4313,6 +4314,74 @@ describe("site workspace ai competitor profile drafts", () => {
     expect(screen.getByText(/Exclusion reasons:/i)).toHaveTextContent(
       "Exclusion reasons: big box mismatch=1, directory or aggregator=2, duplicate=1, low relevance=2",
     );
+  });
+
+  it("renders rejected competitor candidates debug details when run detail includes deterministic rejections", async () => {
+    seedCompetitorProfileGenerationWorkspaceData();
+    const run = buildCompetitorProfileGenerationRun({
+      id: "gen-run-debug-rejections",
+      status: "completed",
+      generated_draft_count: 1,
+    });
+    mockFetchCompetitorProfileGenerationRuns.mockResolvedValue({
+      items: [run],
+      total: 1,
+    });
+    mockFetchCompetitorProfileGenerationRunDetail.mockResolvedValue({
+      run,
+      drafts: [
+        {
+          id: "draft-valid",
+          business_id: "biz-1",
+          site_id: "site-1",
+          generation_run_id: run.id,
+          suggested_name: "Valid Competitor",
+          suggested_domain: "valid-competitor.example",
+          competitor_type: "direct",
+          summary: "Valid draft summary",
+          why_competitor: "Valid rationale",
+          evidence: "Valid evidence",
+          confidence_score: 0.7,
+          source: "ai_generated",
+          review_status: "pending",
+          edited_fields_json: null,
+          review_notes: null,
+          reviewed_by_principal_id: null,
+          reviewed_at: null,
+          accepted_competitor_set_id: null,
+          accepted_competitor_domain_id: null,
+          created_at: "2026-03-21T01:00:00Z",
+          updated_at: "2026-03-21T01:00:00Z",
+        },
+      ],
+      total_drafts: 1,
+      rejected_candidate_count: 3,
+      rejected_candidates: [
+        {
+          domain: "parked-candidate.com",
+          reasons: ["parked_domain"],
+          summary: "Unclear overlap.",
+        },
+        {
+          domain: "out-of-market.example",
+          reasons: ["out_of_market", "insufficient_overlap_evidence"],
+          summary: "Appears to serve a different region.",
+        },
+      ],
+    });
+
+    render(<SiteWorkspacePage />);
+
+    const debugBlock = await screen.findByTestId("rejected-competitor-candidates-debug");
+    expect(within(debugBlock).getByText(/Rejected competitor candidates \(debug\)/i)).toBeInTheDocument();
+    expect(within(debugBlock).getByText(/: 3/)).toBeInTheDocument();
+    expect(within(debugBlock).getByText("parked-candidate.com")).toBeInTheDocument();
+    expect(within(debugBlock).getByText("parked domain")).toBeInTheDocument();
+    expect(within(debugBlock).getByText("out of market")).toBeInTheDocument();
+    expect(within(debugBlock).getByText("insufficient overlap evidence")).toBeInTheDocument();
+    expect(
+      within(debugBlock).getByText("Showing 2 of 3 rejected candidates."),
+    ).toBeInTheDocument();
   });
 
   it("triggers generation and refreshes visible drafts", async () => {

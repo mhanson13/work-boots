@@ -308,10 +308,26 @@ export interface CompetitorProfileGenerationRunListResponse {
   total: number;
 }
 
+export type CompetitorCandidateIneligibilityReason =
+  | "parked_domain"
+  | "no_live_site"
+  | "weak_business_identity"
+  | "out_of_market"
+  | "excluded_domain_pattern"
+  | "insufficient_overlap_evidence";
+
+export interface RejectedCompetitorCandidateDebug {
+  domain: string;
+  reasons: CompetitorCandidateIneligibilityReason[];
+  summary: string | null;
+}
+
 export interface CompetitorProfileGenerationRunDetailResponse {
   run: CompetitorProfileGenerationRun;
   drafts: CompetitorProfileDraft[];
   total_drafts: number;
+  rejected_candidate_count?: number;
+  rejected_candidates?: RejectedCompetitorCandidateDebug[];
 }
 
 export interface CompetitorProfileGenerationSummaryResponse {

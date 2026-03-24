@@ -224,6 +224,20 @@ Interpretation guidance:
 - this reflects input context quality for competitor matching, not model certainty or scoring
 - `weak`/`mixed` indicates results may be conservative until location/industry/service context is improved
 
+## Rejected Competitor Candidates (Debug)
+
+When competitor run detail payloads include rejected-candidate metadata, the workspace can render a compact debug block in the AI Competitor Profiles area:
+
+- total rejected candidate count
+- bounded rows with domain
+- deterministic reason badges
+- short summary text
+
+Rendering rules:
+- hide the block entirely when rejected-candidate debug metadata is absent or empty
+- keep the block secondary/debug-oriented (not a primary operator alert)
+- cap displayed rows and show `showing X of Y` when payload count exceeds rendered rows
+
 ## Weak Location Context ZIP Prompt
 
 When workspace summary metadata indicates weak location context and no stored ZIP:
