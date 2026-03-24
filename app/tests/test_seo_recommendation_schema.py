@@ -199,6 +199,33 @@ def test_recommendation_read_falls_back_to_general_theme_for_sparse_metadata() -
     assert recommendation.theme_label == "General site improvement"
 
 
+def test_recommendation_read_derives_default_progress_summary_from_status() -> None:
+    suggested = SEORecommendationRead.model_validate(
+        _recommendation_payload(
+            recommendation_progress_status="suggested",
+            recommendation_progress_summary=None,
+        )
+    )
+    pending_refresh = SEORecommendationRead.model_validate(
+        _recommendation_payload(
+            recommendation_progress_status="applied_pending_refresh",
+            recommendation_progress_summary=None,
+        )
+    )
+    reflected = SEORecommendationRead.model_validate(
+        _recommendation_payload(
+            recommendation_progress_status="reflected_in_latest_analysis",
+            recommendation_progress_summary=None,
+        )
+    )
+
+    assert suggested.recommendation_progress_summary == "Suggested action not yet applied."
+    assert pending_refresh.recommendation_progress_summary == (
+        "Applied. Waiting for the next analysis refresh to reflect this change."
+    )
+    assert reflected.recommendation_progress_summary == "Applied and reflected in the latest analysis."
+
+
 def test_recommendation_start_here_read_normalizes_context_flags() -> None:
     start_here = SEORecommendationStartHereRead.model_validate(
         {

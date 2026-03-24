@@ -716,6 +716,69 @@ def _derive_workspace_analysis_freshness(
     )
 
 
+def _extract_workspace_applied_recommendation_ids(
+    *,
+    latest_applied_preview_event: SEOCompetitorTuningPreviewEvent | None,
+    recommendations: list[SEORecommendationRead],
+    tuning_suggestions: list[SEORecommendationTuningSuggestionRead],
+) -> set[str]:
+    if latest_applied_preview_event is None or latest_applied_preview_event.applied_at is None:
+        return set()
+    if not recommendations or not tuning_suggestions:
+        return set()
+
+    preview_response = (
+        latest_applied_preview_event.preview_response
+        if isinstance(latest_applied_preview_event.preview_response, dict)
+        else None
+    )
+    changed_setting, _, proposed_value = _extract_workspace_changed_tuning_values(preview_response)
+    if changed_setting is None:
+        return set()
+
+    recommendation_ids = {item.id for item in recommendations}
+    applied_recommendation_ids: set[str] = set()
+    for suggestion in tuning_suggestions:
+        if suggestion.setting != changed_setting:
+            continue
+        if proposed_value is not None and suggestion.recommended_value != proposed_value:
+            continue
+        for linked_id in suggestion.linked_recommendation_ids:
+            if linked_id in recommendation_ids:
+                applied_recommendation_ids.add(linked_id)
+    return applied_recommendation_ids
+
+
+def _derive_workspace_recommendation_progress_metadata(
+    *,
+    recommendations: list[SEORecommendationRead],
+    applied_recommendation_ids: set[str],
+    analysis_freshness: SEORecommendationAnalysisFreshnessRead | None,
+) -> dict[str, dict[str, str]]:
+    progress_metadata: dict[str, dict[str, str]] = {}
+    for recommendation in recommendations:
+        status = "suggested"
+        summary = "Suggested action not yet applied."
+        if recommendation.id in applied_recommendation_ids:
+            if analysis_freshness is not None and analysis_freshness.status == "pending_refresh":
+                status = "applied_pending_refresh"
+                summary = "Applied. Waiting for the next analysis refresh to reflect this change."
+            elif (
+                analysis_freshness is not None
+                and analysis_freshness.status == "fresh"
+                and analysis_freshness.analysis_generated_at is not None
+                and analysis_freshness.last_apply_at is not None
+                and analysis_freshness.analysis_generated_at >= analysis_freshness.last_apply_at
+            ):
+                status = "reflected_in_latest_analysis"
+                summary = "Applied and reflected in the latest analysis."
+        progress_metadata[recommendation.id] = {
+            "recommendation_progress_status": status,
+            "recommendation_progress_summary": summary,
+        }
+    return progress_metadata
+
+
 def _format_eeat_category_label(category: SEORecommendationEEATCategory) -> str:
     if category == "experience":
         return "Experience"
@@ -1642,6 +1705,20 @@ def get_seo_recommendation_workspace_summary(
         analysis_generated_at=analysis_generated_at,
         last_apply_at=last_apply_at,
     )
+    applied_recommendation_ids = _extract_workspace_applied_recommendation_ids(
+        latest_applied_preview_event=latest_applied_preview_event,
+        recommendations=recommendations_payload.items,
+        tuning_suggestions=tuning_suggestions,
+    )
+    recommendation_progress_metadata = _derive_workspace_recommendation_progress_metadata(
+        recommendations=recommendations_payload.items,
+        applied_recommendation_ids=applied_recommendation_ids,
+        analysis_freshness=analysis_freshness,
+    )
+    recommendations_payload.items = [
+        recommendation.model_copy(update=recommendation_progress_metadata.get(recommendation.id, {}))
+        for recommendation in recommendations_payload.items
+    ]
     ordering_explanation = _build_workspace_ordering_explanation(
         recommendations=recommendations_payload.items,
         analysis_freshness=analysis_freshness,

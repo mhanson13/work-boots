@@ -918,6 +918,11 @@ def test_recommendation_workspace_summary_returns_latest_completed_run(db_sessio
     assert payload["start_here"]["title"] == payload["recommendations"]["items"][0]["title"]
     assert payload["start_here"]["reason"]
     assert payload["start_here"]["context_flags"] == []
+    assert payload["recommendations"]["items"][0]["recommendation_progress_status"] == "suggested"
+    assert (
+        payload["recommendations"]["items"][0]["recommendation_progress_summary"]
+        == "Suggested action not yet applied."
+    )
     assert payload["latest_narrative"] is None
     assert payload["tuning_suggestions"] == []
     assert payload["apply_outcome"] is None
@@ -1503,6 +1508,11 @@ def test_recommendation_workspace_summary_includes_latest_apply_outcome(db_sessi
     )
     assert payload["apply_outcome"]["reflected_on_next_run"]
     assert payload["apply_outcome"]["applied_at"] is not None
+    assert payload["recommendations"]["items"][0]["recommendation_progress_status"] == "applied_pending_refresh"
+    assert (
+        payload["recommendations"]["items"][0]["recommendation_progress_summary"]
+        == "Applied. Waiting for the next analysis refresh to reflect this change."
+    )
 
 
 def test_recommendation_workspace_summary_handles_partial_apply_metadata_safely(
@@ -1654,6 +1664,113 @@ def test_recommendation_workspace_summary_marks_fresh_when_apply_is_older_than_a
     assert payload["analysis_freshness"]["last_apply_at"] is not None
     assert payload["start_here"] is not None
     assert payload["start_here"]["context_flags"] == []
+    assert payload["recommendations"]["items"][0]["recommendation_progress_status"] == "suggested"
+
+
+def test_recommendation_workspace_summary_marks_reflected_when_apply_link_is_fresh(
+    db_session, seeded_business
+) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id)
+    audit_run_id = _seed_completed_audit_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+    )
+    run_response = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+        json={"audit_run_id": audit_run_id},
+    )
+    assert run_response.status_code == 201
+    run_id = run_response.json()["id"]
+
+    recommendation_list = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/recommendations"
+    )
+    assert recommendation_list.status_code == 200
+    recommendation = recommendation_list.json()["items"][0]
+    recommendation_id = recommendation["id"]
+
+    narrative_id = str(uuid4())
+    db_session.add(
+        SEORecommendationNarrative(
+            id=narrative_id,
+            business_id=seeded_business.id,
+            site_id=site_id,
+            recommendation_run_id=run_id,
+            version=1,
+            status="completed",
+            narrative_text="Narrative summary.",
+            top_themes_json=["seo"],
+            sections_json={
+                "tuning_suggestions": [
+                    {
+                        "setting": "competitor_candidate_min_relevance_score",
+                        "current_value": 35,
+                        "recommended_value": 30,
+                        "reason": "High low-relevance exclusions",
+                        "linked_recommendation_ids": [recommendation_id],
+                        "confidence": "medium",
+                    }
+                ]
+            },
+            provider_name="mock",
+            model_name="mock-model",
+            prompt_version="seo-recommendation-narrative-v2",
+            error_message=None,
+            created_by_principal_id="principal-1",
+        )
+    )
+    run = db_session.get(SEORecommendationRun, run_id)
+    assert run is not None
+    run.completed_at = utc_now()
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        SEOCompetitorTuningPreviewEvent(
+            id=str(uuid4()),
+            business_id=seeded_business.id,
+            site_id=site_id,
+            source_narrative_id=narrative_id,
+            source_recommendation_run_id=run_id,
+            preview_request={
+                "current_values": {
+                    "competitor_candidate_min_relevance_score": 35,
+                },
+                "proposed_values": {
+                    "competitor_candidate_min_relevance_score": 30,
+                },
+            },
+            preview_response={
+                "current_values": {
+                    "competitor_candidate_min_relevance_score": 35,
+                },
+                "proposed_values": {
+                    "competitor_candidate_min_relevance_score": 30,
+                },
+            },
+            applied_at=run.completed_at - timedelta(minutes=5),
+            evaluated_generation_run_id=None,
+            evaluated_at=None,
+            estimated_included_delta=None,
+            actual_included_delta=None,
+            error_margin=None,
+            direction_correct=None,
+        )
+    )
+    db_session.commit()
+
+    summary = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/workspace-summary"
+    )
+    assert summary.status_code == 200
+    payload = summary.json()
+    assert payload["analysis_freshness"]["status"] == "fresh"
+    assert payload["recommendations"]["items"][0]["recommendation_progress_status"] == "reflected_in_latest_analysis"
+    assert (
+        payload["recommendations"]["items"][0]["recommendation_progress_summary"]
+        == "Applied and reflected in the latest analysis."
+    )
 
 
 def test_recommendation_workspace_summary_marks_unknown_when_no_analysis_exists(

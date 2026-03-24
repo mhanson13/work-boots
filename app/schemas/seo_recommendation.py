@@ -28,6 +28,11 @@ SEORecommendationTuningSuggestionConfidence = Literal["low", "medium", "high"]
 SEORecommendationSignalSupportLevel = Literal["low", "medium", "high"]
 SEORecommendationApplyOutcomeSource = Literal["recommendation", "manual"]
 SEORecommendationAnalysisFreshnessStatus = Literal["fresh", "pending_refresh", "unknown"]
+SEORecommendationProgressStatus = Literal[
+    "suggested",
+    "applied_pending_refresh",
+    "reflected_in_latest_analysis",
+]
 SEOCompetitorContextHealthStatus = Literal["strong", "mixed", "weak"]
 SEOCompetitorContextHealthCheckKey = Literal[
     "location_context",
@@ -91,6 +96,7 @@ _ACTION_SUMMARY_EVIDENCE_ITEM_MAX_CHARS = 160
 _APPLY_OUTCOME_LABEL_MAX_CHARS = 180
 _APPLY_OUTCOME_EXPECTED_CHANGE_MAX_CHARS = 260
 _APPLY_OUTCOME_NEXT_RUN_MAX_CHARS = 220
+_RECOMMENDATION_PROGRESS_SUMMARY_MAX_CHARS = 220
 _SIGNAL_SUMMARY_EVIDENCE_SOURCE_ORDER = ("site", "competitors", "references", "themes")
 _RECOMMENDATION_EEAT_GAP_SUPPORTING_SIGNALS_MAX_ITEMS = 6
 _RECOMMENDATION_EEAT_GAP_SUPPORTING_SIGNAL_MAX_CHARS = 140
@@ -1028,6 +1034,11 @@ class SEORecommendationRead(BaseModel):
     priority_band: SEORecommendationPriorityBand
     effort_bucket: SEORecommendationEffort
     status: SEORecommendationStatus
+    recommendation_progress_status: SEORecommendationProgressStatus = "suggested"
+    recommendation_progress_summary: str | None = Field(
+        default=None,
+        max_length=_RECOMMENDATION_PROGRESS_SUMMARY_MAX_CHARS,
+    )
     decision: SEORecommendationDecision | None = None
     decision_reason: str | None = None
     assigned_principal_id: str | None = None
@@ -1069,6 +1080,22 @@ class SEORecommendationRead(BaseModel):
     @classmethod
     def normalize_status_field(cls, value: Any) -> SEORecommendationStatus:
         return _normalize_status(value)
+
+    @field_validator("recommendation_progress_status", mode="before")
+    @classmethod
+    def normalize_recommendation_progress_status(
+        cls,
+        value: Any,
+    ) -> SEORecommendationProgressStatus:
+        normalized = str(value or "").strip().lower()
+        if normalized not in {"suggested", "applied_pending_refresh", "reflected_in_latest_analysis"}:
+            return "suggested"
+        return normalized  # type: ignore[return-value]
+
+    @field_validator("recommendation_progress_summary", mode="before")
+    @classmethod
+    def normalize_recommendation_progress_summary(cls, value: Any) -> str | None:
+        return _compact_text(value, max_length=_RECOMMENDATION_PROGRESS_SUMMARY_MAX_CHARS)
 
     @field_validator("decision", mode="before")
     @classmethod
@@ -1205,6 +1232,21 @@ class SEORecommendationRead(BaseModel):
             )
         if self.theme_label is None and self.theme is not None:
             self.theme_label = format_recommendation_theme_label(self.theme)
+        return self
+
+    @model_validator(mode="after")
+    def derive_recommendation_progress_summary(self) -> "SEORecommendationRead":
+        if self.recommendation_progress_summary is not None:
+            return self
+
+        if self.recommendation_progress_status == "applied_pending_refresh":
+            self.recommendation_progress_summary = (
+                "Applied. Waiting for the next analysis refresh to reflect this change."
+            )
+        elif self.recommendation_progress_status == "reflected_in_latest_analysis":
+            self.recommendation_progress_summary = "Applied and reflected in the latest analysis."
+        else:
+            self.recommendation_progress_summary = "Suggested action not yet applied."
         return self
 
 

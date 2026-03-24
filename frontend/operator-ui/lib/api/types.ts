@@ -684,6 +684,10 @@ export interface RecommendationApplyOutcome {
 }
 
 export type RecommendationAnalysisFreshnessStatus = "fresh" | "pending_refresh" | "unknown";
+export type RecommendationProgressStatus =
+  | "suggested"
+  | "applied_pending_refresh"
+  | "reflected_in_latest_analysis";
 
 export interface RecommendationAnalysisFreshness {
   status: RecommendationAnalysisFreshnessStatus;
@@ -882,6 +886,8 @@ export interface Recommendation {
   primary_priority_reason?: RecommendationPriorityReason | null;
   theme?: RecommendationTheme | null;
   theme_label?: string | null;
+  recommendation_progress_status?: RecommendationProgressStatus;
+  recommendation_progress_summary?: string | null;
   decision_reason: string | null;
   created_at: string;
   updated_at: string;

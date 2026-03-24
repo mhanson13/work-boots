@@ -2597,6 +2597,49 @@ describe("site workspace timeline controls", () => {
     expect(mockFetchRecommendationWorkspaceSummary).toHaveBeenCalledWith("token-1", "biz-1", "site-1");
   });
 
+  it("renders recommendation progress states with deterministic summaries", async () => {
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        recommendations: {
+          items: [
+            buildRecommendation({
+              id: "rec-progress-suggested",
+              title: "Suggested recommendation",
+            }),
+            buildRecommendation({
+              id: "rec-progress-pending",
+              title: "Pending refresh recommendation",
+              recommendation_progress_status: "applied_pending_refresh",
+              recommendation_progress_summary:
+                "Applied. Waiting for the next analysis refresh to reflect this change.",
+            }),
+            buildRecommendation({
+              id: "rec-progress-reflected",
+              title: "Reflected recommendation",
+              recommendation_progress_status: "reflected_in_latest_analysis",
+              recommendation_progress_summary: "Applied and reflected in the latest analysis.",
+            }),
+          ],
+          total: 3,
+        },
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("heading", { name: "Deterministic Recommendations" });
+    expect(screen.getAllByText("Progress").length).toBeGreaterThan(0);
+    expect(screen.getByText("Suggested")).toBeInTheDocument();
+    expect(screen.getByText("Suggested action not yet applied.")).toBeInTheDocument();
+    expect(screen.getByText("Applied, pending refresh")).toBeInTheDocument();
+    expect(
+      screen.getByText("Applied. Waiting for the next analysis refresh to reflect this change."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Reflected in latest analysis")).toBeInTheDocument();
+    expect(screen.getByText("Applied and reflected in the latest analysis.")).toBeInTheDocument();
+  });
+
   it("renders action, competitor, and support context when all optional narrative fields are present", async () => {
     seedRichWorkspaceData();
     mockFetchRecommendationWorkspaceSummary.mockResolvedValue(

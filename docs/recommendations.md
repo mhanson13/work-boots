@@ -241,6 +241,38 @@ Shape:
 
 No AI calls, thresholds, or fuzzy inference are used.
 
+## Recommendation Progress Status (Deterministic)
+
+Workspace recommendation rows now include additive deterministic progress metadata:
+
+- `recommendation_progress_status`
+- `recommendation_progress_summary`
+
+Status values:
+- `suggested`
+- `applied_pending_refresh`
+- `reflected_in_latest_analysis`
+
+### Derivation Rules
+- `suggested`:
+  - no deterministic apply linkage is available for the recommendation, or
+  - freshness data is unknown/insufficient for a safe reflected claim.
+- `applied_pending_refresh`:
+  - deterministic apply linkage exists, and
+  - workspace `analysis_freshness.status == pending_refresh`.
+- `reflected_in_latest_analysis`:
+  - deterministic apply linkage exists, and
+  - workspace `analysis_freshness.status == fresh`, and
+  - `analysis_generated_at >= last_apply_at`.
+
+This uses existing apply + freshness timestamps and linked tuning-suggestion metadata only.
+No AI calls, scoring, or workflow-state persistence is added.
+
+### Relationship to Apply Outcome + Freshness
+- `apply_outcome` answers what changed at the latest apply event.
+- `analysis_freshness` answers whether the latest analysis is newer than the latest apply.
+- `recommendation_progress_status` applies that shared freshness truth at recommendation-row level when linkage is deterministic.
+
 ## Competitor Context Health (Deterministic)
 
 Workspace summary responses now include additive `competitor_context_health` metadata that describes whether competitor prompt inputs are sufficiently grounded.

@@ -202,6 +202,26 @@ Fallback rules:
 - when `site_location_context_source` is present, render a subtle provenance line such as
   `Location source: ZIP provided` inside the same compact metadata area
 
+## Recommendation Progress Status Rendering
+
+Recommendation rows can include additive progress metadata:
+
+- `recommendation_progress_status`
+- `recommendation_progress_summary`
+
+Recommended row treatment:
+- render a compact `Progress` line per recommendation
+- show a subtle status badge:
+  - `Suggested`
+  - `Applied, pending refresh`
+  - `Reflected in latest analysis`
+- show a one-line bounded summary beneath/next to the badge
+
+Fallback rules:
+- if progress fields are missing, safely fall back to `Suggested` copy
+- do not infer reflected state from UI-only heuristics
+- rely on backend-provided deterministic status, which is aligned to workspace `analysis_freshness`
+
 ## Competitor Context Health Indicator
 
 Workspace summary payloads can include optional `competitor_context_health` metadata:

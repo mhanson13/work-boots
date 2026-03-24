@@ -49,6 +49,7 @@ import type {
   RecommendationEEATCategory,
   RecommendationEEATGapSummary,
   RecommendationOrderingExplanation,
+  RecommendationProgressStatus,
   RecommendationPriorityReason,
   RecommendationStartHere,
   RecommendationTheme,
@@ -1041,6 +1042,66 @@ function analysisFreshnessBadgeClass(status: RecommendationAnalysisFreshnessView
     default:
       return "badge badge-muted";
   }
+}
+
+interface RecommendationProgressView {
+  status: RecommendationProgressStatus;
+  label: string;
+  badgeClass: string;
+  summary: string;
+}
+
+function recommendationProgressLabel(status: RecommendationProgressStatus): string {
+  switch (status) {
+    case "applied_pending_refresh":
+      return "Applied, pending refresh";
+    case "reflected_in_latest_analysis":
+      return "Reflected in latest analysis";
+    case "suggested":
+    default:
+      return "Suggested";
+  }
+}
+
+function recommendationProgressBadgeClass(status: RecommendationProgressStatus): string {
+  switch (status) {
+    case "applied_pending_refresh":
+      return "badge badge-warn";
+    case "reflected_in_latest_analysis":
+      return "badge badge-success";
+    case "suggested":
+    default:
+      return "badge badge-muted";
+  }
+}
+
+function recommendationProgressDefaultSummary(status: RecommendationProgressStatus): string {
+  switch (status) {
+    case "applied_pending_refresh":
+      return "Applied. Waiting for the next analysis refresh to reflect this change.";
+    case "reflected_in_latest_analysis":
+      return "Applied and reflected in the latest analysis.";
+    case "suggested":
+    default:
+      return "Suggested action not yet applied.";
+  }
+}
+
+function normalizeRecommendationProgress(item: Recommendation): RecommendationProgressView {
+  const status: RecommendationProgressStatus =
+    item.recommendation_progress_status === "applied_pending_refresh"
+    || item.recommendation_progress_status === "reflected_in_latest_analysis"
+    || item.recommendation_progress_status === "suggested"
+      ? item.recommendation_progress_status
+      : "suggested";
+  const summary = truncateOptionalText(item.recommendation_progress_summary, 220)
+    || recommendationProgressDefaultSummary(status);
+  return {
+    status,
+    label: recommendationProgressLabel(status),
+    badgeClass: recommendationProgressBadgeClass(status),
+    summary,
+  };
 }
 
 interface CompetitorContextHealthCheckView {
@@ -4600,6 +4661,7 @@ export default function SiteWorkspacePage() {
                         const impactLabel = recommendationImpactLabel(item, recommendationRank);
                         const eeatCategories = normalizeEEATCategories(item.eeat_categories);
                         const priorityReasons = normalizeRecommendationPriorityReasons(item.priority_reasons);
+                        const recommendationProgress = normalizeRecommendationProgress(item);
                         const rowId = recommendationRowId(item.id);
                         return (
                           <tr
@@ -4640,6 +4702,11 @@ export default function SiteWorkspacePage() {
                                   </div>
                                 </>
                               ) : null}
+                              <span className="hint muted">Progress</span>
+                              <div className="link-row" data-testid="recommendation-progress-status">
+                                <span className={recommendationProgress.badgeClass}>{recommendationProgress.label}</span>
+                                <span className="hint muted">{recommendationProgress.summary}</span>
+                              </div>
                               <span className="hint muted"><code>{item.id}</code></span>
                             </td>
                             <td>{item.category}</td>
@@ -4691,6 +4758,7 @@ export default function SiteWorkspacePage() {
                               const impactLabel = recommendationImpactLabel(item, recommendationRank);
                               const eeatCategories = normalizeEEATCategories(item.eeat_categories);
                               const priorityReasons = normalizeRecommendationPriorityReasons(item.priority_reasons);
+                              const recommendationProgress = normalizeRecommendationProgress(item);
                               const rowId = recommendationRowId(item.id);
                               return (
                                 <tr
@@ -4731,6 +4799,11 @@ export default function SiteWorkspacePage() {
                                         </div>
                                       </>
                                     ) : null}
+                                    <span className="hint muted">Progress</span>
+                                    <div className="link-row" data-testid="recommendation-progress-status">
+                                      <span className={recommendationProgress.badgeClass}>{recommendationProgress.label}</span>
+                                      <span className="hint muted">{recommendationProgress.summary}</span>
+                                    </div>
                                     <span className="hint muted"><code>{item.id}</code></span>
                                   </td>
                                   <td>{item.category}</td>
