@@ -34,6 +34,16 @@ Cards use progressive disclosure:
 - Deterministic recommendation artifacts remain canonical.
 - No auto-apply behavior is introduced in this layer.
 
+## Competitor Influence Visibility
+
+When available in API payloads, recommendation narratives include an optional
+`competitor_influence` object that indicates whether normalized competitor
+context influenced recommendation specificity.
+
+- This is informational and bounded for operator readability.
+- It is absent/`null` when no usable competitor signal exists.
+- It must not be interpreted as raw model output.
+
 ## AI -> Action Bridge
 
 The workspace now links AI opportunities directly to the deterministic tuning/apply loop when linkage data exists.

@@ -55,6 +55,7 @@ _PREVIEW_CAVEAT = (
 )
 _PREVIEW_SUMMARY_MAX_CHARS = 500
 _PREVIEW_RISK_FLAG_MAX_CHARS = 160
+_COMPETITOR_INFLUENCE_SUMMARY_MAX_CHARS = 260
 _TUNING_SETTINGS_BOUNDS: dict[str, tuple[int, int]] = {
     "competitor_candidate_min_relevance_score": (MIN_RELEVANCE_SCORE_MIN, MIN_RELEVANCE_SCORE_MAX),
     "competitor_candidate_big_box_penalty": (BIG_BOX_PENALTY_MIN, BIG_BOX_PENALTY_MAX),
@@ -168,6 +169,10 @@ class SEORecommendationNarrativeService:
                 competitor_context=competitor_context,
                 current_tuning_values=current_tuning_values,
             )
+            sections_json = self._augment_sections_with_competitor_influence(
+                sections=output.sections,
+                competitor_context=competitor_context,
+            )
             narrative = SEORecommendationNarrative(
                 id=str(uuid4()),
                 business_id=business_id,
@@ -177,7 +182,7 @@ class SEORecommendationNarrativeService:
                 status="completed",
                 narrative_text=output.narrative_text,
                 top_themes_json=output.top_themes,
-                sections_json=output.sections,
+                sections_json=sections_json,
                 provider_name=output.provider_name,
                 model_name=output.model_name,
                 prompt_version=output.prompt_version,
@@ -524,6 +529,78 @@ class SEORecommendationNarrativeService:
             "total_excluded_candidate_count": int(total_excluded_candidate_count),
             "exclusion_counts_by_reason": exclusion_counts_by_reason,
         }
+
+    def _augment_sections_with_competitor_influence(
+        self,
+        *,
+        sections: dict[str, object] | None,
+        competitor_context: dict[str, object],
+    ) -> dict[str, object] | None:
+        competitor_influence = self._build_competitor_influence_payload(competitor_context)
+        if competitor_influence is None:
+            return sections
+
+        if isinstance(sections, dict):
+            merged = dict(sections)
+        else:
+            merged = {}
+        merged["competitor_influence"] = competitor_influence
+        return merged
+
+    def _build_competitor_influence_payload(
+        self,
+        competitor_context: dict[str, object],
+    ) -> dict[str, object] | None:
+        top_opportunities = self._to_compact_string_list(competitor_context.get("top_opportunities"), limit=5, max_length=140)
+        competitor_names = self._to_compact_string_list(competitor_context.get("competitor_names"), limit=5, max_length=120)
+        competitor_summary = self._to_compact_string(competitor_context.get("competitor_summary"), max_length=180)
+
+        if not top_opportunities and not competitor_names and not competitor_summary:
+            return None
+
+        if competitor_summary:
+            summary = f"Recommendation specificity used normalized competitor context: {competitor_summary}"
+        elif top_opportunities and competitor_names:
+            summary = "Recommendation specificity used recent competitor opportunities and nearby competitor names."
+        elif top_opportunities:
+            summary = "Recommendation specificity used recent competitor opportunity signals."
+        else:
+            summary = "Recommendation specificity used nearby competitor context."
+
+        summary = summary[:_COMPETITOR_INFLUENCE_SUMMARY_MAX_CHARS]
+        return {
+            "used": True,
+            "summary": summary,
+            "top_opportunities": top_opportunities,
+            "competitor_names": competitor_names,
+        }
+
+    @staticmethod
+    def _to_compact_string(value: object, *, max_length: int) -> str:
+        if value is None:
+            return ""
+        normalized = " ".join(str(value).split()).strip()
+        if not normalized:
+            return ""
+        return normalized[:max_length]
+
+    def _to_compact_string_list(self, value: object, *, limit: int, max_length: int) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        items: list[str] = []
+        seen: set[str] = set()
+        for raw_item in value:
+            normalized = self._to_compact_string(raw_item, max_length=max_length)
+            if not normalized:
+                continue
+            key = normalized.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            items.append(normalized)
+            if len(items) >= limit:
+                break
+        return items
 
     def _build_competitor_context(self, *, business_id: str, site_id: str) -> dict[str, object]:
         empty_context = extract_recommendation_competitor_context(None)

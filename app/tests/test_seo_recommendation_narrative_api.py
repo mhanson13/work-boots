@@ -38,6 +38,7 @@ NARRATIVE_RESPONSE_KEYS = {
     "narrative_text",
     "top_themes_json",
     "sections_json",
+    "competitor_influence",
     "provider_name",
     "model_name",
     "prompt_version",
@@ -305,6 +306,7 @@ def test_recommendation_narrative_manual_trigger_success_and_retrieval(db_sessio
     assert narrative["model_name"]
     assert narrative["prompt_version"]
     assert narrative["error_message"] is None
+    assert narrative["competitor_influence"] is None
 
     list_response = client.get(
         f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/narratives"
@@ -545,6 +547,96 @@ def test_recommendation_narrative_optionally_includes_normalized_competitor_cont
         "competitor_summary": "Competitors emphasize emergency response and local trust.",
         "competitor_names": ["Alpha Plumbing", "Beta HVAC"],
     }
+    payload = response.json()
+    assert payload["competitor_influence"] == {
+        "used": True,
+        "summary": (
+            "Recommendation specificity used normalized competitor context: "
+            "Competitors emphasize emergency response and local trust."
+        ),
+        "top_opportunities": ["Improve emergency pages", "Add local proof"],
+        "competitor_names": ["Alpha Plumbing", "Beta HVAC"],
+    }
+
+
+def test_recommendation_narrative_does_not_surface_competitor_influence_for_fallback_only_payload(
+    db_session,
+    seeded_business,
+) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id, run_id = _create_completed_recommendation_run(client, db_session, seeded_business.id)
+    _seed_competitor_generation_telemetry_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        raw_candidate_count=3,
+        included_candidate_count=0,
+        excluded_candidate_count=3,
+        exclusion_counts_by_reason={
+            "duplicate": 1,
+            "low_relevance": 1,
+            "directory_or_aggregator": 1,
+            "big_box_mismatch": 0,
+            "existing_domain_match": 0,
+            "invalid_candidate": 0,
+        },
+        raw_output=(
+            '{"competitors":[],'
+            '"top_opportunities":["Improve website clarity","Add trust signals","Clarify services"],'
+            '"summary":"Competitor analysis unavailable, using fallback insights."}'
+        ),
+    )
+
+    response = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/narratives"
+    )
+    assert response.status_code == 201
+    assert response.json()["competitor_influence"] is None
+
+
+def test_recommendation_narrative_competitor_influence_remains_bounded(
+    db_session,
+    seeded_business,
+) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id, run_id = _create_completed_recommendation_run(client, db_session, seeded_business.id)
+    _seed_competitor_generation_telemetry_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        raw_candidate_count=12,
+        included_candidate_count=7,
+        excluded_candidate_count=5,
+        exclusion_counts_by_reason={
+            "duplicate": 1,
+            "low_relevance": 2,
+            "directory_or_aggregator": 1,
+            "big_box_mismatch": 1,
+            "existing_domain_match": 0,
+            "invalid_candidate": 0,
+        },
+        raw_output=(
+            '{"competitors":['
+            '{"name":"Competitor 1"},{"name":"Competitor 2"},{"name":"Competitor 3"},'
+            '{"name":"Competitor 4"},{"name":"Competitor 5"},{"name":"Competitor 6"}'
+            '],'
+            '"top_opportunities":['
+            '"Opportunity 1","Opportunity 2","Opportunity 3",'
+            '"Opportunity 4","Opportunity 5","Opportunity 6"'
+            '],'
+            '"summary":"Competitor context with many entries."}'
+        ),
+    )
+
+    response = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/narratives"
+    )
+    assert response.status_code == 201
+    payload = response.json()["competitor_influence"]
+    assert payload is not None
+    assert payload["used"] is True
+    assert len(payload["top_opportunities"]) == 5
+    assert len(payload["competitor_names"]) == 5
 
 
 def test_phase3c_v1_site_scoped_narrative_routes(db_session, seeded_business) -> None:

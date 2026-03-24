@@ -21,8 +21,30 @@ Only normalized competitor output is consumed:
 - The model is instructed to use provided competitor gaps to improve specificity.
 - The model is also instructed not to invent competitor facts beyond provided context.
 
+## Operator-Visible Competitor Influence
+
+Recommendation narrative API responses now include an optional top-level field:
+
+- `competitor_influence` (object or `null`)
+
+When competitor signal was used, the payload shape is:
+
+```json
+{
+  "used": true,
+  "summary": "Recommendation specificity used normalized competitor context: ...",
+  "top_opportunities": ["..."],
+  "competitor_names": ["..."]
+}
+```
+
+### Appearance Rules
+- Present only when usable normalized competitor context exists.
+- `null` when competitor context is missing/empty/no-signal fallback.
+- Values are bounded, deduplicated, and safe for UI rendering.
+- Content comes from normalized competitor context only (never raw malformed model output).
+
 ### Reliability Boundaries
-- No new persistence is introduced.
-- No new endpoint is introduced.
+- No new database schema or endpoint is introduced.
 - No competitor parsing failure can block recommendation generation.
 - Recommendations consume normalized competitor output only, never raw malformed AI text.

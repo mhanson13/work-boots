@@ -47,3 +47,6 @@ Behavior is intentionally conservative:
 - Missing/empty competitor data keeps recommendation behavior unchanged.
 - Normalizer fallback payloads are treated as no-signal to avoid injecting generic noise.
 - Raw malformed competitor output is never passed directly to recommendation prompts.
+- When competitor context is used, recommendation narrative responses may include a bounded
+  `competitor_influence` rationale payload for operator visibility (`used`, `summary`,
+  `top_opportunities`, `competitor_names`).

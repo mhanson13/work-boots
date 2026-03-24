@@ -360,6 +360,7 @@ class SEORecommendationNarrativeRead(BaseModel):
     narrative_text: str | None
     top_themes_json: list[str] = Field(default_factory=list)
     sections_json: dict[str, object] | None
+    competitor_influence: "SEORecommendationCompetitorInfluenceRead | None" = None
     provider_name: str
     model_name: str
     prompt_version: str
@@ -376,6 +377,60 @@ class SEORecommendationNarrativeRead(BaseModel):
         if isinstance(value, list):
             return [str(item) for item in value]
         raise TypeError("top_themes_json must be a list")
+
+    @model_validator(mode="after")
+    def derive_competitor_influence(self) -> "SEORecommendationNarrativeRead":
+        if self.competitor_influence is not None:
+            return self
+        if not isinstance(self.sections_json, dict):
+            return self
+        raw = self.sections_json.get("competitor_influence")
+        if not isinstance(raw, dict):
+            return self
+        try:
+            self.competitor_influence = SEORecommendationCompetitorInfluenceRead.model_validate(raw)
+        except Exception:  # noqa: BLE001
+            self.competitor_influence = None
+        return self
+
+
+class SEORecommendationCompetitorInfluenceRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    used: bool
+    summary: str = Field(min_length=1, max_length=300)
+    top_opportunities: list[str] = Field(default_factory=list)
+    competitor_names: list[str] = Field(default_factory=list)
+
+    @field_validator("summary", mode="before")
+    @classmethod
+    def normalize_summary(cls, value: Any) -> str:
+        cleaned = _strip_or_none(str(value) if value is not None else None)
+        if cleaned is None:
+            raise ValueError("summary is required")
+        return cleaned[:300]
+
+    @field_validator("top_opportunities", "competitor_names", mode="before")
+    @classmethod
+    def normalize_lists(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise TypeError("Expected list")
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            cleaned = _strip_or_none(str(item) if item is not None else None)
+            if not cleaned:
+                continue
+            key = cleaned.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(cleaned)
+            if len(normalized) >= 5:
+                break
+        return normalized
 
 
 class SEORecommendationNarrativeListResponse(BaseModel):
