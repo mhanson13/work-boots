@@ -41,6 +41,7 @@ from app.schemas.seo_site import (
     SEOSiteListResponse,
     SEOSiteRead,
     SEOSiteUpdateRequest,
+    extract_primary_business_zip,
 )
 from app.schemas.seo_competitor import (
     SEOCompetitorComparisonFindingListResponse,
@@ -87,6 +88,7 @@ from app.schemas.seo_recommendation import (
     SEORecommendationListQuery,
     SEORecommendationListResponse,
     SEORecommendationOrderingExplanationRead,
+    SEORecommendationThemeGroupRead,
     SEORecommendationWorkspaceSummaryRead,
     SEORecommendationTuningImpactPreviewRead,
     SEORecommendationTuningImpactPreviewRequest,
@@ -100,6 +102,7 @@ from app.schemas.seo_recommendation import (
     SEORecommendationRunReportRead,
     SEORecommendationTuningSuggestionRead,
     SEORecommendationWorkflowUpdateRequest,
+    format_recommendation_theme_label,
     infer_eeat_categories_from_signals,
 )
 from app.repositories.seo_competitor_profile_generation_repository import (
@@ -181,6 +184,16 @@ _WORKSPACE_APPLY_OUTCOME_EXPECTED_MAX_CHARS = 260
 _WORKSPACE_APPLY_OUTCOME_REFLECT_MAX_CHARS = 220
 _WORKSPACE_EEAT_GAP_MAX_SIGNALS = 6
 _WORKSPACE_EEAT_GAP_SIGNAL_MAX_CHARS = 140
+_WORKSPACE_RECOMMENDATION_THEME_ORDER = (
+    "trust_and_legitimacy",
+    "experience_and_proof",
+    "authority_and_visibility",
+    "expertise_and_process",
+    "general_site_improvement",
+)
+_WORKSPACE_LOCATION_CONTEXT_MAX_CHARS = 220
+_WORKSPACE_PRIMARY_LOCATION_MAX_CHARS = 255
+_WORKSPACE_LOCATION_FALLBACK_TEXT = "Location not yet established from available business/site data."
 logger = logging.getLogger(__name__)
 
 
@@ -284,6 +297,27 @@ def _compact_workspace_text(value: object, *, max_length: int) -> str | None:
     if max_length <= 1:
         return compacted[:max_length]
     return f"{compacted[: max_length - 1].rstrip()}…"
+
+
+def _normalize_workspace_location_context_strength(value: object) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"strong", "weak"}:
+        return normalized
+    return "unknown"
+
+
+def _build_workspace_site_location_context(
+    *,
+    site_primary_location: str | None,
+    service_areas: list[str],
+) -> tuple[str, str]:
+    if site_primary_location and service_areas:
+        return (f"{site_primary_location}; service areas: {', '.join(service_areas[:4])}", "strong")
+    if site_primary_location:
+        return (site_primary_location, "strong")
+    if service_areas:
+        return (f"Serves {', '.join(service_areas[:4])}", "strong")
+    return (_WORKSPACE_LOCATION_FALLBACK_TEXT, "weak")
 
 
 def _extract_workspace_changed_tuning_values(
@@ -602,6 +636,53 @@ def _build_workspace_ordering_explanation(
         )
     except Exception:  # noqa: BLE001
         return None
+
+
+def _build_workspace_grouped_recommendations(
+    *,
+    recommendations: list[SEORecommendationRead],
+) -> list[SEORecommendationThemeGroupRead]:
+    if not recommendations:
+        return []
+
+    theme_to_ids: dict[str, list[str]] = {}
+    theme_to_label: dict[str, str] = {}
+    seen_ids: set[str] = set()
+
+    for recommendation in recommendations:
+        if recommendation.id in seen_ids:
+            continue
+        seen_ids.add(recommendation.id)
+        theme = recommendation.theme or "general_site_improvement"
+        if theme not in theme_to_ids:
+            theme_to_ids[theme] = []
+        theme_to_ids[theme].append(recommendation.id)
+        if theme not in theme_to_label:
+            if recommendation.theme_label:
+                theme_to_label[theme] = recommendation.theme_label
+            else:
+                theme_to_label[theme] = format_recommendation_theme_label(theme)  # type: ignore[arg-type]
+
+    grouped: list[SEORecommendationThemeGroupRead] = []
+    for theme in _WORKSPACE_RECOMMENDATION_THEME_ORDER:
+        ids = theme_to_ids.get(theme, [])
+        if not ids:
+            continue
+        try:
+            grouped.append(
+                SEORecommendationThemeGroupRead.model_validate(
+                    {
+                        "theme": theme,
+                        "label": theme_to_label.get(theme) or format_recommendation_theme_label(theme),  # type: ignore[arg-type]
+                        "count": len(ids),
+                        "recommendation_ids": ids,
+                    }
+                )
+            )
+        except Exception:  # noqa: BLE001
+            continue
+
+    return grouped
 
 
 @router.get("/sites", response_model=SEOSiteListResponse)
@@ -1025,7 +1106,7 @@ def get_seo_recommendation_workspace_summary(
         requested_business_id=business_id,
     )
     try:
-        seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
+        site = seo_site_service.get_site(business_id=scoped_business_id, site_id=site_id)
         runs = recommendation_service.list_runs(
             business_id=scoped_business_id,
             site_id=site_id,
@@ -1037,6 +1118,7 @@ def get_seo_recommendation_workspace_summary(
     latest_completed_run = next((run for run in runs if run.status == "completed"), None)
     latest_narrative_read: SEORecommendationNarrativeRead | None = None
     tuning_suggestions: list[SEORecommendationTuningSuggestionRead] = []
+    grouped_recommendations: list[SEORecommendationThemeGroupRead] = []
     apply_outcome: SEORecommendationApplyOutcomeRead | None = None
     analysis_freshness: SEORecommendationAnalysisFreshnessRead | None = None
     ordering_explanation: SEORecommendationOrderingExplanationRead | None = None
@@ -1060,6 +1142,22 @@ def get_seo_recommendation_workspace_summary(
         by_priority_band={},
     )
     recommendations_payload = empty_recommendations
+    site_service_areas: list[str] = []
+    if isinstance(site.service_areas_json, list):
+        for item in site.service_areas_json:
+            compacted = _compact_workspace_text(item, max_length=120)
+            if compacted is not None:
+                site_service_areas.append(compacted)
+    site_service_areas = list(dict.fromkeys(site_service_areas))
+    site_primary_location = _compact_workspace_text(
+        site.primary_location,
+        max_length=_WORKSPACE_PRIMARY_LOCATION_MAX_CHARS,
+    )
+    site_location_context, site_location_context_strength = _build_workspace_site_location_context(
+        site_primary_location=site_primary_location,
+        service_areas=site_service_areas,
+    )
+    site_primary_business_zip = extract_primary_business_zip(site_primary_location)
 
     if latest_completed_run is not None:
         recommendation_items = recommendation_service.list_recommendations(
@@ -1078,6 +1176,9 @@ def get_seo_recommendation_workspace_summary(
             by_severity=by_severity,
             by_effort_bucket=by_effort_bucket,
             by_priority_band=by_priority_band,
+        )
+        grouped_recommendations = _build_workspace_grouped_recommendations(
+            recommendations=serialized_items,
         )
         try:
             latest_narrative = recommendation_narrative_service.get_latest_narrative(
@@ -1156,6 +1257,37 @@ def get_seo_recommendation_workspace_summary(
             model=competitor_prompt_preview_data.model_name,
             prompt_version=competitor_prompt_preview_data.prompt_version,
         )
+        trusted_site_context = (
+            competitor_prompt_preview_data.trusted_site_context
+            if isinstance(competitor_prompt_preview_data.trusted_site_context, dict)
+            else {}
+        )
+        trusted_location_context = _compact_workspace_text(
+            trusted_site_context.get("site_location_context"),
+            max_length=_WORKSPACE_LOCATION_CONTEXT_MAX_CHARS,
+        )
+        if trusted_location_context is not None:
+            site_location_context = trusted_location_context
+        trusted_primary_location = _compact_workspace_text(
+            trusted_site_context.get("site_primary_location"),
+            max_length=_WORKSPACE_PRIMARY_LOCATION_MAX_CHARS,
+        )
+        if trusted_primary_location is not None:
+            site_primary_location = trusted_primary_location
+        trusted_zip = _compact_workspace_text(
+            trusted_site_context.get("site_primary_business_zip"),
+            max_length=5,
+        )
+        if trusted_zip is not None and len(trusted_zip) == 5 and trusted_zip.isdigit():
+            site_primary_business_zip = trusted_zip
+        trusted_strength = _normalize_workspace_location_context_strength(
+            trusted_site_context.get("site_location_context_strength")
+        )
+        if trusted_strength != "unknown":
+            site_location_context_strength = trusted_strength
+
+    if site_primary_business_zip is None:
+        site_primary_business_zip = extract_primary_business_zip(site_location_context)
 
     if latest_run is None:
         state = "no_runs"
@@ -1186,6 +1318,7 @@ def get_seo_recommendation_workspace_summary(
             SEORecommendationRunRead.model_validate(latest_completed_run) if latest_completed_run else None
         ),
         recommendations=recommendations_payload,
+        grouped_recommendations=grouped_recommendations,
         latest_narrative=latest_narrative_read,
         tuning_suggestions=tuning_suggestions,
         apply_outcome=apply_outcome,
@@ -1194,6 +1327,10 @@ def get_seo_recommendation_workspace_summary(
         eeat_gap_summary=eeat_gap_summary,
         competitor_prompt_preview=competitor_prompt_preview,
         recommendation_prompt_preview=recommendation_prompt_preview,
+        site_location_context=site_location_context,
+        site_primary_location=site_primary_location,
+        site_primary_business_zip=site_primary_business_zip,
+        site_location_context_strength=site_location_context_strength,
     )
 
 

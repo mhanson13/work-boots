@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
+import pytest
+
 from app.schemas.seo_recommendation import SEORecommendationRead, infer_eeat_categories_from_signals
 
 
@@ -133,3 +135,60 @@ def test_recommendation_read_keeps_priority_reasons_empty_when_metadata_is_spars
     )
     assert recommendation.priority_reasons == []
     assert recommendation.primary_priority_reason is None
+
+
+@pytest.mark.parametrize(
+    ("category", "expected_theme"),
+    [
+        ("trustworthiness", "trust_and_legitimacy"),
+        ("experience", "experience_and_proof"),
+        ("authoritativeness", "authority_and_visibility"),
+        ("expertise", "expertise_and_process"),
+    ],
+)
+def test_recommendation_read_derives_theme_from_eeat_category(
+    category: str,
+    expected_theme: str,
+) -> None:
+    recommendation = SEORecommendationRead.model_validate(
+        _recommendation_payload(
+            eeat_categories=[category],
+            primary_eeat_category=category,
+            priority_reasons=[],
+            primary_priority_reason=None,
+            evidence_json={"sources": ["audit"]},
+        )
+    )
+    assert recommendation.theme == expected_theme
+    assert recommendation.theme_label
+
+
+def test_recommendation_read_derives_theme_from_priority_reason_when_eeat_missing() -> None:
+    recommendation = SEORecommendationRead.model_validate(
+        _recommendation_payload(
+            eeat_categories=[],
+            primary_eeat_category=None,
+            priority_reasons=["authority_gap"],
+            primary_priority_reason="authority_gap",
+            evidence_json={"sources": ["comparison"]},
+        )
+    )
+    assert recommendation.theme == "authority_and_visibility"
+    assert recommendation.theme_label == "Authority & visibility"
+
+
+def test_recommendation_read_falls_back_to_general_theme_for_sparse_metadata() -> None:
+    recommendation = SEORecommendationRead.model_validate(
+        _recommendation_payload(
+            rule_key="fix_missing_title_tags",
+            title="Fix title tags",
+            rationale="General cleanup note",
+            eeat_categories=[],
+            primary_eeat_category=None,
+            priority_reasons=[],
+            primary_priority_reason=None,
+            evidence_json={"sources": ["audit"], "finding_types": ["missing_title"]},
+        )
+    )
+    assert recommendation.theme == "general_site_improvement"
+    assert recommendation.theme_label == "General site improvement"

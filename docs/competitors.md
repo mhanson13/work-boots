@@ -58,6 +58,10 @@ Behavior is intentionally conservative:
 - Workspace recommendation summaries may include optional deterministic `eeat_gap_summary`
   metadata where competitor-supported signals contribute to visible Experience/Expertise/
   Authoritativeness/Trustworthiness gap framing.
+- Workspace recommendation summaries may include deterministic recommendation themes/groups
+  where competitor-backed gaps can surface under operator-facing buckets such as
+  `authority_and_visibility` or `trust_and_legitimacy`, depending on existing structured
+  recommendation metadata.
 
 ## Prompt Preview (Debug / Inspection)
 
@@ -111,3 +115,17 @@ Competitor prompt context now prefers structured business/site metadata before a
 
 ### Weak-context safety behavior
 - If location and/or industry context is weak, prompt contract explicitly biases toward fewer high-confidence candidates instead of speculative broad matches.
+
+## Primary Business ZIP Capture (Weak Location Context)
+
+When location context is weak, operators can now provide a primary business ZIP code from the site workspace.
+
+Behavior:
+- ZIP capture is optional and non-blocking.
+- ZIP is stored through existing site metadata update flow.
+- ZIP is used only for local context enrichment in analysis (not shared externally).
+
+Context effect:
+- Saved ZIP is normalized into deterministic location text (`Serving area around ZIP code <ZIP>`).
+- Competitor prompt trusted context is upgraded from weak to strong when ZIP is present.
+- This improves local competitor relevance without adding external geocoding dependencies.

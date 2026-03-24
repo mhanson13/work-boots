@@ -897,12 +897,31 @@ def test_recommendation_workspace_summary_returns_latest_completed_run(db_sessio
         "pending_refresh_context",
         "general",
     }
+    assert payload["recommendations"]["items"][0]["theme"] in {
+        "trust_and_legitimacy",
+        "experience_and_proof",
+        "authority_and_visibility",
+        "expertise_and_process",
+        "general_site_improvement",
+    }
+    assert isinstance(payload["grouped_recommendations"], list)
+    grouped_ids = [
+        recommendation_id
+        for group in payload["grouped_recommendations"]
+        for recommendation_id in group["recommendation_ids"]
+    ]
+    flat_ids = [item["id"] for item in payload["recommendations"]["items"]]
+    assert grouped_ids
+    assert grouped_ids == flat_ids
     assert payload["latest_narrative"] is None
     assert payload["tuning_suggestions"] == []
     assert payload["apply_outcome"] is None
     assert payload["analysis_freshness"]["status"] == "fresh"
     assert payload["analysis_freshness"]["analysis_generated_at"] is not None
     assert payload["analysis_freshness"]["last_apply_at"] is None
+    assert payload["site_location_context_strength"] == "weak"
+    assert payload["site_primary_business_zip"] is None
+    assert payload["site_location_context"]
     assert payload["ordering_explanation"] is not None
     assert payload["ordering_explanation"]["message"]
     assert payload["eeat_gap_summary"] is None
@@ -919,6 +938,116 @@ def test_recommendation_workspace_summary_returns_latest_completed_run(db_sessio
     assert payload["recommendation_prompt_preview"]["user_prompt"]
     assert "Authorization:" not in payload["recommendation_prompt_preview"]["system_prompt"]
     assert "Authorization:" not in payload["recommendation_prompt_preview"]["user_prompt"]
+
+
+def test_recommendation_workspace_summary_reflects_primary_business_zip_location_context(
+    db_session, seeded_business
+) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id)
+
+    patch_site = client.patch(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}",
+        json={"primary_business_zip": "80538"},
+    )
+    assert patch_site.status_code == 200
+    patched_payload = patch_site.json()
+    assert patched_payload["primary_business_zip"] == "80538"
+    assert patched_payload["primary_location"] == "Serving area around ZIP code 80538"
+
+    summary = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/workspace-summary"
+    )
+    assert summary.status_code == 200
+    payload = summary.json()
+    assert payload["state"] == "no_runs"
+    assert payload["site_location_context_strength"] == "strong"
+    assert payload["site_primary_business_zip"] == "80538"
+    assert payload["site_primary_location"] == "Serving area around ZIP code 80538"
+    assert "80538" in payload["site_location_context"]
+
+
+def test_recommendation_workspace_summary_groups_recommendations_by_theme_without_changing_flat_order(
+    db_session, seeded_business
+) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id)
+    audit_run_id = _seed_completed_audit_run(db_session, business_id=seeded_business.id, site_id=site_id)
+    comparison_run_id = _seed_completed_comparison_run(db_session, business_id=seeded_business.id, site_id=site_id)
+
+    create_run = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+        json={"audit_run_id": audit_run_id, "comparison_run_id": comparison_run_id},
+    )
+    assert create_run.status_code == 201
+    run_id = create_run.json()["id"]
+
+    recommendation_list = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/recommendations"
+    )
+    assert recommendation_list.status_code == 200
+    items = recommendation_list.json()["items"]
+    assert len(items) >= 3
+    recommendation_ids = [item["id"] for item in items]
+
+    recommendation_one = db_session.get(SEORecommendation, recommendation_ids[0])
+    recommendation_two = db_session.get(SEORecommendation, recommendation_ids[1])
+    recommendation_three = db_session.get(SEORecommendation, recommendation_ids[2])
+    assert recommendation_one is not None
+    assert recommendation_two is not None
+    assert recommendation_three is not None
+
+    recommendation_one.rule_key = "close_competitor_gap_missing_license_proof"
+    recommendation_one.title = "Publish license and insurance trust proof"
+    recommendation_one.evidence_json = {
+        "sources": ["comparison"],
+        "finding_types": ["missing_license_proof"],
+    }
+
+    recommendation_two.rule_key = "add_project_story_portfolio_proof"
+    recommendation_two.title = "Publish recent project stories with before/after proof"
+    recommendation_two.evidence_json = {
+        "sources": ["audit"],
+        "finding_types": ["missing_project_story"],
+    }
+
+    recommendation_three.rule_key = "association_membership_gap"
+    recommendation_three.title = "Show association memberships and press mentions"
+    recommendation_three.evidence_json = {
+        "sources": ["comparison"],
+        "finding_types": ["association_membership_gap"],
+    }
+    db_session.commit()
+
+    summary = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/workspace-summary"
+    )
+    assert summary.status_code == 200
+    payload = summary.json()
+
+    flat_ids = [item["id"] for item in payload["recommendations"]["items"]]
+    assert flat_ids == recommendation_ids
+
+    grouped = payload["grouped_recommendations"]
+    assert grouped
+    expected_theme_order = [
+        "trust_and_legitimacy",
+        "experience_and_proof",
+        "authority_and_visibility",
+        "expertise_and_process",
+        "general_site_improvement",
+    ]
+    grouped_theme_positions = [expected_theme_order.index(group["theme"]) for group in grouped]
+    assert grouped_theme_positions == sorted(grouped_theme_positions)
+
+    flat_index_by_id = {recommendation_id: index for index, recommendation_id in enumerate(flat_ids)}
+    grouped_ids = []
+    for group in grouped:
+        ids = group["recommendation_ids"]
+        assert ids == sorted(ids, key=lambda recommendation_id: flat_index_by_id[recommendation_id])
+        grouped_ids.extend(ids)
+
+    assert set(grouped_ids) == set(flat_ids)
 
 
 def test_recommendation_workspace_summary_includes_latest_narrative_and_bounded_suggestions(

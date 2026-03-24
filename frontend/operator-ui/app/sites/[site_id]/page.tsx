@@ -28,6 +28,7 @@ import {
   fetchSiteCompetitorComparisonRuns,
   rejectCompetitorProfileDraft,
   retryCompetitorProfileGenerationRun,
+  updateSite,
   updateBusinessSettings,
 } from "../../../lib/api/client";
 import type {
@@ -45,6 +46,8 @@ import type {
   RecommendationEEATGapSummary,
   RecommendationOrderingExplanation,
   RecommendationPriorityReason,
+  RecommendationTheme,
+  RecommendationThemeGroup,
   Recommendation,
   RecommendationListResponse,
   RecommendationNarrative,
@@ -68,6 +71,7 @@ const MAX_RECENT_TUNING_CHANGES = 8;
 const COMPETITOR_PROFILE_DRAFT_CANDIDATE_COUNT = 5;
 const COMPETITOR_PROFILE_POLL_INTERVAL_MS = 2000;
 const COMPETITOR_PROFILE_POLL_MAX_ATTEMPTS = 30;
+const ZIP_PROMPT_SESSION_KEY_PREFIX = "workspace:zip-prompt-dismissed";
 
 type SiteTimelineEventType =
   | "audit_run"
@@ -338,6 +342,18 @@ function sanitizeDomId(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "-");
 }
 
+function normalizePrimaryBusinessZipInput(value: string): string {
+  return value.replace(/\D/g, "").slice(0, 5);
+}
+
+function isValidPrimaryBusinessZip(value: string): boolean {
+  return /^\d{5}$/.test(value);
+}
+
+function zipPromptSessionKey(siteId: string): string {
+  return `${ZIP_PROMPT_SESSION_KEY_PREFIX}:${siteId}`;
+}
+
 function recommendationImpactLabel(
   item: Recommendation,
   index: number,
@@ -522,6 +538,88 @@ function normalizeRecommendationOrderingExplanation(
     message,
     contextReasons,
   };
+}
+
+function formatRecommendationThemeLabel(theme: RecommendationTheme): string {
+  switch (theme) {
+    case "trust_and_legitimacy":
+      return "Trust & legitimacy";
+    case "experience_and_proof":
+      return "Experience & proof";
+    case "authority_and_visibility":
+      return "Authority & visibility";
+    case "expertise_and_process":
+      return "Expertise & process";
+    case "general_site_improvement":
+      return "General site improvement";
+  }
+}
+
+interface RecommendationThemeSectionView {
+  theme: RecommendationTheme;
+  label: string;
+  items: Recommendation[];
+}
+
+function normalizeRecommendationThemeSections(
+  recommendations: Recommendation[],
+  grouped: RecommendationThemeGroup[] | null | undefined,
+): RecommendationThemeSectionView[] {
+  if (recommendations.length === 0) {
+    return [];
+  }
+
+  const byId = new Map<string, Recommendation>();
+  recommendations.forEach((recommendation) => {
+    byId.set(recommendation.id, recommendation);
+  });
+
+  const sections: RecommendationThemeSectionView[] = [];
+  const consumed = new Set<string>();
+  if (Array.isArray(grouped) && grouped.length > 0) {
+    for (const group of grouped) {
+      if (!group || !Array.isArray(group.recommendation_ids)) {
+        continue;
+      }
+      const sectionItems: Recommendation[] = [];
+      for (const recommendationId of group.recommendation_ids) {
+        const item = byId.get(recommendationId);
+        if (!item || consumed.has(item.id)) {
+          continue;
+        }
+        consumed.add(item.id);
+        sectionItems.push(item);
+      }
+      if (sectionItems.length === 0) {
+        continue;
+      }
+      sections.push({
+        theme: group.theme,
+        label: truncateOptionalText(group.label, 80) || formatRecommendationThemeLabel(group.theme),
+        items: sectionItems,
+      });
+    }
+  }
+
+  const ungrouped = recommendations.filter((recommendation) => !consumed.has(recommendation.id));
+  if (ungrouped.length > 0) {
+    sections.push({
+      theme: "general_site_improvement",
+      label: formatRecommendationThemeLabel("general_site_improvement"),
+      items: ungrouped,
+    });
+  }
+
+  if (sections.length === 0) {
+    return [
+      {
+        theme: "general_site_improvement",
+        label: formatRecommendationThemeLabel("general_site_improvement"),
+        items: recommendations,
+      },
+    ];
+  }
+  return sections;
 }
 
 function recommendationHasAiSource(item: Recommendation): boolean {
@@ -1074,6 +1172,19 @@ export default function SiteWorkspacePage() {
     useState<RecommendationAnalysisFreshness | null>(null);
   const [latestRecommendationOrderingExplanation, setLatestRecommendationOrderingExplanation] =
     useState<RecommendationOrderingExplanation | null>(null);
+  const [latestRecommendationGroupedRecommendations, setLatestRecommendationGroupedRecommendations] = useState<
+    RecommendationThemeGroup[]
+  >([]);
+  const [siteLocationContext, setSiteLocationContext] = useState<string | null>(null);
+  const [sitePrimaryLocation, setSitePrimaryLocation] = useState<string | null>(null);
+  const [sitePrimaryBusinessZip, setSitePrimaryBusinessZip] = useState<string | null>(null);
+  const [siteLocationContextStrength, setSiteLocationContextStrength] = useState<"strong" | "weak" | "unknown">(
+    "unknown",
+  );
+  const [showZipCaptureModal, setShowZipCaptureModal] = useState(false);
+  const [zipCaptureInput, setZipCaptureInput] = useState("");
+  const [zipCaptureSaving, setZipCaptureSaving] = useState(false);
+  const [zipCaptureError, setZipCaptureError] = useState<string | null>(null);
   const [latestCompetitorPromptPreview, setLatestCompetitorPromptPreview] = useState<PromptPreviewView | null>(null);
   const [latestRecommendationPromptPreview, setLatestRecommendationPromptPreview] =
     useState<PromptPreviewView | null>(null);
@@ -1436,6 +1547,21 @@ export default function SiteWorkspacePage() {
     () => normalizeRecommendationOrderingExplanation(latestRecommendationOrderingExplanation),
     [latestRecommendationOrderingExplanation],
   );
+  const recommendationThemeSections = useMemo(
+    () =>
+      normalizeRecommendationThemeSections(
+        latestCompletedRecommendations,
+        latestRecommendationGroupedRecommendations,
+      ),
+    [latestCompletedRecommendations, latestRecommendationGroupedRecommendations],
+  );
+  const recommendationRankById = useMemo(() => {
+    const rank = new Map<string, number>();
+    latestCompletedRecommendations.forEach((recommendation, index) => {
+      rank.set(recommendation.id, index);
+    });
+    return rank;
+  }, [latestCompletedRecommendations]);
   const narrativeEEATFocusCategories = useMemo(() => {
     const ranked = [...latestCompletedRecommendations].sort((left, right) => {
       if (right.priority_score !== left.priority_score) {
@@ -1569,6 +1695,11 @@ export default function SiteWorkspacePage() {
     setLatestRecommendationEEATGapSummary(summary.eeat_gap_summary || null);
     setLatestRecommendationAnalysisFreshness(summary.analysis_freshness || null);
     setLatestRecommendationOrderingExplanation(summary.ordering_explanation || null);
+    setLatestRecommendationGroupedRecommendations(summary.grouped_recommendations || []);
+    setSiteLocationContext(summary.site_location_context || null);
+    setSitePrimaryLocation(summary.site_primary_location || null);
+    setSitePrimaryBusinessZip(summary.site_primary_business_zip || null);
+    setSiteLocationContextStrength(summary.site_location_context_strength || "unknown");
     setLatestCompetitorPromptPreview(
       normalizePromptPreview(summary.competitor_prompt_preview, "competitor"),
     );
@@ -1577,6 +1708,74 @@ export default function SiteWorkspacePage() {
     );
     setPromptPreviewCopyFeedbackByType({ competitor: null, recommendation: null });
     setLatestCompletedRecommendationsError(null);
+  }
+
+  useEffect(() => {
+    if (!selectedSite) {
+      return;
+    }
+    if (siteLocationContextStrength !== "weak" || Boolean(sitePrimaryBusinessZip)) {
+      setShowZipCaptureModal(false);
+      return;
+    }
+    if (typeof window === "undefined") {
+      return;
+    }
+    const dismissed = window.sessionStorage.getItem(zipPromptSessionKey(selectedSite.id)) === "true";
+    if (dismissed) {
+      return;
+    }
+    setZipCaptureInput("");
+    setZipCaptureError(null);
+    setShowZipCaptureModal(true);
+  }, [selectedSite, siteLocationContextStrength, sitePrimaryBusinessZip]);
+
+  function handleSkipZipCapture(): void {
+    if (selectedSite && typeof window !== "undefined") {
+      window.sessionStorage.setItem(zipPromptSessionKey(selectedSite.id), "true");
+    }
+    setShowZipCaptureModal(false);
+    setZipCaptureError(null);
+  }
+
+  async function handleSavePrimaryBusinessZip(): Promise<void> {
+    if (!selectedSite) {
+      return;
+    }
+    const normalizedZip = normalizePrimaryBusinessZipInput(zipCaptureInput);
+    if (!isValidPrimaryBusinessZip(normalizedZip)) {
+      setZipCaptureError("Enter a valid 5-digit ZIP code.");
+      return;
+    }
+
+    setZipCaptureSaving(true);
+    setZipCaptureError(null);
+    try {
+      await updateSite(context.token, context.businessId, selectedSite.id, {
+        primary_business_zip: normalizedZip,
+      });
+      setSitePrimaryBusinessZip(normalizedZip);
+      setSiteLocationContextStrength("strong");
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(zipPromptSessionKey(selectedSite.id), "true");
+      }
+      setShowZipCaptureModal(false);
+      await context.refreshSites();
+      try {
+        const refreshedSummary = await fetchRecommendationWorkspaceSummary(
+          context.token,
+          context.businessId,
+          selectedSite.id,
+        );
+        applyWorkspaceSummary(refreshedSummary);
+      } catch {
+        // Keep workspace non-blocking if summary refresh fails after ZIP save.
+      }
+    } catch {
+      setZipCaptureError("Unable to save ZIP right now. Try again or skip for now.");
+    } finally {
+      setZipCaptureSaving(false);
+    }
   }
 
   function previewForType(promptType: PromptPreviewType): PromptPreviewView | null {
@@ -2245,6 +2444,15 @@ export default function SiteWorkspacePage() {
       setLatestRecommendationEEATGapSummary(null);
       setLatestRecommendationAnalysisFreshness(null);
       setLatestRecommendationOrderingExplanation(null);
+      setLatestRecommendationGroupedRecommendations([]);
+      setSiteLocationContext(null);
+      setSitePrimaryLocation(null);
+      setSitePrimaryBusinessZip(null);
+      setSiteLocationContextStrength("unknown");
+      setShowZipCaptureModal(false);
+      setZipCaptureInput("");
+      setZipCaptureSaving(false);
+      setZipCaptureError(null);
       setRecommendationWorkspaceSummaryState(null);
       setLatestCompletedRecommendationsError(null);
       setTuningPreviewByKey({});
@@ -2292,6 +2500,15 @@ export default function SiteWorkspacePage() {
       setLatestRecommendationEEATGapSummary(null);
       setLatestRecommendationAnalysisFreshness(null);
       setLatestRecommendationOrderingExplanation(null);
+      setLatestRecommendationGroupedRecommendations([]);
+      setSiteLocationContext(null);
+      setSitePrimaryLocation(null);
+      setSitePrimaryBusinessZip(null);
+      setSiteLocationContextStrength("unknown");
+      setShowZipCaptureModal(false);
+      setZipCaptureInput("");
+      setZipCaptureSaving(false);
+      setZipCaptureError(null);
       setRecommendationWorkspaceSummaryState(null);
       setLatestCompletedRecommendationsError(null);
       setTuningPreviewByKey({});
@@ -2334,6 +2551,15 @@ export default function SiteWorkspacePage() {
       setLatestRecommendationEEATGapSummary(null);
       setLatestRecommendationAnalysisFreshness(null);
       setLatestRecommendationOrderingExplanation(null);
+      setLatestRecommendationGroupedRecommendations([]);
+      setSiteLocationContext(null);
+      setSitePrimaryLocation(null);
+      setSitePrimaryBusinessZip(null);
+      setSiteLocationContextStrength("unknown");
+      setShowZipCaptureModal(false);
+      setZipCaptureInput("");
+      setZipCaptureSaving(false);
+      setZipCaptureError(null);
       setRecommendationWorkspaceSummaryState(null);
       setLatestCompletedRecommendationsError(null);
       setTuningPreviewByKey({});
@@ -2525,6 +2751,15 @@ export default function SiteWorkspacePage() {
         setLatestRecommendationEEATGapSummary(null);
         setLatestRecommendationAnalysisFreshness(null);
         setLatestRecommendationOrderingExplanation(null);
+        setLatestRecommendationGroupedRecommendations([]);
+        setSiteLocationContext(null);
+        setSitePrimaryLocation(null);
+        setSitePrimaryBusinessZip(null);
+        setSiteLocationContextStrength("unknown");
+        setShowZipCaptureModal(false);
+        setZipCaptureInput("");
+        setZipCaptureSaving(false);
+        setZipCaptureError(null);
         setLatestCompetitorPromptPreview(null);
         setLatestRecommendationPromptPreview(null);
         setPromptPreviewCopyFeedbackByType({ competitor: null, recommendation: null });
@@ -2834,6 +3069,55 @@ export default function SiteWorkspacePage() {
           ) : null}
         </div>
       </SectionCard>
+
+      {showZipCaptureModal ? (
+        <div className="workspace-modal-backdrop" data-testid="zip-capture-modal">
+          <div className="workspace-modal panel stack">
+            <h3>Where do you primarily do business?</h3>
+            <p className="hint">
+              Enter your ZIP code so we can find the most relevant local competitors and recommendations.
+            </p>
+            <label className="stack-tight">
+              <span className="hint muted">Primary business ZIP code</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="postal-code"
+                maxLength={5}
+                value={zipCaptureInput}
+                onChange={(event) => {
+                  setZipCaptureInput(normalizePrimaryBusinessZipInput(event.target.value));
+                  setZipCaptureError(null);
+                }}
+                placeholder="80538"
+              />
+            </label>
+            {zipCaptureError ? <p className="hint warning">{zipCaptureError}</p> : null}
+            <div className="form-actions">
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={() => void handleSavePrimaryBusinessZip()}
+                disabled={zipCaptureSaving}
+              >
+                {zipCaptureSaving ? "Saving..." : "Save"}
+              </button>
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={handleSkipZipCapture}
+                disabled={zipCaptureSaving}
+              >
+                Skip for now
+              </button>
+            </div>
+            <p className="hint muted">
+              Current location context:{" "}
+              {sitePrimaryLocation || siteLocationContext || "Location not yet established from available data."}
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       {aiOpportunities.length > 0 ? (
         <SectionCard>
@@ -3734,78 +4018,169 @@ export default function SiteWorkspacePage() {
               <p className="hint muted">No recommendations yet — run analysis to generate insights.</p>
             ) : null}
             {latestCompletedRecommendations.length > 0 ? (
-              <div className="table-container">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Recommendation</th>
-                      <th>Category</th>
-                      <th>Severity</th>
-                      <th>Priority</th>
-                      <th>Status</th>
-                      <th>Deterministic Rationale</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {latestCompletedRecommendations.map((item, index) => {
-                      const impactLabel = recommendationImpactLabel(item, index);
-                      const eeatCategories = normalizeEEATCategories(item.eeat_categories);
-                      const priorityReasons = normalizeRecommendationPriorityReasons(item.priority_reasons);
-                      const rowId = recommendationRowId(item.id);
-                      return (
-                        <tr
-                          key={item.id}
-                          id={rowId}
-                          className={startHereFocusedTargetId === rowId ? "start-here-target-active" : undefined}
-                        >
-                          <td className="table-cell-wrap">
-                            <Link href={buildRecommendationDetailHref(item.id, selectedSite.id)}>{item.title}</Link>
-                            <br />
-                            {impactLabel ? (
-                              <>
-                                <span className={recommendationImpactBadgeClass(impactLabel)}>{impactLabel}</span>
-                                <br />
-                              </>
-                            ) : null}
-                            {eeatCategories.length > 0 ? (
-                              <>
-                                <span className="hint muted">EEAT impact</span>
-                                <div className="link-row" data-testid="recommendation-eeat-badges">
-                                  {eeatCategories.map((category) => (
-                                    <span key={`${item.id}-${category}`} className="badge badge-muted">
-                                      {formatEEATCategory(category)}
-                                    </span>
-                                  ))}
-                                </div>
-                              </>
-                            ) : null}
-                            {priorityReasons.length > 0 ? (
-                              <>
-                                <span className="hint muted">Why surfaced</span>
-                                <div className="link-row" data-testid="recommendation-priority-reasons">
-                                  {priorityReasons.map((reason) => (
-                                    <span key={`${item.id}-${reason}`} className="badge badge-muted">
-                                      {formatPriorityReason(reason)}
-                                    </span>
-                                  ))}
-                                </div>
-                              </>
-                            ) : null}
-                            <span className="hint muted"><code>{item.id}</code></span>
-                          </td>
-                          <td>{item.category}</td>
-                          <td>{item.severity}</td>
-                          <td>
-                            {item.priority_score} ({item.priority_band})
-                          </td>
-                          <td>{item.status}</td>
-                          <td className="table-cell-wrap">{truncateText(item.rationale, 180)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              recommendationThemeSections.length <= 1 ? (
+                <div className="table-container">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Recommendation</th>
+                        <th>Category</th>
+                        <th>Severity</th>
+                        <th>Priority</th>
+                        <th>Status</th>
+                        <th>Deterministic Rationale</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(recommendationThemeSections[0]?.items || latestCompletedRecommendations).map((item, index) => {
+                        const recommendationRank = recommendationRankById.get(item.id) ?? index;
+                        const impactLabel = recommendationImpactLabel(item, recommendationRank);
+                        const eeatCategories = normalizeEEATCategories(item.eeat_categories);
+                        const priorityReasons = normalizeRecommendationPriorityReasons(item.priority_reasons);
+                        const rowId = recommendationRowId(item.id);
+                        return (
+                          <tr
+                            key={item.id}
+                            id={rowId}
+                            className={startHereFocusedTargetId === rowId ? "start-here-target-active" : undefined}
+                          >
+                            <td className="table-cell-wrap">
+                              <Link href={buildRecommendationDetailHref(item.id, selectedSite.id)}>{item.title}</Link>
+                              <br />
+                              {impactLabel ? (
+                                <>
+                                  <span className={recommendationImpactBadgeClass(impactLabel)}>{impactLabel}</span>
+                                  <br />
+                                </>
+                              ) : null}
+                              {eeatCategories.length > 0 ? (
+                                <>
+                                  <span className="hint muted">EEAT impact</span>
+                                  <div className="link-row" data-testid="recommendation-eeat-badges">
+                                    {eeatCategories.map((category) => (
+                                      <span key={`${item.id}-${category}`} className="badge badge-muted">
+                                        {formatEEATCategory(category)}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </>
+                              ) : null}
+                              {priorityReasons.length > 0 ? (
+                                <>
+                                  <span className="hint muted">Why surfaced</span>
+                                  <div className="link-row" data-testid="recommendation-priority-reasons">
+                                    {priorityReasons.map((reason) => (
+                                      <span key={`${item.id}-${reason}`} className="badge badge-muted">
+                                        {formatPriorityReason(reason)}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </>
+                              ) : null}
+                              <span className="hint muted"><code>{item.id}</code></span>
+                            </td>
+                            <td>{item.category}</td>
+                            <td>{item.severity}</td>
+                            <td>
+                              {item.priority_score} ({item.priority_band})
+                            </td>
+                            <td>{item.status}</td>
+                            <td className="table-cell-wrap">{truncateText(item.rationale, 180)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="stack" data-testid="recommendation-theme-groups">
+                  {recommendationThemeSections.map((section) => (
+                    <div
+                      key={`theme-${section.theme}`}
+                      className="stack-tight"
+                      data-testid={`recommendation-theme-group-${section.theme}`}
+                    >
+                      <div className="link-row">
+                        <strong>{section.label}</strong>
+                        <span className="badge badge-muted">{section.items.length}</span>
+                      </div>
+                      <div className="table-container">
+                        <table className="table">
+                          <thead>
+                            <tr>
+                              <th>Recommendation</th>
+                              <th>Category</th>
+                              <th>Severity</th>
+                              <th>Priority</th>
+                              <th>Status</th>
+                              <th>Deterministic Rationale</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {section.items.map((item, index) => {
+                              const recommendationRank = recommendationRankById.get(item.id) ?? index;
+                              const impactLabel = recommendationImpactLabel(item, recommendationRank);
+                              const eeatCategories = normalizeEEATCategories(item.eeat_categories);
+                              const priorityReasons = normalizeRecommendationPriorityReasons(item.priority_reasons);
+                              const rowId = recommendationRowId(item.id);
+                              return (
+                                <tr
+                                  key={item.id}
+                                  id={rowId}
+                                  className={startHereFocusedTargetId === rowId ? "start-here-target-active" : undefined}
+                                >
+                                  <td className="table-cell-wrap">
+                                    <Link href={buildRecommendationDetailHref(item.id, selectedSite.id)}>{item.title}</Link>
+                                    <br />
+                                    {impactLabel ? (
+                                      <>
+                                        <span className={recommendationImpactBadgeClass(impactLabel)}>{impactLabel}</span>
+                                        <br />
+                                      </>
+                                    ) : null}
+                                    {eeatCategories.length > 0 ? (
+                                      <>
+                                        <span className="hint muted">EEAT impact</span>
+                                        <div className="link-row" data-testid="recommendation-eeat-badges">
+                                          {eeatCategories.map((category) => (
+                                            <span key={`${item.id}-${category}`} className="badge badge-muted">
+                                              {formatEEATCategory(category)}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </>
+                                    ) : null}
+                                    {priorityReasons.length > 0 ? (
+                                      <>
+                                        <span className="hint muted">Why surfaced</span>
+                                        <div className="link-row" data-testid="recommendation-priority-reasons">
+                                          {priorityReasons.map((reason) => (
+                                            <span key={`${item.id}-${reason}`} className="badge badge-muted">
+                                              {formatPriorityReason(reason)}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </>
+                                    ) : null}
+                                    <span className="hint muted"><code>{item.id}</code></span>
+                                  </td>
+                                  <td>{item.category}</td>
+                                  <td>{item.severity}</td>
+                                  <td>
+                                    {item.priority_score} ({item.priority_band})
+                                  </td>
+                                  <td>{item.status}</td>
+                                  <td className="table-cell-wrap">{truncateText(item.rationale, 180)}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
             ) : null}
             <h4>AI Narrative Overlay</h4>
             {latestRecommendationPromptPreview ? (

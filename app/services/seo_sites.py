@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.models.seo_site import SEOSite
 from app.repositories.business_repository import BusinessRepository
 from app.repositories.seo_site_repository import SEOSiteRepository
+from app.schemas.seo_site import normalize_primary_business_zip
 from app.schemas.seo_site import SEOSiteCreateRequest, SEOSiteUpdateRequest
 
 
@@ -63,6 +64,10 @@ class SEOSiteService:
         if is_primary:
             self.seo_site_repository.clear_primary_for_business(business_id)
 
+        primary_location = self._clean_optional(payload.primary_location)
+        if primary_location is None and payload.primary_business_zip is not None:
+            primary_location = self._build_primary_location_from_zip(payload.primary_business_zip)
+
         site = SEOSite(
             id=str(uuid4()),
             business_id=business_id,
@@ -70,7 +75,7 @@ class SEOSiteService:
             base_url=normalized.url,
             normalized_domain=normalized.domain,
             industry=self._clean_optional(payload.industry),
-            primary_location=self._clean_optional(payload.primary_location),
+            primary_location=primary_location,
             service_areas_json=payload.service_areas,
             is_active=payload.is_active,
             is_primary=is_primary,
@@ -108,6 +113,13 @@ class SEOSiteService:
             site.industry = self._clean_optional(changes["industry"])
         if "primary_location" in changes:
             site.primary_location = self._clean_optional(changes["primary_location"])
+        if "primary_business_zip" in changes and "primary_location" not in changes:
+            normalized_zip = normalize_primary_business_zip(changes["primary_business_zip"])
+            site.primary_location = (
+                self._build_primary_location_from_zip(normalized_zip)
+                if normalized_zip is not None
+                else None
+            )
         if "service_areas" in changes:
             site.service_areas_json = changes["service_areas"]
         if "is_active" in changes:
@@ -154,6 +166,10 @@ class SEOSiteService:
             return None
         cleaned = value.strip()
         return cleaned or None
+
+    @staticmethod
+    def _build_primary_location_from_zip(zip_code: str) -> str:
+        return f"Serving area around ZIP code {zip_code}"
 
     def _ensure_unique_domain(
         self,

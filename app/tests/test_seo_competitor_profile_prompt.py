@@ -37,6 +37,7 @@ def test_prompt_builder_uses_expected_trusted_inputs() -> None:
         "site_normalized_domain": "client.example",
         "site_industry": "Home Services",
         "site_primary_location": "Denver, CO",
+        "site_primary_business_zip": None,
         "site_service_areas": ["Aurora", "Denver"],
         "site_location_context": "Denver, CO and nearby service areas: Aurora, Denver",
         "site_location_context_strength": "strong",
@@ -114,6 +115,20 @@ def test_prompt_builder_location_uses_service_areas_only_without_empty_parts() -
 
     assert prompt.trusted_site_context["site_location_context"] == "Serves Boulder, North Metro"
     assert "- Location: Serves Boulder, North Metro" in prompt.user_prompt
+
+
+def test_prompt_builder_extracts_primary_business_zip_when_present() -> None:
+    site = _build_site()
+    site.primary_location = "Serving area around ZIP code 80538"
+    site.service_areas_json = ["Fort Collins", "ZIP 80538"]
+
+    prompt = build_seo_competitor_profile_prompt(
+        site=site,
+        existing_domains=[],
+        candidate_count=2,
+    )
+
+    assert prompt.trusted_site_context["site_primary_business_zip"] == "80538"
 
 
 def test_prompt_builder_industry_fallback_uses_site_identity_when_missing() -> None:

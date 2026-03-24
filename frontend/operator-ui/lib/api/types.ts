@@ -111,6 +111,10 @@ export interface SEOSite {
   display_name: string;
   base_url: string;
   normalized_domain: string;
+  industry?: string | null;
+  primary_location?: string | null;
+  primary_business_zip?: string | null;
+  service_areas_json?: string[] | null;
   is_active: boolean;
   is_primary: boolean;
   last_audit_run_id: string | null;
@@ -121,6 +125,17 @@ export interface SEOSite {
 export interface SEOSiteCreateRequest {
   display_name: string;
   base_url: string;
+}
+
+export interface SEOSiteUpdateRequest {
+  display_name?: string;
+  base_url?: string;
+  industry?: string | null;
+  primary_location?: string | null;
+  primary_business_zip?: string | null;
+  service_areas?: string[] | null;
+  is_active?: boolean;
+  is_primary?: boolean;
 }
 
 export interface SEOSiteListResponse {
@@ -607,6 +622,12 @@ export type RecommendationPriorityReason =
   | "high_clarity_action"
   | "pending_refresh_context"
   | "general";
+export type RecommendationTheme =
+  | "trust_and_legitimacy"
+  | "experience_and_proof"
+  | "authority_and_visibility"
+  | "expertise_and_process"
+  | "general_site_improvement";
 
 export interface RecommendationApplyOutcome {
   applied: boolean;
@@ -729,6 +750,7 @@ export interface RecommendationWorkspaceSummaryResponse {
   latest_run: RecommendationRun | null;
   latest_completed_run: RecommendationRun | null;
   recommendations: RecommendationListResponse;
+  grouped_recommendations?: RecommendationThemeGroup[];
   latest_narrative: RecommendationNarrative | null;
   tuning_suggestions: RecommendationTuningSuggestion[];
   apply_outcome?: RecommendationApplyOutcome | null;
@@ -737,11 +759,22 @@ export interface RecommendationWorkspaceSummaryResponse {
   eeat_gap_summary?: RecommendationEEATGapSummary | null;
   competitor_prompt_preview?: AIPromptPreview | null;
   recommendation_prompt_preview?: AIPromptPreview | null;
+  site_location_context?: string | null;
+  site_primary_location?: string | null;
+  site_primary_business_zip?: string | null;
+  site_location_context_strength?: "strong" | "weak" | "unknown";
 }
 
 export interface RecommendationOrderingExplanation {
   message: string;
   context_reasons: RecommendationPriorityReason[];
+}
+
+export interface RecommendationThemeGroup {
+  theme: RecommendationTheme;
+  label: string;
+  count: number;
+  recommendation_ids: string[];
 }
 
 export interface RecommendationEEATGapSummary {
@@ -769,6 +802,8 @@ export interface Recommendation {
   primary_eeat_category: RecommendationEEATCategory | null;
   priority_reasons?: RecommendationPriorityReason[];
   primary_priority_reason?: RecommendationPriorityReason | null;
+  theme?: RecommendationTheme | null;
+  theme_label?: string | null;
   decision_reason: string | null;
   created_at: string;
   updated_at: string;

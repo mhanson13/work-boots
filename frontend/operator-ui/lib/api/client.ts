@@ -16,6 +16,7 @@ import type {
   PrincipalListResponse,
   SEOSite,
   SEOSiteCreateRequest,
+  SEOSiteUpdateRequest,
   SEOSiteListResponse,
   CompetitorComparisonReport,
   CompetitorDomainListResponse,
@@ -145,6 +146,19 @@ export async function createSite(
 ): Promise<SEOSite> {
   return apiRequest<SEOSite>(`/api/businesses/${businessId}/seo/sites`, {
     method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateSite(
+  token: string,
+  businessId: string,
+  siteId: string,
+  payload: SEOSiteUpdateRequest,
+): Promise<SEOSite> {
+  return apiRequest<SEOSite>(`/api/businesses/${businessId}/seo/sites/${siteId}`, {
+    method: "PATCH",
     token,
     body: JSON.stringify(payload),
   });

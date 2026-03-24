@@ -58,6 +58,7 @@ const mockFetchLatestRecommendationRunNarrative = jest.fn<Promise<Recommendation
 const mockPreviewRecommendationTuningImpact = jest.fn<Promise<RecommendationTuningImpactPreview>, unknown[]>();
 const mockFetchBusinessSettings = jest.fn<Promise<BusinessSettings>, unknown[]>();
 const mockUpdateBusinessSettings = jest.fn<Promise<BusinessSettings>, unknown[]>();
+const mockUpdateSite = jest.fn<Promise<SEOSite>, unknown[]>();
 const mockFetchCompetitorProfileGenerationRuns = jest.fn<
   Promise<CompetitorProfileGenerationRunListResponse>,
   unknown[]
@@ -107,6 +108,7 @@ jest.mock("../../lib/api/client", () => {
     previewRecommendationTuningImpact: (...args: unknown[]) => mockPreviewRecommendationTuningImpact(...args),
     fetchBusinessSettings: (...args: unknown[]) => mockFetchBusinessSettings(...args),
     updateBusinessSettings: (...args: unknown[]) => mockUpdateBusinessSettings(...args),
+    updateSite: (...args: unknown[]) => mockUpdateSite(...args),
     fetchCompetitorProfileGenerationRuns: (...args: unknown[]) =>
       mockFetchCompetitorProfileGenerationRuns(...args),
     fetchCompetitorProfileGenerationRunDetail: (...args: unknown[]) =>
@@ -323,6 +325,12 @@ function baseContext(overrides: Partial<OperatorContextMockValue> = {}): Operato
 function seedCompetitorProfileGenerationDefaults(): void {
   mockFetchBusinessSettings.mockResolvedValue(buildBusinessSettings());
   mockUpdateBusinessSettings.mockReset();
+  mockUpdateSite.mockResolvedValue(
+    buildSite({
+      primary_location: "Serving area around ZIP code 80538",
+      primary_business_zip: "80538",
+    }),
+  );
   mockFetchCompetitorProfileGenerationRuns.mockResolvedValue({ items: [], total: 0 });
   mockFetchCompetitorProfileGenerationRunDetail.mockReset();
   mockFetchRecommendationWorkspaceSummary.mockResolvedValue({
@@ -1437,6 +1445,7 @@ function seedCompetitorProfileGenerationWorkspaceData(): void {
 beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(Date, "now").mockReturnValue(FIXED_NOW_MS);
+  window.sessionStorage.clear();
   navigationState.params = { site_id: "site-1" };
   mockUseOperatorContext.mockReturnValue(baseContext());
   seedCompetitorProfileGenerationDefaults();
@@ -2848,6 +2857,115 @@ describe("site workspace timeline controls", () => {
     expect(screen.queryByTestId("narrative-eeat-gap-summary")).not.toBeInTheDocument();
   });
 
+  it("renders deterministic recommendation theme groups when grouped metadata is present", async () => {
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        recommendations: {
+          items: [
+            buildRecommendation({
+              id: "rec-theme-1",
+              title: "Publish license and insurance trust proof",
+              eeat_categories: ["trustworthiness"],
+              primary_eeat_category: "trustworthiness",
+              theme: "trust_and_legitimacy",
+              theme_label: "Trust & legitimacy",
+            }),
+            buildRecommendation({
+              id: "rec-theme-2",
+              title: "Publish project stories and before/after proof",
+              eeat_categories: ["experience"],
+              primary_eeat_category: "experience",
+              theme: "experience_and_proof",
+              theme_label: "Experience & proof",
+            }),
+            buildRecommendation({
+              id: "rec-theme-3",
+              title: "Improve title tags and service-page structure",
+              theme: "general_site_improvement",
+              theme_label: "General site improvement",
+            }),
+          ],
+          total: 3,
+        },
+        grouped_recommendations: [
+          {
+            theme: "trust_and_legitimacy",
+            label: "Trust & legitimacy",
+            count: 1,
+            recommendation_ids: ["rec-theme-1"],
+          },
+          {
+            theme: "experience_and_proof",
+            label: "Experience & proof",
+            count: 1,
+            recommendation_ids: ["rec-theme-2"],
+          },
+          {
+            theme: "general_site_improvement",
+            label: "General site improvement",
+            count: 1,
+            recommendation_ids: ["rec-theme-3"],
+          },
+        ],
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("heading", { name: "Deterministic Recommendations" });
+    const groupedBlock = screen.getByTestId("recommendation-theme-groups");
+    expect(groupedBlock).toBeInTheDocument();
+
+    const trustGroup = screen.getByTestId("recommendation-theme-group-trust_and_legitimacy");
+    expect(within(trustGroup).getByText("Trust & legitimacy")).toBeInTheDocument();
+    expect(within(trustGroup).getByText("Publish license and insurance trust proof")).toBeInTheDocument();
+    expect(within(trustGroup).getAllByRole("row")).toHaveLength(2);
+
+    const experienceGroup = screen.getByTestId("recommendation-theme-group-experience_and_proof");
+    expect(within(experienceGroup).getByText("Experience & proof")).toBeInTheDocument();
+    expect(within(experienceGroup).getByText("Publish project stories and before/after proof")).toBeInTheDocument();
+    expect(within(experienceGroup).getAllByRole("row")).toHaveLength(2);
+
+    const generalGroup = screen.getByTestId("recommendation-theme-group-general_site_improvement");
+    expect(within(generalGroup).getByText("General site improvement")).toBeInTheDocument();
+    expect(within(generalGroup).getByText("Improve title tags and service-page structure")).toBeInTheDocument();
+    expect(within(generalGroup).getAllByRole("row")).toHaveLength(2);
+  });
+
+  it("keeps grouped wrapper hidden when grouped metadata is absent or trivial", async () => {
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        recommendations: {
+          items: [
+            buildRecommendation({
+              id: "rec-single-theme",
+              title: "Publish trust proof across key service pages",
+              theme: "trust_and_legitimacy",
+              theme_label: "Trust & legitimacy",
+            }),
+          ],
+          total: 1,
+        },
+        grouped_recommendations: [
+          {
+            theme: "trust_and_legitimacy",
+            label: "Trust & legitimacy",
+            count: 1,
+            recommendation_ids: ["rec-single-theme"],
+          },
+        ],
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("heading", { name: "Deterministic Recommendations" });
+    expect(screen.queryByTestId("recommendation-theme-groups")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Publish trust proof across key service pages").length).toBeGreaterThan(0);
+  });
+
   it("renders recommendation apply outcome context when workspace summary includes apply metadata", async () => {
     seedRichWorkspaceData();
     mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
@@ -2973,6 +3091,94 @@ describe("site workspace timeline controls", () => {
     const freshness = screen.getByTestId("narrative-analysis-freshness");
     expect(within(freshness).getByText("Unknown")).toBeInTheDocument();
     expect(within(freshness).getByText("Analysis freshness could not be determined.")).toBeInTheDocument();
+  });
+
+  it("shows ZIP capture modal when location context is weak and no ZIP is stored", async () => {
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        site_location_context: "Location not yet established from available business/site data.",
+        site_location_context_strength: "weak",
+        site_primary_location: null,
+        site_primary_business_zip: null,
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    const modal = await screen.findByTestId("zip-capture-modal");
+    expect(within(modal).getByText("Where do you primarily do business?")).toBeInTheDocument();
+    expect(within(modal).getByText("Save")).toBeInTheDocument();
+    expect(within(modal).getByText("Skip for now")).toBeInTheDocument();
+  });
+
+  it("does not show ZIP capture modal when ZIP is already stored", async () => {
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        site_location_context: "Serving area around ZIP code 80538",
+        site_location_context_strength: "strong",
+        site_primary_location: "Serving area around ZIP code 80538",
+        site_primary_business_zip: "80538",
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("heading", { name: "AI Narrative Overlay" });
+    expect(screen.queryByTestId("zip-capture-modal")).not.toBeInTheDocument();
+  });
+
+  it("saves ZIP from modal via site update endpoint and dismisses the prompt", async () => {
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        site_location_context: "Location not yet established from available business/site data.",
+        site_location_context_strength: "weak",
+        site_primary_location: null,
+        site_primary_business_zip: null,
+      }),
+    );
+    const user = userEvent.setup();
+    render(<SiteWorkspacePage />);
+
+    const modal = await screen.findByTestId("zip-capture-modal");
+    const zipInput = within(modal).getByPlaceholderText("80538");
+    await user.type(zipInput, "80538");
+    await user.click(within(modal).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(mockUpdateSite).toHaveBeenCalledWith(
+        "token-1",
+        "biz-1",
+        "site-1",
+        { primary_business_zip: "80538" },
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("zip-capture-modal")).not.toBeInTheDocument();
+    });
+  });
+
+  it("hides ZIP capture modal for the current session when skipped", async () => {
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        site_location_context: "Location not yet established from available business/site data.",
+        site_location_context_strength: "weak",
+        site_primary_location: null,
+        site_primary_business_zip: null,
+      }),
+    );
+    const user = userEvent.setup();
+    render(<SiteWorkspacePage />);
+
+    const modal = await screen.findByTestId("zip-capture-modal");
+    await user.click(within(modal).getByRole("button", { name: "Skip for now" }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("zip-capture-modal")).not.toBeInTheDocument();
+    });
   });
 
   it("renders competitor and recommendation prompt preview panels when prompt metadata is available", async () => {

@@ -185,6 +185,26 @@ Fallback rules:
 - if `analysis_freshness` is missing/null, do not render an empty placeholder
 - never infer `fresh` client-side when status is absent
 
+## Weak Location Context ZIP Prompt
+
+When workspace summary metadata indicates weak location context and no stored ZIP:
+
+- `site_location_context_strength === "weak"`
+- `site_primary_business_zip` is empty/null
+
+the site workspace can show a compact, non-blocking ZIP prompt modal:
+
+- title: `Where do you primarily do business?`
+- input: 5-digit ZIP
+- actions:
+  - `Save` (patches site metadata)
+  - `Skip for now` (dismisses for the current session)
+
+Rendering/behavior guidance:
+- show once per session per site unless saved
+- hide when ZIP exists or context is no longer weak
+- keep failures non-blocking with retry/skip
+
 ## Deterministic Priority Reason Visibility
 
 Recommendation rows can include additive deterministic reason chips from:
@@ -197,6 +217,28 @@ Display guidance:
 - keep this secondary to title/rationale
 - hide the block entirely when no reasons are present
 - treat reasons as explanation signals, not scores
+
+## Deterministic Theme Grouping
+
+Workspace summary payloads may include additive grouped recommendation metadata:
+
+- `grouped_recommendations[]`
+  - `theme`
+  - `label`
+  - `count`
+  - `recommendation_ids[]`
+
+Recommendation rows can also include:
+- `theme`
+- `theme_label`
+
+Rendering guidance:
+- Keep the existing recommendation list semantics intact.
+- Use lightweight section headers when there are multiple groups.
+- Show compact label + count (`Trust & legitimacy`, `Experience & proof`, etc.).
+- Preserve row ordering within each group based on incoming flat recommendation order.
+- If grouped metadata is absent or only yields a trivial single section, avoid noisy wrappers.
+- Treat grouping as operator clarity metadata only, not ranking/scoring.
 
 ## Workspace Ordering Explanation
 

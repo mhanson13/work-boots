@@ -149,6 +149,7 @@ class SEOCompetitorPromptPreview:
     user_prompt: str
     model_name: str | None
     prompt_version: str
+    trusted_site_context: dict[str, object]
 
 
 @dataclass(frozen=True)
@@ -616,6 +617,7 @@ class SEOCompetitorProfileGenerationService:
             user_prompt=prompt.user_prompt,
             model_name=self._clean_optional(self._default_model_name()),
             prompt_version=prompt.prompt_version,
+            trusted_site_context=prompt.trusted_site_context,
         )
 
     def get_observability_summary(

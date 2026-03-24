@@ -627,6 +627,23 @@ code {
   background: var(--shell-link-hover-bg);
 }
 
+.workspace-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(2, 6, 23, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.workspace-modal {
+  width: min(34rem, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;

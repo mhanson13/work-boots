@@ -203,6 +203,22 @@ Shape:
 
 No AI calls, thresholds, or fuzzy inference are used.
 
+## Weak Location Context ZIP Enrichment
+
+Workspace summary responses now include additive location-context metadata used for operator prompting:
+
+- `site_location_context`
+- `site_primary_location`
+- `site_primary_business_zip`
+- `site_location_context_strength` (`strong | weak | unknown`)
+
+When location context is weak and no ZIP is known, the operator UI can prompt for a primary business ZIP.
+
+Rules:
+- ZIP capture is optional and non-blocking.
+- ZIP is used only for deterministic local-context enrichment.
+- No external geocoding or third-party location APIs are called in this step.
+
 ## Deterministic Priority Reasons (Additive)
 
 Recommendation payloads now include additive deterministic ordering-clarity metadata:
@@ -240,6 +256,48 @@ Workspace summary payloads now include optional additive ordering metadata:
 
 This explains why recommendations are surfaced prominently using existing deterministic metadata.
 It does not introduce weighted scoring or AI prioritization.
+
+## Deterministic Recommendation Themes and Grouping
+
+Workspace recommendations now include additive deterministic theme metadata for operator clarity.
+
+Recommendation-level fields:
+- `theme`
+- `theme_label`
+
+Workspace-level additive grouping field:
+- `grouped_recommendations`
+  - `theme`
+  - `label`
+  - `count`
+  - `recommendation_ids`
+
+### Theme Taxonomy
+- `trust_and_legitimacy`
+- `experience_and_proof`
+- `authority_and_visibility`
+- `expertise_and_process`
+- `general_site_improvement`
+
+### Deterministic Derivation Rules
+Theme assignment uses existing metadata only, in this order:
+1. EEAT categories (`eeat_categories`)
+2. Priority reasons (`priority_reasons`)
+3. Existing deterministic text/rule metadata (bounded keyword fallback)
+4. Fallback: `general_site_improvement`
+
+No new AI calls or numeric scoring are used.
+
+### Grouping Behavior
+- Existing flat `recommendations.items` ordering is preserved.
+- `grouped_recommendations` is additive and presentation-oriented only.
+- Recommendation order is preserved within each theme group.
+- Group sections are emitted in a stable deterministic order:
+  1. Trust & legitimacy
+  2. Experience & proof
+  3. Authority & visibility
+  4. Expertise & process
+  5. General site improvement
 
 ## Workspace EEAT Gap Summary
 

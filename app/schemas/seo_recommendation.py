@@ -28,6 +28,7 @@ SEORecommendationTuningSuggestionConfidence = Literal["low", "medium", "high"]
 SEORecommendationSignalSupportLevel = Literal["low", "medium", "high"]
 SEORecommendationApplyOutcomeSource = Literal["recommendation", "manual"]
 SEORecommendationAnalysisFreshnessStatus = Literal["fresh", "pending_refresh", "unknown"]
+SEORecommendationLocationContextStrength = Literal["strong", "weak", "unknown"]
 SEORecommendationEEATCategory = Literal[
     "experience",
     "expertise",
@@ -43,6 +44,13 @@ SEORecommendationPriorityReason = Literal[
     "high_clarity_action",
     "pending_refresh_context",
     "general",
+]
+SEORecommendationTheme = Literal[
+    "trust_and_legitimacy",
+    "experience_and_proof",
+    "authority_and_visibility",
+    "expertise_and_process",
+    "general_site_improvement",
 ]
 RecommendationTuningSetting = Literal[
     "competitor_candidate_min_relevance_score",
@@ -72,6 +80,11 @@ _SIGNAL_SUMMARY_EVIDENCE_SOURCE_ORDER = ("site", "competitors", "references", "t
 _RECOMMENDATION_EEAT_GAP_SUPPORTING_SIGNALS_MAX_ITEMS = 6
 _RECOMMENDATION_EEAT_GAP_SUPPORTING_SIGNAL_MAX_CHARS = 140
 _ORDERING_EXPLANATION_MAX_CHARS = 320
+_RECOMMENDATION_THEME_GROUP_LABEL_MAX_CHARS = 80
+_RECOMMENDATION_THEME_GROUP_RECOMMENDATION_ID_MAX_ITEMS = 200
+_LOCATION_CONTEXT_MAX_CHARS = 220
+_PRIMARY_LOCATION_MAX_CHARS = 255
+_PRIMARY_ZIP_MAX_CHARS = 5
 _EEAT_CATEGORY_ORDER: tuple[SEORecommendationEEATCategory, ...] = (
     "experience",
     "expertise",
@@ -88,11 +101,38 @@ _PRIORITY_REASON_ORDER: tuple[SEORecommendationPriorityReason, ...] = (
     "pending_refresh_context",
     "general",
 )
+_RECOMMENDATION_THEME_ORDER: tuple[SEORecommendationTheme, ...] = (
+    "trust_and_legitimacy",
+    "experience_and_proof",
+    "authority_and_visibility",
+    "expertise_and_process",
+    "general_site_improvement",
+)
+_THEME_LABELS: dict[SEORecommendationTheme, str] = {
+    "trust_and_legitimacy": "Trust & legitimacy",
+    "experience_and_proof": "Experience & proof",
+    "authority_and_visibility": "Authority & visibility",
+    "expertise_and_process": "Expertise & process",
+    "general_site_improvement": "General site improvement",
+}
 _EEAT_CATEGORY_TO_PRIORITY_REASON: dict[SEORecommendationEEATCategory, SEORecommendationPriorityReason] = {
     "trustworthiness": "trust_gap",
     "authoritativeness": "authority_gap",
     "experience": "experience_gap",
     "expertise": "expertise_gap",
+}
+_EEAT_CATEGORY_TO_THEME: dict[SEORecommendationEEATCategory, SEORecommendationTheme] = {
+    "trustworthiness": "trust_and_legitimacy",
+    "experience": "experience_and_proof",
+    "authoritativeness": "authority_and_visibility",
+    "expertise": "expertise_and_process",
+}
+_PRIORITY_REASON_TO_THEME: dict[SEORecommendationPriorityReason, SEORecommendationTheme] = {
+    "trust_gap": "trust_and_legitimacy",
+    "experience_gap": "experience_and_proof",
+    "authority_gap": "authority_and_visibility",
+    "expertise_gap": "expertise_and_process",
+    "competitor_gap": "authority_and_visibility",
 }
 _HIGH_CLARITY_ACTION_VERBS = {
     "add",
@@ -110,6 +150,50 @@ _HIGH_CLARITY_ACTION_VERBS = {
     "strengthen",
     "update",
     "verify",
+}
+_THEME_KEYWORDS: dict[SEORecommendationTheme, tuple[str, ...]] = {
+    "trust_and_legitimacy": (
+        "trust",
+        "license",
+        "insurance",
+        "bbb",
+        "verified",
+        "review",
+        "contact",
+        "address",
+        "nap",
+    ),
+    "experience_and_proof": (
+        "portfolio",
+        "project",
+        "before",
+        "after",
+        "case study",
+        "testimonial",
+        "proof",
+        "photo",
+        "video",
+    ),
+    "authority_and_visibility": (
+        "authority",
+        "citation",
+        "listing",
+        "directory",
+        "press",
+        "award",
+        "association",
+        "membership",
+    ),
+    "expertise_and_process": (
+        "process",
+        "method",
+        "technical",
+        "capability",
+        "qa",
+        "quality",
+        "implementation",
+        "workflow",
+    ),
 }
 _EXPERIENCE_SIGNAL_KEYWORDS = (
     "testimonial",
@@ -302,6 +386,17 @@ def _normalize_priority_reason_list(value: Any) -> list[SEORecommendationPriorit
     return [reason for reason in _PRIORITY_REASON_ORDER if reason in parsed]
 
 
+def _normalize_recommendation_theme(value: Any) -> SEORecommendationTheme | None:
+    normalized = str(value or "").strip().lower()
+    if normalized not in _RECOMMENDATION_THEME_ORDER:
+        return None
+    return normalized  # type: ignore[return-value]
+
+
+def format_recommendation_theme_label(theme: SEORecommendationTheme) -> str:
+    return _THEME_LABELS.get(theme, theme.replace("_", " ").title())
+
+
 def _extract_recommendation_evidence_sources(evidence_json: dict[str, object] | None) -> set[str]:
     if not isinstance(evidence_json, dict):
         return set()
@@ -351,6 +446,44 @@ def _derive_recommendation_priority_reasons(
         reasons.add("high_clarity_action")
 
     return [reason for reason in _PRIORITY_REASON_ORDER if reason in reasons]
+
+
+def _derive_recommendation_theme(
+    *,
+    eeat_categories: list[SEORecommendationEEATCategory],
+    priority_reasons: list[SEORecommendationPriorityReason],
+    rule_key: str | None,
+    title: str | None,
+    rationale: str | None,
+) -> SEORecommendationTheme:
+    for category in eeat_categories:
+        mapped = _EEAT_CATEGORY_TO_THEME.get(category)
+        if mapped is not None:
+            return mapped
+
+    for reason in priority_reasons:
+        mapped = _PRIORITY_REASON_TO_THEME.get(reason)
+        if mapped is not None:
+            return mapped
+
+    raw_signal = " ".join(
+        filter(
+            None,
+            [
+                _normalize_signal_text(rule_key, max_length=120),
+                _normalize_signal_text(title, max_length=120),
+                _normalize_signal_text(rationale, max_length=160),
+            ],
+        )
+    )
+    for theme in _RECOMMENDATION_THEME_ORDER:
+        keywords = _THEME_KEYWORDS.get(theme)
+        if not keywords:
+            continue
+        if any(keyword in raw_signal for keyword in keywords):
+            return theme
+
+    return "general_site_improvement"
 
 
 def infer_eeat_categories_from_signals(signal_values: list[object]) -> list[SEORecommendationEEATCategory]:
@@ -552,6 +685,52 @@ class SEORecommendationOrderingExplanationRead(BaseModel):
         return _normalize_priority_reason_list(value)
 
 
+class SEORecommendationThemeGroupRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    theme: SEORecommendationTheme
+    label: str = Field(min_length=1, max_length=_RECOMMENDATION_THEME_GROUP_LABEL_MAX_CHARS)
+    count: int = Field(ge=0)
+    recommendation_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("theme", mode="before")
+    @classmethod
+    def normalize_theme(cls, value: Any) -> SEORecommendationTheme:
+        normalized = _normalize_recommendation_theme(value)
+        if normalized is None:
+            raise ValueError("Invalid recommendation theme")
+        return normalized
+
+    @field_validator("label", mode="before")
+    @classmethod
+    def normalize_label(cls, value: Any) -> str:
+        cleaned = _compact_text(value, max_length=_RECOMMENDATION_THEME_GROUP_LABEL_MAX_CHARS)
+        if cleaned is None:
+            raise ValueError("Theme group label is required")
+        return cleaned
+
+    @field_validator("recommendation_ids", mode="before")
+    @classmethod
+    def normalize_recommendation_ids(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise TypeError("recommendation_ids must be a list")
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            cleaned = _strip_or_none(str(item) if item is not None else None)
+            if cleaned is None:
+                continue
+            if cleaned in seen:
+                continue
+            seen.add(cleaned)
+            normalized.append(cleaned)
+            if len(normalized) >= _RECOMMENDATION_THEME_GROUP_RECOMMENDATION_ID_MAX_ITEMS:
+                break
+        return normalized
+
+
 class SEORecommendationEEATGapSummaryRead(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -682,6 +861,8 @@ class SEORecommendationRead(BaseModel):
     primary_eeat_category: SEORecommendationEEATCategory | None = None
     priority_reasons: list[SEORecommendationPriorityReason] = Field(default_factory=list)
     primary_priority_reason: SEORecommendationPriorityReason | None = None
+    theme: SEORecommendationTheme | None = None
+    theme_label: str | None = Field(default=None, max_length=_RECOMMENDATION_THEME_GROUP_LABEL_MAX_CHARS)
     created_at: datetime
     updated_at: datetime
 
@@ -770,6 +951,24 @@ class SEORecommendationRead(BaseModel):
             return None
         return _normalize_priority_reason(value)
 
+    @field_validator("theme", mode="before")
+    @classmethod
+    def normalize_theme(
+        cls,
+        value: Any,
+    ) -> SEORecommendationTheme | None:
+        if value is None:
+            return None
+        return _normalize_recommendation_theme(value)
+
+    @field_validator("theme_label", mode="before")
+    @classmethod
+    def normalize_theme_label(
+        cls,
+        value: Any,
+    ) -> str | None:
+        return _compact_text(value, max_length=_RECOMMENDATION_THEME_GROUP_LABEL_MAX_CHARS)
+
     @model_validator(mode="after")
     def derive_eeat_categories(self) -> "SEORecommendationRead":
         categories = list(self.eeat_categories)
@@ -813,6 +1012,20 @@ class SEORecommendationRead(BaseModel):
             and self.primary_priority_reason not in reasons
         ):
             self.primary_priority_reason = reasons[0] if reasons else None
+        return self
+
+    @model_validator(mode="after")
+    def derive_theme(self) -> "SEORecommendationRead":
+        if self.theme is None:
+            self.theme = _derive_recommendation_theme(
+                eeat_categories=self.eeat_categories,
+                priority_reasons=self.priority_reasons,
+                rule_key=self.rule_key,
+                title=self.title,
+                rationale=self.rationale,
+            )
+        if self.theme_label is None and self.theme is not None:
+            self.theme_label = format_recommendation_theme_label(self.theme)
         return self
 
 
@@ -1227,6 +1440,7 @@ class SEORecommendationWorkspaceSummaryRead(BaseModel):
     latest_run: SEORecommendationRunRead | None
     latest_completed_run: SEORecommendationRunRead | None
     recommendations: SEORecommendationListResponse
+    grouped_recommendations: list[SEORecommendationThemeGroupRead] = Field(default_factory=list)
     latest_narrative: SEORecommendationNarrativeRead | None
     tuning_suggestions: list[SEORecommendationTuningSuggestionRead] = Field(default_factory=list)
     apply_outcome: SEORecommendationApplyOutcomeRead | None = None
@@ -1235,6 +1449,41 @@ class SEORecommendationWorkspaceSummaryRead(BaseModel):
     eeat_gap_summary: SEORecommendationEEATGapSummaryRead | None = None
     competitor_prompt_preview: AIPromptPreviewRead | None = None
     recommendation_prompt_preview: AIPromptPreviewRead | None = None
+    site_location_context: str | None = Field(default=None, max_length=_LOCATION_CONTEXT_MAX_CHARS)
+    site_primary_location: str | None = Field(default=None, max_length=_PRIMARY_LOCATION_MAX_CHARS)
+    site_primary_business_zip: str | None = Field(default=None, max_length=_PRIMARY_ZIP_MAX_CHARS)
+    site_location_context_strength: SEORecommendationLocationContextStrength = "unknown"
+
+    @field_validator("site_location_context", mode="before")
+    @classmethod
+    def normalize_optional_location_context(cls, value: Any) -> str | None:
+        return _compact_text(value, max_length=_LOCATION_CONTEXT_MAX_CHARS)
+
+    @field_validator("site_primary_location", mode="before")
+    @classmethod
+    def normalize_optional_primary_location(cls, value: Any) -> str | None:
+        return _compact_text(value, max_length=_PRIMARY_LOCATION_MAX_CHARS)
+
+    @field_validator("site_primary_business_zip", mode="before")
+    @classmethod
+    def normalize_optional_zip(cls, value: Any) -> str | None:
+        compacted = _compact_text(value, max_length=_PRIMARY_ZIP_MAX_CHARS)
+        if compacted is None:
+            return None
+        if len(compacted) != 5 or not compacted.isdigit():
+            return None
+        return compacted
+
+    @field_validator("site_location_context_strength", mode="before")
+    @classmethod
+    def normalize_location_context_strength(
+        cls,
+        value: Any,
+    ) -> SEORecommendationLocationContextStrength:
+        normalized = str(value or "").strip().lower()
+        if normalized not in {"strong", "weak", "unknown"}:
+            return "unknown"
+        return normalized  # type: ignore[return-value]
 
 
 class SEORecommendationTuningValuesPatch(BaseModel):

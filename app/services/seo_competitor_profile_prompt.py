@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import re
 
 from app.models.seo_site import SEOSite
 
@@ -92,6 +93,7 @@ _NON_COMPETITOR_DOMAIN_HINTS = (
     "yellowpages.com",
     "youtube.com",
 )
+_ZIP_CODE_PATTERN = re.compile(r"\b(?P<zip>\d{5})\b")
 
 
 @dataclass(frozen=True)
@@ -127,6 +129,10 @@ def build_seo_competitor_profile_prompt(
     industry = _sanitize_optional(site.industry, max_length=_MAX_INDUSTRY_LENGTH)
     primary_location = _sanitize_optional(site.primary_location, max_length=_MAX_LOCATION_LENGTH)
     service_areas = _normalize_service_areas(site.service_areas_json)
+    primary_business_zip = _extract_primary_business_zip(
+        primary_location=primary_location,
+        service_areas=service_areas,
+    )
     has_location_context = bool(primary_location or service_areas)
     location_context = _sanitize_required(
         _build_location_context(primary_location=primary_location, service_areas=service_areas),
@@ -170,6 +176,7 @@ def build_seo_competitor_profile_prompt(
         "site_normalized_domain": normalized_domain,
         "site_industry": industry,
         "site_primary_location": primary_location,
+        "site_primary_business_zip": primary_business_zip,
         "site_service_areas": service_areas,
         "site_location_context": location_context,
         "site_location_context_strength": "strong" if has_location_context else "weak",
@@ -306,6 +313,18 @@ def _build_location_context(*, primary_location: str | None, service_areas: list
         suffix = " and surrounding areas" if len(service_areas) > 4 else ""
         return f"Serves {', '.join(preview)}{suffix}"
     return _LOCATION_FALLBACK_TEXT
+
+
+def _extract_primary_business_zip(*, primary_location: str | None, service_areas: list[str]) -> str | None:
+    if primary_location:
+        match = _ZIP_CODE_PATTERN.search(primary_location)
+        if match is not None:
+            return match.group("zip")
+    for area in service_areas:
+        match = _ZIP_CODE_PATTERN.search(area)
+        if match is not None:
+            return match.group("zip")
+    return None
 
 
 def _build_industry_context(
