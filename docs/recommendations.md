@@ -21,6 +21,27 @@ Only normalized competitor output is consumed:
 - The model is instructed to use provided competitor gaps to improve specificity.
 - The model is also instructed not to invent competitor facts beyond provided context.
 - Upstream competitor prompt context now prioritizes structured site/business metadata for location/industry/service intent, with domain-token heuristics used only as a last-resort fallback.
+- Upstream competitor candidate quality now uses a deterministic eligibility gate before admin tuning/scoring, so obviously invalid parked/dead/out-of-market domains are filtered before recommendation-facing competitor context is derived.
+
+## Admin Competitor Candidate Quality Controls (Operator Guidance)
+
+The Admin panel includes plain-English helper guidance for the four competitor candidate tuning controls.
+
+- `Minimum Relevance Score`:
+  - Controls how closely a competitor must match your business to be included.
+  - Higher values mean stricter, more relevant matches.
+  - Raise this if competitors feel unrelated. Lower it if you are getting too few results.
+- `Big-Box Mismatch Penalty`:
+  - Reduces the chance that large national or big-box companies appear as competitors.
+  - Raise this if large companies dominate your results.
+- `Directory/Aggregator Penalty`:
+  - Reduces listings from directories or lead sites (for example Yelp, Angi).
+  - Raise this if you see too many directory or listing sites.
+- `Local Alignment Bonus`:
+  - Boosts competitors that are located in or serve your area.
+  - Raise this if competitors are not local enough.
+
+These controls tune ranking/thresholding among plausible candidates only. They do not override deterministic eligibility filtering.
 
 ## Deterministic EEAT Classification (Additive)
 

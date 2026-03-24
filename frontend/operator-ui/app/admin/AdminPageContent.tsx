@@ -1056,6 +1056,13 @@ export default function AdminPage() {
             disabled={businessSettingsLoading || candidateQualitySubmitting}
             required
           />
+          <p className="hint muted">
+            Controls how closely a competitor must match your business to be included. Higher values mean stricter,
+            more relevant matches.
+          </p>
+          <p className="hint muted">
+            Raise this if competitors feel unrelated. Lower it if you are getting too few results.
+          </p>
 
           <label htmlFor="competitor-candidate-big-box-penalty">Big-Box Mismatch Penalty</label>
           <input
@@ -1069,6 +1076,11 @@ export default function AdminPage() {
             disabled={businessSettingsLoading || candidateQualitySubmitting}
             required
           />
+          <p className="hint muted">
+            Reduces the chance that large national or big-box companies appear as competitors. Increase this to focus
+            more on businesses like yours.
+          </p>
+          <p className="hint muted">Raise this if large companies dominate your results.</p>
 
           <label htmlFor="competitor-candidate-directory-penalty">Directory/Aggregator Penalty</label>
           <input
@@ -1082,6 +1094,11 @@ export default function AdminPage() {
             disabled={businessSettingsLoading || candidateQualitySubmitting}
             required
           />
+          <p className="hint muted">
+            Reduces listings from directories or lead sites (like Yelp, Angi, etc.). Increase this to prioritize real
+            business websites instead.
+          </p>
+          <p className="hint muted">Raise this if you see too many directory or listing sites.</p>
 
           <label htmlFor="competitor-candidate-local-alignment-bonus">Local Alignment Bonus</label>
           <input
@@ -1095,6 +1112,11 @@ export default function AdminPage() {
             disabled={businessSettingsLoading || candidateQualitySubmitting}
             required
           />
+          <p className="hint muted">
+            Boosts competitors that are located in or serve your area. Increase this to focus more on nearby
+            businesses.
+          </p>
+          <p className="hint muted">Raise this if competitors are not local enough.</p>
 
           <p className="hint muted">
             Minimum relevance score: {COMPETITOR_MIN_RELEVANCE_SCORE_MIN}-{COMPETITOR_MIN_RELEVANCE_SCORE_MAX}, big-box

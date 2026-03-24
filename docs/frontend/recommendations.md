@@ -14,6 +14,21 @@ The `AI Opportunities` section is shown only when AI-backed signals exist in the
 
 The UI does not generate new AI text client-side and does not mutate backend workflows.
 
+## Admin Tuning Copy
+
+The Admin page (`/admin`, with `/users` compatibility routing) now renders visible plain-English helper text under each AI competitor quality tuning field:
+
+- Minimum Relevance Score
+- Big-Box Mismatch Penalty
+- Directory/Aggregator Penalty
+- Local Alignment Bonus
+
+Frontend guidance:
+- Keep helper text visible (not tooltip-only).
+- Keep copy concise and operator-focused.
+- Preserve existing validation/saving behavior.
+- Keep a clear note in operator-facing docs that these controls tune eligible-candidate ranking only and do not bypass deterministic eligibility filtering.
+
 ### Card Behavior
 
 Each AI opportunity card shows:

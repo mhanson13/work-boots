@@ -150,3 +150,51 @@ Workspace summaries now include a deterministic `competitor_context_health` bloc
 
 This signal indicates how grounded competitor input context is before model execution.
 It does **not** score model outputs and does not change competitor generation behavior.
+
+## Two-Stage Candidate Quality Control
+
+Competitor draft candidate quality now runs in two deterministic stages:
+
+1. Eligibility gate (hard filter)
+2. Admin tuning/scoring (existing settings)
+
+### Stage 1: Deterministic eligibility gate
+
+Before relevance scoring, candidates are filtered for obvious invalidity using deterministic checks.
+
+Hard ineligibility reasons (internal):
+- `parked_domain`
+- `no_live_site`
+- `weak_business_identity`
+- `out_of_market`
+- `excluded_domain_pattern`
+- `insufficient_overlap_evidence`
+
+Examples:
+- parked/for-sale domain pages are rejected
+- probe failures or non-live landing pages are rejected
+- clearly weak/no-business-identity shells are rejected
+- clearly out-of-market candidates are rejected when local context is strong
+
+### Stage 2: Existing admin tuning/scoring
+
+Only eligible candidates proceed to existing business-admin tuning controls:
+- minimum relevance score
+- big-box mismatch penalty
+- directory/aggregator penalty
+- local alignment bonus
+
+These settings still govern ranking and thresholding among plausible candidates.
+
+Operator-facing guidance for these controls is now shown directly in the Admin panel with plain-English descriptions and “when to adjust” hints:
+- raise minimum relevance if competitors look unrelated
+- raise big-box mismatch penalty if large national brands dominate
+- raise directory/aggregator penalty if listing sites dominate
+- raise local alignment bonus if results are not local enough
+
+### Operational behavior
+
+- Invalid candidates are excluded before operator review lists and downstream competitor-informed flows.
+- The system may return fewer candidates when viable competitors are limited.
+- No external geocoding APIs are used.
+- No provider/model architecture changes were introduced by this quality gate.

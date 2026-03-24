@@ -46,6 +46,10 @@ from app.services.seo_competitor_profile_generation import (
     STALE_RUNNING_RUN_TIMEOUT,
     SEOCompetitorProfileGenerationService,
 )
+from app.services.seo_competitor_profile_candidate_quality import (
+    CompetitorCandidateDomainProbe,
+    CompetitorCandidateDomainProbeResult,
+)
 
 
 class _DeterministicCompetitorProfileProvider:
@@ -395,6 +399,57 @@ class _ModerateCompetitorProfileProvider:
         )
 
 
+class _EligibilityGateCompetitorProfileProvider:
+    provider_name = "eligibility-gate-provider"
+    model_name = "eligibility-gate-model"
+    prompt_version = "seo-competitor-profile-v1"
+
+    def generate_competitor_profiles(
+        self,
+        *,
+        site,  # noqa: ANN001
+        existing_domains,  # noqa: ANN001
+        candidate_count: int,
+    ) -> SEOCompetitorProfileGenerationOutput:
+        del site, existing_domains
+        candidates = [
+            SEOCompetitorProfileDraftCandidateOutput(
+                suggested_name="Valid Local Contractor",
+                suggested_domain="valid-local-contractor.com",
+                competitor_type="direct",
+                summary="Serving Denver and Aurora for licensed remodeling and construction projects.",
+                why_competitor="Competes for local remodeling and contractor-intent searches.",
+                evidence="Service pages, contact details, and local customer proof.",
+                confidence_score=0.85,
+            ),
+            SEOCompetitorProfileDraftCandidateOutput(
+                suggested_name="Parked Domain Candidate",
+                suggested_domain="parked-candidate.com",
+                competitor_type="direct",
+                summary="Supposed competitor with weak web presence.",
+                why_competitor="Unclear overlap.",
+                evidence="Minimal evidence.",
+                confidence_score=0.6,
+            ),
+            SEOCompetitorProfileDraftCandidateOutput(
+                suggested_name="Offline Domain Candidate",
+                suggested_domain="offline-candidate.com",
+                competitor_type="local",
+                summary="Potential competitor with unavailable site.",
+                why_competitor="Unknown overlap.",
+                evidence="Unknown.",
+                confidence_score=0.6,
+            ),
+        ]
+        return SEOCompetitorProfileGenerationOutput(
+            candidates=candidates[:candidate_count],
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            prompt_version=self.prompt_version,
+            raw_response='{"candidates":[{"name":"Valid Local Contractor"}]}',
+        )
+
+
 class _StatusObservingProvider(_DeterministicCompetitorProfileProvider):
     def __init__(self, *, db_session: Session, business_id: str, run_id: str) -> None:
         self._db_session = db_session
@@ -517,6 +572,7 @@ def _execute_generation_run(
     site_id: str,
     run_id: str,
     provider: SEOCompetitorProfileGenerationProvider,
+    candidate_domain_probe: CompetitorCandidateDomainProbe | None = None,
 ):
     service = SEOCompetitorProfileGenerationService(
         session=db_session,
@@ -525,6 +581,7 @@ def _execute_generation_run(
         seo_competitor_repository=SEOCompetitorRepository(db_session),
         seo_competitor_profile_generation_repository=SEOCompetitorProfileGenerationRepository(db_session),
         provider=provider,
+        candidate_domain_probe=candidate_domain_probe,
     )
     return service.execute_queued_run(
         business_id=business_id,
@@ -1464,6 +1521,74 @@ def test_generation_ordering_is_deterministic_for_same_input(db_session, seeded_
     first_domains = [item["suggested_domain"] for item in first_detail.json()["drafts"]]
     second_domains = [item["suggested_domain"] for item in second_detail.json()["drafts"]]
     assert first_domains == second_domains
+
+
+def test_generation_applies_eligibility_filter_before_admin_tuning(db_session, seeded_business) -> None:
+    deferred_executor = _DeferredRunExecutor()
+    provider = _EligibilityGateCompetitorProfileProvider()
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        generation_provider=provider,
+        run_executor=deferred_executor,
+    )
+    site_id = _create_site(client, seeded_business.id)
+    site = (
+        db_session.query(SEOSite)
+        .filter(SEOSite.business_id == seeded_business.id)
+        .filter(SEOSite.id == site_id)
+        .one()
+    )
+    site.industry = "Construction"
+    site.primary_location = "Denver, CO"
+    site.service_areas_json = ["Denver", "Aurora"]
+    db_session.add(site)
+    db_session.commit()
+
+    run_id = _create_generation_run(client, seeded_business.id, site_id, candidate_count=3)["run"]["id"]
+
+    def domain_probe(domain: str) -> CompetitorCandidateDomainProbeResult | None:
+        if domain == "parked-candidate.com":
+            return CompetitorCandidateDomainProbeResult(
+                status_code=200,
+                body_text="This domain is for sale. Buy this domain on Sedo.",
+            )
+        if domain == "offline-candidate.com":
+            return CompetitorCandidateDomainProbeResult(
+                status_code=None,
+                body_text=None,
+                fetch_error="Request failed after retries",
+            )
+        if domain == "valid-local-contractor.com":
+            return CompetitorCandidateDomainProbeResult(
+                status_code=200,
+                body_text=(
+                    "Denver construction and remodeling services. About our team. "
+                    "Contact us for licensed residential and commercial projects."
+                ),
+            )
+        return None
+
+    _execute_generation_run(
+        db_session=db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        run_id=run_id,
+        provider=provider,
+        candidate_domain_probe=domain_probe,
+    )
+
+    detail = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/competitor-profile-generation-runs/{run_id}"
+    )
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["run"]["status"] == "completed"
+    assert payload["run"]["raw_candidate_count"] == 3
+    assert payload["run"]["included_candidate_count"] == 1
+    assert payload["run"]["excluded_candidate_count"] == 2
+    assert payload["run"]["exclusion_counts_by_reason"]["invalid_candidate"] == 2
+    assert [item["suggested_domain"] for item in payload["drafts"]] == ["valid-local-contractor.com"]
 
 
 def test_generation_failure_with_all_candidates_excluded_persists_exclusion_telemetry(

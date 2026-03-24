@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 import re
 from urllib.parse import urlsplit
@@ -83,6 +84,165 @@ EXCLUSION_REASON_KEYS: tuple[str, ...] = (
     EXCLUSION_REASON_INVALID_CANDIDATE,
 )
 
+INELIGIBILITY_REASON_PARKED_DOMAIN = "parked_domain"
+INELIGIBILITY_REASON_NO_LIVE_SITE = "no_live_site"
+INELIGIBILITY_REASON_WEAK_BUSINESS_IDENTITY = "weak_business_identity"
+INELIGIBILITY_REASON_OUT_OF_MARKET = "out_of_market"
+INELIGIBILITY_REASON_EXCLUDED_DOMAIN_PATTERN = "excluded_domain_pattern"
+INELIGIBILITY_REASON_INSUFFICIENT_OVERLAP_EVIDENCE = "insufficient_overlap_evidence"
+INELIGIBILITY_REASON_KEYS: tuple[str, ...] = (
+    INELIGIBILITY_REASON_PARKED_DOMAIN,
+    INELIGIBILITY_REASON_NO_LIVE_SITE,
+    INELIGIBILITY_REASON_WEAK_BUSINESS_IDENTITY,
+    INELIGIBILITY_REASON_OUT_OF_MARKET,
+    INELIGIBILITY_REASON_EXCLUDED_DOMAIN_PATTERN,
+    INELIGIBILITY_REASON_INSUFFICIENT_OVERLAP_EVIDENCE,
+)
+
+_PARKED_DOMAIN_TEXT_MARKERS = (
+    "domain is for sale",
+    "this domain is for sale",
+    "buy this domain",
+    "buy now",
+    "parked free",
+    "parked domain",
+    "domain parking",
+    "sedo",
+    "afternic",
+    "hugedomains",
+    "godaddy domain broker",
+)
+_EXCLUDED_DOMAIN_SUBSTRINGS = (
+    "domainforsale",
+    "for-sale-domain",
+    "buy-this-domain",
+    "sedoparking",
+    "parkingcrew",
+)
+_BUSINESS_IDENTITY_CUES = {
+    "about",
+    "book",
+    "call",
+    "contact",
+    "estimate",
+    "hours",
+    "location",
+    "phone",
+    "portfolio",
+    "projects",
+    "quote",
+    "review",
+    "services",
+    "team",
+    "testimonial",
+}
+_STATE_ABBREVIATIONS = {
+    "al",
+    "ak",
+    "az",
+    "ar",
+    "ca",
+    "co",
+    "ct",
+    "de",
+    "fl",
+    "ga",
+    "hi",
+    "id",
+    "il",
+    "in",
+    "ia",
+    "ks",
+    "ky",
+    "la",
+    "me",
+    "md",
+    "ma",
+    "mi",
+    "mn",
+    "ms",
+    "mo",
+    "mt",
+    "ne",
+    "nv",
+    "nh",
+    "nj",
+    "nm",
+    "ny",
+    "nc",
+    "nd",
+    "oh",
+    "ok",
+    "or",
+    "pa",
+    "ri",
+    "sc",
+    "sd",
+    "tn",
+    "tx",
+    "ut",
+    "vt",
+    "va",
+    "wa",
+    "wv",
+    "wi",
+    "wy",
+    "dc",
+}
+_STATE_NAME_TO_ABBREVIATION = {
+    "alabama": "al",
+    "alaska": "ak",
+    "arizona": "az",
+    "arkansas": "ar",
+    "california": "ca",
+    "colorado": "co",
+    "connecticut": "ct",
+    "delaware": "de",
+    "florida": "fl",
+    "georgia": "ga",
+    "hawaii": "hi",
+    "idaho": "id",
+    "illinois": "il",
+    "indiana": "in",
+    "iowa": "ia",
+    "kansas": "ks",
+    "kentucky": "ky",
+    "louisiana": "la",
+    "maine": "me",
+    "maryland": "md",
+    "massachusetts": "ma",
+    "michigan": "mi",
+    "minnesota": "mn",
+    "mississippi": "ms",
+    "missouri": "mo",
+    "montana": "mt",
+    "nebraska": "ne",
+    "nevada": "nv",
+    "new hampshire": "nh",
+    "new jersey": "nj",
+    "new mexico": "nm",
+    "new york": "ny",
+    "north carolina": "nc",
+    "north dakota": "nd",
+    "ohio": "oh",
+    "oklahoma": "ok",
+    "oregon": "or",
+    "pennsylvania": "pa",
+    "rhode island": "ri",
+    "south carolina": "sc",
+    "south dakota": "sd",
+    "tennessee": "tn",
+    "texas": "tx",
+    "utah": "ut",
+    "vermont": "vt",
+    "virginia": "va",
+    "washington": "wa",
+    "west virginia": "wv",
+    "wisconsin": "wi",
+    "wyoming": "wy",
+    "district of columbia": "dc",
+}
+
 
 @dataclass(frozen=True)
 class CompetitorCandidateInput:
@@ -119,6 +279,31 @@ class CompetitorCandidateProcessingResult:
     deduped_candidate_count: int
     excluded_candidate_count: int
     exclusion_counts_by_reason: dict[str, int]
+
+
+@dataclass(frozen=True)
+class CompetitorCandidateDomainProbeResult:
+    status_code: int | None
+    body_text: str | None
+    fetch_error: str | None = None
+
+
+CompetitorCandidateDomainProbe = Callable[[str], CompetitorCandidateDomainProbeResult | None]
+
+
+@dataclass(frozen=True)
+class CompetitorCandidateEligibilityDecision:
+    candidate: CompetitorCandidateInput
+    is_eligible: bool
+    ineligibility_reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CompetitorCandidateEligibilityResult:
+    eligible_candidates: list[CompetitorCandidateInput]
+    decisions: list[CompetitorCandidateEligibilityDecision]
+    ineligible_candidate_count: int
+    ineligibility_counts_by_reason: dict[str, int]
 
 
 @dataclass(frozen=True)
@@ -180,6 +365,14 @@ class _SiteScoringContext:
 
 
 @dataclass(frozen=True)
+class _EligibilitySiteContext:
+    industry_terms: set[str]
+    location_terms: set[str]
+    state_tokens: set[str]
+    has_local_context: bool
+
+
+@dataclass(frozen=True)
 class _ScoredCandidateState:
     suggested_name: str
     suggested_domain: str
@@ -197,6 +390,61 @@ class _ScoredCandidateState:
     is_directory_domain: bool
     is_big_box_candidate: bool
     source_index: int
+
+
+def filter_eligible_competitor_candidates(
+    *,
+    site: SEOSite,
+    candidates: list[CompetitorCandidateInput],
+    domain_probe: CompetitorCandidateDomainProbe | None = None,
+) -> CompetitorCandidateEligibilityResult:
+    context = _build_eligibility_context(site)
+    eligible_candidates: list[CompetitorCandidateInput] = []
+    decisions: list[CompetitorCandidateEligibilityDecision] = []
+    reason_counts = _new_ineligibility_reason_counts()
+    probe_cache: dict[str, CompetitorCandidateDomainProbeResult | None] = {}
+
+    for candidate in candidates:
+        domain = _canonicalize_domain(candidate.suggested_domain)
+        domain_probe_result = _resolve_domain_probe_result(
+            domain=domain,
+            domain_probe=domain_probe,
+            cache=probe_cache,
+        )
+        reasons = _determine_ineligibility_reasons(
+            candidate=candidate,
+            context=context,
+            domain=domain,
+            domain_probe_result=domain_probe_result,
+        )
+        if reasons:
+            for reason in reasons:
+                reason_counts[reason] += 1
+            decisions.append(
+                CompetitorCandidateEligibilityDecision(
+                    candidate=candidate,
+                    is_eligible=False,
+                    ineligibility_reasons=tuple(reasons),
+                )
+            )
+            continue
+
+        eligible_candidates.append(candidate)
+        decisions.append(
+            CompetitorCandidateEligibilityDecision(
+                candidate=candidate,
+                is_eligible=True,
+                ineligibility_reasons=tuple(),
+            )
+        )
+
+    ineligible_count = sum(1 for item in decisions if not item.is_eligible)
+    return CompetitorCandidateEligibilityResult(
+        eligible_candidates=eligible_candidates,
+        decisions=decisions,
+        ineligible_candidate_count=ineligible_count,
+        ineligibility_counts_by_reason=reason_counts,
+    )
 
 
 def process_competitor_candidates(
@@ -595,8 +843,194 @@ def _determine_exclusion_reason(
     return None
 
 
+def _build_eligibility_context(site: SEOSite) -> _EligibilitySiteContext:
+    scoring_context = _build_site_context(site)
+    location_values = []
+    if site.primary_location:
+        location_values.append(site.primary_location)
+    if site.service_areas_json:
+        location_values.extend([item for item in site.service_areas_json if isinstance(item, str)])
+    state_tokens: set[str] = set()
+    for value in location_values:
+        normalized_value = _normalize_text(value).lower()
+        for token in _extract_terms(normalized_value, minimum_length=2):
+            if token in _STATE_ABBREVIATIONS:
+                state_tokens.add(token)
+        for state_name, abbreviation in _STATE_NAME_TO_ABBREVIATION.items():
+            if re.search(rf"\b{re.escape(state_name)}\b", normalized_value):
+                state_tokens.add(abbreviation)
+    return _EligibilitySiteContext(
+        industry_terms=scoring_context.industry_terms,
+        location_terms=scoring_context.location_terms,
+        state_tokens=state_tokens,
+        has_local_context=scoring_context.has_local_context,
+    )
+
+
+def _resolve_domain_probe_result(
+    *,
+    domain: str,
+    domain_probe: CompetitorCandidateDomainProbe | None,
+    cache: dict[str, CompetitorCandidateDomainProbeResult | None],
+) -> CompetitorCandidateDomainProbeResult | None:
+    if domain_probe is None or not domain:
+        return None
+    if domain in cache:
+        return cache[domain]
+    try:
+        result = domain_probe(domain)
+    except Exception as exc:  # noqa: BLE001
+        result = CompetitorCandidateDomainProbeResult(
+            status_code=None,
+            body_text=None,
+            fetch_error=f"probe_error:{type(exc).__name__}",
+        )
+    cache[domain] = result
+    return result
+
+
+def _determine_ineligibility_reasons(
+    *,
+    candidate: CompetitorCandidateInput,
+    context: _EligibilitySiteContext,
+    domain: str,
+    domain_probe_result: CompetitorCandidateDomainProbeResult | None,
+) -> list[str]:
+    reasons: list[str] = []
+    candidate_text = _candidate_text_blob(candidate)
+    probe_text = _normalize_text((domain_probe_result.body_text if domain_probe_result else "") or "").lower()
+    combined_text = f"{candidate_text} {probe_text}".strip()
+
+    if _has_excluded_domain_pattern(domain):
+        reasons.append(INELIGIBILITY_REASON_EXCLUDED_DOMAIN_PATTERN)
+
+    if _contains_parked_markers(f"{domain} {combined_text}".strip()):
+        reasons.append(INELIGIBILITY_REASON_PARKED_DOMAIN)
+
+    if _is_no_live_site(domain_probe_result):
+        reasons.append(INELIGIBILITY_REASON_NO_LIVE_SITE)
+    elif domain_probe_result is not None and _has_weak_business_identity(combined_text):
+        reasons.append(INELIGIBILITY_REASON_WEAK_BUSINESS_IDENTITY)
+
+    if _is_out_of_market_candidate(context=context, combined_text=combined_text):
+        reasons.append(INELIGIBILITY_REASON_OUT_OF_MARKET)
+
+    if domain_probe_result is not None and _has_insufficient_overlap_evidence(
+        candidate=candidate,
+        context=context,
+        combined_text=combined_text,
+    ):
+        reasons.append(INELIGIBILITY_REASON_INSUFFICIENT_OVERLAP_EVIDENCE)
+
+    return _dedupe_reasons(reasons)
+
+
+def _candidate_text_blob(candidate: CompetitorCandidateInput) -> str:
+    return " ".join(
+        value
+        for value in [
+            candidate.suggested_name,
+            candidate.suggested_domain,
+            candidate.summary or "",
+            candidate.why_competitor or "",
+            candidate.evidence or "",
+        ]
+        if value
+    ).lower()
+
+
+def _has_excluded_domain_pattern(domain: str) -> bool:
+    if not domain:
+        return False
+    return any(pattern in domain for pattern in _EXCLUDED_DOMAIN_SUBSTRINGS)
+
+
+def _contains_parked_markers(text: str) -> bool:
+    lowered = text.lower()
+    return any(marker in lowered for marker in _PARKED_DOMAIN_TEXT_MARKERS)
+
+
+def _is_no_live_site(domain_probe_result: CompetitorCandidateDomainProbeResult | None) -> bool:
+    if domain_probe_result is None:
+        return False
+    if domain_probe_result.fetch_error:
+        return True
+    if domain_probe_result.status_code is not None and domain_probe_result.status_code >= 400:
+        return True
+    body = _normalize_text(domain_probe_result.body_text or "")
+    return len(body) < 40
+
+
+def _has_weak_business_identity(combined_text: str) -> bool:
+    terms = _extract_terms(combined_text, minimum_length=3)
+    if len(terms) < 20:
+        return True
+    cue_hits = len(terms.intersection(_BUSINESS_IDENTITY_CUES))
+    return cue_hits < 2
+
+
+def _is_out_of_market_candidate(*, context: _EligibilitySiteContext, combined_text: str) -> bool:
+    if not context.has_local_context:
+        return False
+    candidate_terms = _extract_terms(combined_text, minimum_length=2)
+    if context.location_terms.intersection(candidate_terms):
+        return False
+    candidate_state_tokens = _extract_explicit_state_tokens(combined_text)
+    if not candidate_state_tokens:
+        return False
+    if not context.state_tokens:
+        return False
+    return candidate_state_tokens.isdisjoint(context.state_tokens)
+
+
+def _has_insufficient_overlap_evidence(
+    *,
+    candidate: CompetitorCandidateInput,
+    context: _EligibilitySiteContext,
+    combined_text: str,
+) -> bool:
+    text_terms = _extract_terms(combined_text, minimum_length=3)
+    has_industry_overlap = bool(context.industry_terms.intersection(text_terms))
+    has_location_overlap = bool(context.location_terms.intersection(text_terms))
+    rationale_length = len(_normalize_text(candidate.why_competitor or "")) + len(
+        _normalize_text(candidate.evidence or "")
+    )
+    if has_industry_overlap or has_location_overlap:
+        return False
+    if rationale_length >= 40:
+        return False
+    return candidate.confidence_score < 0.55
+
+
+def _dedupe_reasons(reasons: list[str]) -> list[str]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for reason in reasons:
+        if reason in seen:
+            continue
+        seen.add(reason)
+        ordered.append(reason)
+    return ordered
+
+
+def _extract_explicit_state_tokens(value: str) -> set[str]:
+    tokens: set[str] = set()
+    for match in re.findall(r",\s*([a-z]{2})\b", value.lower()):
+        if match in _STATE_ABBREVIATIONS:
+            tokens.add(match)
+    lowered = value.lower()
+    for state_name, abbreviation in _STATE_NAME_TO_ABBREVIATION.items():
+        if re.search(rf"\b{re.escape(state_name)}\b", lowered):
+            tokens.add(abbreviation)
+    return tokens
+
+
 def _new_exclusion_reason_counts() -> dict[str, int]:
     return {reason: 0 for reason in EXCLUSION_REASON_KEYS}
+
+
+def _new_ineligibility_reason_counts() -> dict[str, int]:
+    return {reason: 0 for reason in INELIGIBILITY_REASON_KEYS}
 
 
 def _score_candidate(

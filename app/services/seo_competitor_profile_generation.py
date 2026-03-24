@@ -37,6 +37,8 @@ from app.schemas.seo_competitor import (
 from app.services.seo_competitor_profile_candidate_quality import (
     BIG_BOX_PENALTY_MAX,
     BIG_BOX_PENALTY_MIN,
+    CompetitorCandidateDomainProbe,
+    CompetitorCandidateDomainProbeResult,
     DIRECTORY_PENALTY_MAX,
     DIRECTORY_PENALTY_MIN,
     LOCAL_ALIGNMENT_BONUS_MAX,
@@ -50,6 +52,7 @@ from app.services.seo_competitor_profile_candidate_quality import (
     DEFAULT_LOCAL_ALIGNMENT_BONUS,
     DEFAULT_MIN_RELEVANCE_SCORE,
     EXCLUSION_REASON_KEYS,
+    filter_eligible_competitor_candidates,
     default_exclusion_reason_counts,
     process_competitor_candidates,
 )
@@ -57,6 +60,7 @@ from app.services.seo_competitor_profile_prompt import SEO_COMPETITOR_PROFILE_PR
 from app.services.seo_competitor_profile_prompt import (
     build_seo_competitor_profile_prompt,
 )
+from app.services.seo_crawler import SEOCrawler
 
 
 logger = logging.getLogger(__name__)
@@ -88,6 +92,10 @@ DEFAULT_RUN_RETENTION_DAYS = 180
 DEFAULT_REJECTED_DRAFT_RETENTION_DAYS = 90
 DEFAULT_OBSERVABILITY_LOOKBACK_DAYS = 30
 DEFAULT_PREVIEW_ACCURACY_LAST_N = 10
+COMPETITOR_DOMAIN_PROBE_TIMEOUT_SECONDS = 4
+COMPETITOR_DOMAIN_PROBE_MAX_RESPONSE_BYTES = 200_000
+COMPETITOR_DOMAIN_PROBE_MAX_REDIRECTS = 3
+COMPETITOR_DOMAIN_PROBE_TEST_TLDS = (".example", ".invalid", ".test", ".localhost")
 
 FAILURE_CATEGORY_TIMEOUT = "timeout"
 FAILURE_CATEGORY_PROVIDER_AUTH = "provider_auth"
@@ -172,8 +180,10 @@ class SEOCompetitorProfileDraftBuildResult:
     raw_candidate_count: int
     included_candidate_count: int
     deduped_candidate_count: int
+    ineligible_candidate_count: int
     excluded_candidate_count: int
     exclusion_counts_by_reason: dict[str, int]
+    ineligibility_counts_by_reason: dict[str, int]
 
 
 @dataclass(frozen=True)
@@ -215,6 +225,50 @@ class SEOCompetitorProfileRetentionCleanupStatus:
     window_end: datetime
 
 
+def build_default_competitor_candidate_domain_probe() -> CompetitorCandidateDomainProbe:
+    crawler = SEOCrawler(
+        timeout_seconds=COMPETITOR_DOMAIN_PROBE_TIMEOUT_SECONDS,
+        max_retries=0,
+        max_redirects=COMPETITOR_DOMAIN_PROBE_MAX_REDIRECTS,
+        max_response_bytes=COMPETITOR_DOMAIN_PROBE_MAX_RESPONSE_BYTES,
+        max_workers=1,
+    )
+
+    def _probe(domain: str) -> CompetitorCandidateDomainProbeResult | None:
+        normalized = (domain or "").strip().lower().strip(".")
+        if not normalized:
+            return None
+        if any(normalized.endswith(tld) for tld in COMPETITOR_DOMAIN_PROBE_TEST_TLDS):
+            return None
+        try:
+            pages = crawler.crawl(
+                base_url=f"https://{normalized}/",
+                max_pages=1,
+                max_depth=0,
+                same_domain_only=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return CompetitorCandidateDomainProbeResult(
+                status_code=None,
+                body_text=None,
+                fetch_error=str(exc),
+            )
+        if not pages:
+            return CompetitorCandidateDomainProbeResult(
+                status_code=None,
+                body_text=None,
+                fetch_error="empty_probe_result",
+            )
+        page = pages[0]
+        return CompetitorCandidateDomainProbeResult(
+            status_code=page.status_code if page.status_code > 0 else None,
+            body_text=page.body_text,
+            fetch_error=page.fetch_error,
+        )
+
+    return _probe
+
+
 class SEOCompetitorProfileGenerationService:
     def __init__(
         self,
@@ -225,6 +279,7 @@ class SEOCompetitorProfileGenerationService:
         seo_competitor_repository: SEOCompetitorRepository,
         seo_competitor_profile_generation_repository: SEOCompetitorProfileGenerationRepository,
         provider: SEOCompetitorProfileGenerationProvider,
+        candidate_domain_probe: CompetitorCandidateDomainProbe | None = None,
         retention_policy: SEOCompetitorProfileRetentionPolicy = SEOCompetitorProfileRetentionPolicy(),
         observability_lookback_days: int = DEFAULT_OBSERVABILITY_LOOKBACK_DAYS,
     ) -> None:
@@ -234,6 +289,7 @@ class SEOCompetitorProfileGenerationService:
         self.seo_competitor_repository = seo_competitor_repository
         self.seo_competitor_profile_generation_repository = seo_competitor_profile_generation_repository
         self.provider = provider
+        self.candidate_domain_probe = candidate_domain_probe
         self.retention_policy = retention_policy
         self.observability_lookback_days = max(1, int(observability_lookback_days))
 
@@ -463,11 +519,12 @@ class SEOCompetitorProfileGenerationService:
             logger.info(
                 (
                     "SEO competitor profile candidate processing run_id=%s raw_candidates=%s "
-                    "deduped_candidates=%s excluded_candidates=%s included_candidates=%s"
+                    "deduped_candidates=%s ineligible_candidates=%s excluded_candidates=%s included_candidates=%s"
                 ),
                 run.id,
                 draft_result.raw_candidate_count,
                 draft_result.deduped_candidate_count,
+                draft_result.ineligible_candidate_count,
                 draft_result.excluded_candidate_count,
                 len(drafts),
             )
@@ -476,6 +533,12 @@ class SEOCompetitorProfileGenerationService:
                 run.id,
                 run.exclusion_counts_by_reason,
             )
+            if draft_result.ineligible_candidate_count > 0:
+                logger.info(
+                    "SEO competitor profile ineligibility telemetry run_id=%s ineligibility_counts_by_reason=%s",
+                    run.id,
+                    draft_result.ineligibility_counts_by_reason,
+                )
             return SEOCompetitorProfileGenerationRunDetail(run=run, drafts=drafts)
         except SEOCompetitorProfileProviderError as exc:
             self.session.rollback()
@@ -971,13 +1034,26 @@ class SEOCompetitorProfileGenerationService:
                 )
             )
 
+        eligibility_result = filter_eligible_competitor_candidates(
+            site=site,
+            candidates=prepared_candidates,
+            domain_probe=self.candidate_domain_probe,
+        )
         quality_tuning = self._resolve_candidate_quality_tuning(business_id=run.business_id)
         candidate_processing = process_competitor_candidates(
             site=site,
-            candidates=prepared_candidates,
+            candidates=eligibility_result.eligible_candidates,
             existing_domains=existing_domains,
             quality_tuning=quality_tuning,
         )
+        exclusion_counts_by_reason = self._normalize_exclusion_counts_by_reason(
+            candidate_processing.exclusion_counts_by_reason
+        )
+        exclusion_counts_by_reason["invalid_candidate"] = (
+            int(exclusion_counts_by_reason.get("invalid_candidate", 0))
+            + eligibility_result.ineligible_candidate_count
+        )
+
         drafts: list[SEOCompetitorProfileDraft] = []
         for candidate in candidate_processing.included_candidates:
             draft = SEOCompetitorProfileDraft(
@@ -999,13 +1075,15 @@ class SEOCompetitorProfileGenerationService:
             drafts.append(draft)
         return SEOCompetitorProfileDraftBuildResult(
             drafts=drafts,
-            raw_candidate_count=candidate_processing.raw_candidate_count,
+            raw_candidate_count=len(prepared_candidates),
             included_candidate_count=len(drafts),
             deduped_candidate_count=candidate_processing.deduped_candidate_count,
-            excluded_candidate_count=candidate_processing.excluded_candidate_count,
-            exclusion_counts_by_reason=self._normalize_exclusion_counts_by_reason(
-                candidate_processing.exclusion_counts_by_reason
+            ineligible_candidate_count=eligibility_result.ineligible_candidate_count,
+            excluded_candidate_count=(
+                candidate_processing.excluded_candidate_count + eligibility_result.ineligible_candidate_count
             ),
+            exclusion_counts_by_reason=exclusion_counts_by_reason,
+            ineligibility_counts_by_reason=eligibility_result.ineligibility_counts_by_reason,
         )
 
     def _apply_draft_updates(

@@ -85,6 +85,7 @@ from app.services.seo_competitor_comparison import SEOCompetitorComparisonServic
 from app.services.seo_competitor_profile_generation import (
     SEOCompetitorProfileGenerationService,
     SEOCompetitorProfileRetentionPolicy,
+    build_default_competitor_candidate_domain_probe,
 )
 from app.services.seo_competitors import SEOCompetitorService
 from app.services.seo_competitor_summary import SEOCompetitorSummaryService
@@ -457,6 +458,8 @@ SEOCompetitorProfileGenerationRunExecutor = Callable[[str, str, str], None]
 def get_seo_competitor_profile_generation_run_executor(
     provider: SEOCompetitorProfileGenerationProvider = Depends(get_seo_competitor_profile_generation_provider),
 ) -> SEOCompetitorProfileGenerationRunExecutor:
+    candidate_domain_probe = build_default_competitor_candidate_domain_probe()
+
     def _execute_generation_run(business_id: str, site_id: str, generation_run_id: str) -> None:
         session = SessionLocal()
         try:
@@ -467,6 +470,7 @@ def get_seo_competitor_profile_generation_run_executor(
                 seo_competitor_repository=SEOCompetitorRepository(session),
                 seo_competitor_profile_generation_repository=SEOCompetitorProfileGenerationRepository(session),
                 provider=provider,
+                candidate_domain_probe=candidate_domain_probe,
             )
             service.execute_queued_run(
                 business_id=business_id,
@@ -693,6 +697,7 @@ def get_seo_competitor_profile_generation_service(
         seo_competitor_repository=seo_competitor_repository,
         seo_competitor_profile_generation_repository=seo_competitor_profile_generation_repository,
         provider=provider,
+        candidate_domain_probe=build_default_competitor_candidate_domain_probe(),
         retention_policy=SEOCompetitorProfileRetentionPolicy(
             raw_output_retention_days=settings.seo_competitor_profile_raw_output_retention_days,
             run_retention_days=settings.seo_competitor_profile_run_retention_days,

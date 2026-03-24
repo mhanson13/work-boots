@@ -746,6 +746,40 @@ describe("admin page compatibility route", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders plain-English helper guidance for competitor candidate quality settings", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockFetchBusinessSettings.mockResolvedValueOnce(buildBusinessSettings());
+
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    expect(
+      screen.getByText(
+        "Controls how closely a competitor must match your business to be included. Higher values mean stricter, more relevant matches.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Reduces the chance that large national or big-box companies appear as competitors. Increase this to focus more on businesses like yours.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Reduces listings from directories or lead sites (like Yelp, Angi, etc.). Increase this to prioritize real business websites instead.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Boosts competitors that are located in or serve your area. Increase this to focus more on nearby businesses.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Raise this if competitors feel unrelated. Lower it if you are getting too few results.")).toBeInTheDocument();
+    expect(screen.getByText("Raise this if large companies dominate your results.")).toBeInTheDocument();
+    expect(screen.getByText("Raise this if you see too many directory or listing sites.")).toBeInTheDocument();
+    expect(screen.getByText("Raise this if competitors are not local enough.")).toBeInTheDocument();
+  });
+
   it("updates competitor candidate quality settings for admins", async () => {
     mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
     mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());

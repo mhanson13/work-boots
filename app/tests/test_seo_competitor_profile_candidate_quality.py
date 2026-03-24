@@ -5,11 +5,17 @@ import pytest
 from app.models.seo_site import SEOSite
 from app.services.seo_competitor_profile_candidate_quality import (
     DEFAULT_MIN_RELEVANCE_SCORE,
+    INELIGIBILITY_REASON_NO_LIVE_SITE,
+    INELIGIBILITY_REASON_OUT_OF_MARKET,
+    INELIGIBILITY_REASON_PARKED_DOMAIN,
+    INELIGIBILITY_REASON_WEAK_BUSINESS_IDENTITY,
     CompetitorCandidateQualityTuning,
+    CompetitorCandidateDomainProbeResult,
     CompetitorCandidateInput,
     EXCLUSION_REASON_KEYS,
     canonicalize_domain,
     default_competitor_candidate_quality_tuning,
+    filter_eligible_competitor_candidates,
     normalize_competitor_name_for_matching,
     normalize_location_for_matching,
     process_competitor_candidates,
@@ -445,3 +451,140 @@ def test_quality_tuning_rejects_out_of_range_values() -> None:
 
     with pytest.raises(ValueError):
         CompetitorCandidateQualityTuning(local_alignment_bonus=51)
+
+
+def _probe_by_domain(domain_to_probe: dict[str, CompetitorCandidateDomainProbeResult]):
+    def _probe(domain: str) -> CompetitorCandidateDomainProbeResult | None:
+        return domain_to_probe.get(domain)
+
+    return _probe
+
+
+def test_eligibility_gate_rejects_parked_domain_before_scoring() -> None:
+    candidate = _candidate(name="Parked Listing", domain="forsale-landing.com", index=0)
+    result = filter_eligible_competitor_candidates(
+        site=_site(),
+        candidates=[candidate],
+        domain_probe=_probe_by_domain(
+            {
+                "forsale-landing.com": CompetitorCandidateDomainProbeResult(
+                    status_code=200,
+                    body_text="This domain is for sale. Buy this domain on Sedo.",
+                )
+            }
+        ),
+    )
+    assert result.eligible_candidates == []
+    assert result.ineligible_candidate_count == 1
+    assert result.ineligibility_counts_by_reason[INELIGIBILITY_REASON_PARKED_DOMAIN] == 1
+
+
+def test_eligibility_gate_rejects_no_live_site_when_probe_fails() -> None:
+    candidate = _candidate(name="Offline Site", domain="offline-site.com", index=0)
+    result = filter_eligible_competitor_candidates(
+        site=_site(),
+        candidates=[candidate],
+        domain_probe=_probe_by_domain(
+            {
+                "offline-site.com": CompetitorCandidateDomainProbeResult(
+                    status_code=None,
+                    body_text=None,
+                    fetch_error="Request failed after retries",
+                )
+            }
+        ),
+    )
+    assert result.eligible_candidates == []
+    assert result.ineligibility_counts_by_reason[INELIGIBILITY_REASON_NO_LIVE_SITE] == 1
+
+
+def test_eligibility_gate_rejects_weak_business_identity() -> None:
+    candidate = _candidate(name="Thin Site", domain="thin-site.com", confidence=0.62, index=0)
+    result = filter_eligible_competitor_candidates(
+        site=_site(),
+        candidates=[candidate],
+        domain_probe=_probe_by_domain(
+            {
+                "thin-site.com": CompetitorCandidateDomainProbeResult(
+                    status_code=200,
+                    body_text=(
+                        "Welcome to our website landing page with generic content and no clear business details."
+                    ),
+                    fetch_error=None,
+                )
+            }
+        ),
+    )
+    assert result.eligible_candidates == []
+    assert result.ineligibility_counts_by_reason[INELIGIBILITY_REASON_WEAK_BUSINESS_IDENTITY] == 1
+
+
+def test_eligibility_gate_rejects_out_of_market_candidate_with_strong_local_context() -> None:
+    candidate = _candidate(
+        name="Seattle Plumbing Plus",
+        domain="seattleplumbingplus.com",
+        summary="Serving Seattle WA customers with emergency plumbing dispatch.",
+        why="Focused on Seattle-area residential plumbing demand.",
+        evidence="Local Seattle neighborhood coverage.",
+        index=0,
+    )
+    result = filter_eligible_competitor_candidates(
+        site=_site(),
+        candidates=[candidate],
+        domain_probe=_probe_by_domain(
+            {
+                "seattleplumbingplus.com": CompetitorCandidateDomainProbeResult(
+                    status_code=200,
+                    body_text=(
+                        "Seattle WA plumbing contractor. Contact our Seattle team for service in Washington."
+                    ),
+                )
+            }
+        ),
+    )
+    assert result.eligible_candidates == []
+    assert result.ineligibility_counts_by_reason[INELIGIBILITY_REASON_OUT_OF_MARKET] == 1
+
+
+def test_eligibility_gate_keeps_valid_candidate_then_applies_existing_tuning() -> None:
+    local_candidate = _candidate(
+        name="Denver Precision Plumbing",
+        domain="denverprecisionplumbing.com",
+        summary="Serving Denver and Aurora for emergency and routine plumbing support.",
+        why="Competes on local plumbing intent in Denver.",
+        evidence="Neighborhood pages, reviews, and local contact details.",
+        confidence=0.78,
+        index=0,
+    )
+    directory_candidate = _candidate(
+        name="Denver Plumbers on Yelp",
+        domain="yelp.com",
+        competitor_type="marketplace",
+        summary="Directory listing for local plumbers in Denver.",
+        confidence=0.7,
+        index=1,
+    )
+    eligibility_result = filter_eligible_competitor_candidates(
+        site=_site(),
+        candidates=[local_candidate, directory_candidate],
+        domain_probe=_probe_by_domain(
+            {
+                "denverprecisionplumbing.com": CompetitorCandidateDomainProbeResult(
+                    status_code=200,
+                    body_text=(
+                        "Denver plumbing services. About our team. Contact us for estimates and emergency service."
+                    ),
+                ),
+            }
+        ),
+    )
+    assert len(eligibility_result.eligible_candidates) == 2
+
+    scored_result = process_competitor_candidates(
+        site=_site(),
+        existing_domains=[],
+        candidates=eligibility_result.eligible_candidates,
+    )
+    included_domains = {item.canonical_domain for item in scored_result.included_candidates}
+    assert included_domains == {"denverprecisionplumbing.com"}
+    assert scored_result.exclusion_counts_by_reason["directory_or_aggregator"] == 1
