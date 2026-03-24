@@ -563,9 +563,34 @@ export interface RecommendationNarrative {
   model_name: string;
   prompt_version: string;
   error_message: string | null;
+  competitor_influence?: RecommendationNarrativeCompetitorInfluence | null;
+  action_summary?: RecommendationNarrativeActionSummary | null;
+  signal_summary?: RecommendationNarrativeSignalSummary | null;
   created_by_principal_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface RecommendationNarrativeCompetitorInfluence {
+  used: boolean;
+  summary: string;
+  top_opportunities: string[];
+  competitor_names: string[];
+}
+
+export interface RecommendationNarrativeActionSummary {
+  primary_action: string;
+  why_it_matters: string;
+  evidence: string[];
+  first_step: string;
+}
+
+export interface RecommendationNarrativeSignalSummary {
+  support_level: "low" | "medium" | "high";
+  evidence_sources: Array<"site" | "competitors" | "references" | "themes">;
+  competitor_signal_used: boolean;
+  site_signal_used: boolean;
+  reference_signal_used: boolean;
 }
 
 export type CompetitorCandidateExclusionReason =

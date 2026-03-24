@@ -78,6 +78,29 @@ Frontend guidance:
   - `competitor_influence` (context source explanation)
   - `action_summary` (operator next-step summary)
 
+## Workspace Narrative Presentation
+
+In the site workspace `AI Narrative Overlay`, render optional narrative context in this order:
+
+1. `action_summary` as the primary operator block:
+   - `Next best move` (`primary_action`)
+   - `Why this matters` (`why_it_matters`)
+   - `Start here` (`first_step`)
+   - compact evidence chips (`evidence`)
+2. `competitor_influence` as secondary rationale:
+   - `Competitor-informed` label
+   - short summary
+   - bounded opportunities and competitor names
+3. `signal_summary` as compact support framing:
+   - support level
+   - evidence-source tags
+   - simple signal check (`site`, `competitors`, `references`)
+
+Fallback rules:
+- If optional fields are missing/null, do not render empty blocks.
+- Keep legacy `narrative_text` rendering intact.
+- Keep the UI concise and operator-oriented; avoid technical backend terminology.
+
 ## AI -> Action Bridge
 
 The workspace now links AI opportunities directly to the deterministic tuning/apply loop when linkage data exists.

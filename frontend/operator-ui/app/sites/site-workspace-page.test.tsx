@@ -211,6 +211,70 @@ function buildRecommendation(
   return recommendation;
 }
 
+function buildRecommendationNarrative(
+  overrides: Partial<RecommendationNarrative> = {},
+): RecommendationNarrative {
+  return {
+    id: "narrative-1",
+    business_id: "biz-1",
+    site_id: "site-1",
+    recommendation_run_id: "run-1",
+    version: 2,
+    status: "completed",
+    narrative_text: "Narrative for run 1.",
+    top_themes_json: ["titles"],
+    sections_json: { summary: "AI summary for this run." },
+    provider_name: "provider",
+    model_name: "model",
+    prompt_version: "v2",
+    error_message: null,
+    created_by_principal_id: "principal-1",
+    created_at: "2026-03-21T00:33:00Z",
+    updated_at: "2026-03-21T00:33:00Z",
+    ...overrides,
+  };
+}
+
+function buildRecommendationWorkspaceSummary(
+  overrides: Partial<RecommendationWorkspaceSummaryResponse> = {},
+): RecommendationWorkspaceSummaryResponse {
+  const latestRun = {
+    id: "run-1",
+    business_id: "biz-1",
+    site_id: "site-1",
+    audit_run_id: "audit-1",
+    comparison_run_id: "comparison-1",
+    status: "completed",
+    total_recommendations: 1,
+    critical_recommendations: 0,
+    warning_recommendations: 1,
+    info_recommendations: 0,
+    category_counts_json: {},
+    effort_bucket_counts_json: {},
+    started_at: "2026-03-21T00:29:00Z",
+    completed_at: "2026-03-21T00:30:00Z",
+    duration_ms: 60000,
+    error_summary: null,
+    created_by_principal_id: "principal-1",
+    created_at: "2026-03-21T00:29:00Z",
+    updated_at: "2026-03-21T00:30:00Z",
+  };
+  return {
+    business_id: "biz-1",
+    site_id: "site-1",
+    state: "completed_with_narrative",
+    latest_run: latestRun,
+    latest_completed_run: latestRun,
+    recommendations: {
+      items: [buildRecommendation()],
+      total: 1,
+    },
+    latest_narrative: buildRecommendationNarrative(),
+    tuning_suggestions: [],
+    ...overrides,
+  };
+}
+
 function baseContext(overrides: Partial<OperatorContextMockValue> = {}): OperatorContextMockValue {
   return {
     loading: false,
@@ -2479,6 +2543,177 @@ describe("site workspace timeline controls", () => {
     await user.click(focusRecommendationButton);
     expect(document.getElementById("workspace-recommendation-rec-1")).toHaveClass("start-here-target-active");
     expect(mockFetchRecommendationWorkspaceSummary).toHaveBeenCalledWith("token-1", "biz-1", "site-1");
+  });
+
+  it("renders action, competitor, and support context when all optional narrative fields are present", async () => {
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        latest_narrative: buildRecommendationNarrative({
+          action_summary: {
+            primary_action: "Tighten service page headings for emergency plumbing queries.",
+            why_it_matters: "This improves local intent coverage for high-converting service terms.",
+            first_step: "Update H1 and top two supporting headings on the emergency plumbing page.",
+            evidence: ["Recommendation rec-1", "Competitor pages cover emergency intent more clearly"],
+          },
+          competitor_influence: {
+            used: true,
+            summary: "Nearby competitors are outperforming on emergency intent clarity.",
+            top_opportunities: ["Clarify emergency response messaging", "Strengthen trust signals above the fold"],
+            competitor_names: ["Rapid Rooter", "Denver Drain Pros"],
+          },
+          signal_summary: {
+            support_level: "high",
+            evidence_sources: ["site", "competitors", "references"],
+            competitor_signal_used: true,
+            site_signal_used: true,
+            reference_signal_used: true,
+          },
+        }),
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("heading", { name: "AI Narrative Overlay" });
+    const actionSummary = screen.getByTestId("narrative-action-summary");
+    expect(within(actionSummary).getByText("Next best move")).toBeInTheDocument();
+    expect(
+      within(actionSummary).getByText("Tighten service page headings for emergency plumbing queries."),
+    ).toBeInTheDocument();
+    expect(
+      within(actionSummary).getByText(
+        "Why this matters: This improves local intent coverage for high-converting service terms.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(actionSummary).getByText(
+        "Start here: Update H1 and top two supporting headings on the emergency plumbing page.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(actionSummary).getByText("Recommendation rec-1")).toBeInTheDocument();
+
+    const competitorInfluence = screen.getByTestId("narrative-competitor-influence");
+    expect(within(competitorInfluence).getByText("Competitor-informed")).toBeInTheDocument();
+    expect(
+      within(competitorInfluence).getByText("Nearby competitors are outperforming on emergency intent clarity."),
+    ).toBeInTheDocument();
+    expect(
+      within(competitorInfluence).getByText(
+        "Top opportunities: Clarify emergency response messaging, Strengthen trust signals above the fold",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(competitorInfluence).getByText("Nearby competitors: Rapid Rooter, Denver Drain Pros"),
+    ).toBeInTheDocument();
+
+    const signalSummary = screen.getByTestId("narrative-signal-summary");
+    expect(within(signalSummary).getByText("Backed by")).toBeInTheDocument();
+    expect(within(signalSummary).getByText("Support level: High")).toBeInTheDocument();
+    expect(within(signalSummary).getByText("site")).toBeInTheDocument();
+    expect(within(signalSummary).getByText("competitors")).toBeInTheDocument();
+    expect(within(signalSummary).getByText("references")).toBeInTheDocument();
+    expect(
+      within(signalSummary).getByText("Signal check: site yes; competitors yes; references yes."),
+    ).toBeInTheDocument();
+  });
+
+  it("renders only action summary when competitor and support context are absent", async () => {
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        latest_narrative: buildRecommendationNarrative({
+          action_summary: {
+            primary_action: "Publish a dedicated emergency service FAQ section.",
+            why_it_matters: "This improves answer relevance for urgent local searches.",
+            first_step: "Add top customer emergency questions to the service page.",
+            evidence: ["Recommendation rec-1"],
+          },
+          competitor_influence: null,
+          signal_summary: null,
+        }),
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("heading", { name: "AI Narrative Overlay" });
+    expect(screen.getByTestId("narrative-action-summary")).toBeInTheDocument();
+    expect(screen.queryByTestId("narrative-competitor-influence")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("narrative-signal-summary")).not.toBeInTheDocument();
+  });
+
+  it("preserves legacy narrative rendering when optional narrative fields are missing", async () => {
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        latest_narrative: buildRecommendationNarrative({
+          action_summary: null,
+          competitor_influence: null,
+          signal_summary: null,
+        }),
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("heading", { name: "AI Narrative Overlay" });
+    expect(screen.getByText("Narrative for run 1.")).toBeInTheDocument();
+    expect(screen.queryByTestId("narrative-action-summary")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("narrative-competitor-influence")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("narrative-signal-summary")).not.toBeInTheDocument();
+  });
+
+  it("renders competitor rationale block without support summary when only competitor influence exists", async () => {
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        latest_narrative: buildRecommendationNarrative({
+          action_summary: null,
+          competitor_influence: {
+            used: true,
+            summary: "Competitor pages are stronger on local conversion trust signals.",
+            top_opportunities: ["Add local proof points above the fold"],
+            competitor_names: ["Trusted Denver Plumbing"],
+          },
+          signal_summary: null,
+        }),
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("heading", { name: "AI Narrative Overlay" });
+    expect(screen.getByTestId("narrative-competitor-influence")).toBeInTheDocument();
+    expect(screen.queryByTestId("narrative-action-summary")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("narrative-signal-summary")).not.toBeInTheDocument();
+  });
+
+  it("renders support indicators without competitor rationale when only signal summary exists", async () => {
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        latest_narrative: buildRecommendationNarrative({
+          action_summary: null,
+          competitor_influence: null,
+          signal_summary: {
+            support_level: "medium",
+            evidence_sources: ["site", "themes"],
+            competitor_signal_used: false,
+            site_signal_used: true,
+            reference_signal_used: false,
+          },
+        }),
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("heading", { name: "AI Narrative Overlay" });
+    expect(screen.getByTestId("narrative-signal-summary")).toBeInTheDocument();
+    expect(screen.getByText("Support level: Medium")).toBeInTheDocument();
+    expect(screen.queryByTestId("narrative-action-summary")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("narrative-competitor-influence")).not.toBeInTheDocument();
   });
 
   it("renders ai opportunities only when ai-backed recommendation signals are present", async () => {

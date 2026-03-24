@@ -399,6 +399,154 @@ function narrativeSummaryText(narrative: RecommendationNarrative | null): string
   return narrativeText || null;
 }
 
+function normalizeBoundedStringList(values: string[] | null | undefined, limit: number, itemLimit: number): string[] {
+  if (!Array.isArray(values) || limit <= 0) {
+    return [];
+  }
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    const normalized = value.replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      continue;
+    }
+    const bounded = normalized.length <= itemLimit ? normalized : `${normalized.slice(0, itemLimit - 1)}…`;
+    const dedupeKey = bounded.toLowerCase();
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+    result.push(bounded);
+    seen.add(dedupeKey);
+    if (result.length >= limit) {
+      break;
+    }
+  }
+  return result;
+}
+
+interface NarrativeActionSummaryView {
+  primaryAction: string;
+  whyItMatters: string | null;
+  firstStep: string | null;
+  evidence: string[];
+}
+
+function normalizeNarrativeActionSummary(
+  narrative: RecommendationNarrative | null,
+): NarrativeActionSummaryView | null {
+  const rawActionSummary = narrative?.action_summary;
+  if (!rawActionSummary) {
+    return null;
+  }
+  const primaryAction = truncateOptionalText(rawActionSummary.primary_action, 180);
+  if (!primaryAction) {
+    return null;
+  }
+  const whyItMatters = truncateOptionalText(rawActionSummary.why_it_matters, 220);
+  const firstStep = truncateOptionalText(rawActionSummary.first_step, 180);
+  const evidence = normalizeBoundedStringList(rawActionSummary.evidence, 4, 120);
+  return {
+    primaryAction,
+    whyItMatters,
+    firstStep,
+    evidence,
+  };
+}
+
+interface NarrativeCompetitorInfluenceView {
+  summary: string | null;
+  topOpportunities: string[];
+  competitorNames: string[];
+}
+
+function normalizeNarrativeCompetitorInfluence(
+  narrative: RecommendationNarrative | null,
+): NarrativeCompetitorInfluenceView | null {
+  const rawInfluence = narrative?.competitor_influence;
+  if (!rawInfluence || !rawInfluence.used) {
+    return null;
+  }
+  const summary = truncateOptionalText(rawInfluence.summary, 220);
+  const topOpportunities = normalizeBoundedStringList(rawInfluence.top_opportunities, 3, 100);
+  const competitorNames = normalizeBoundedStringList(rawInfluence.competitor_names, 5, 80);
+  if (!summary && topOpportunities.length === 0 && competitorNames.length === 0) {
+    return null;
+  }
+  return {
+    summary,
+    topOpportunities,
+    competitorNames,
+  };
+}
+
+interface NarrativeSignalSummaryView {
+  supportLevel: "low" | "medium" | "high";
+  evidenceSources: Array<"site" | "competitors" | "references" | "themes">;
+  competitorSignalUsed: boolean;
+  siteSignalUsed: boolean;
+  referenceSignalUsed: boolean;
+}
+
+function normalizeNarrativeSignalSummary(
+  narrative: RecommendationNarrative | null,
+): NarrativeSignalSummaryView | null {
+  const rawSignalSummary = narrative?.signal_summary;
+  if (!rawSignalSummary) {
+    return null;
+  }
+  const supportLevel =
+    rawSignalSummary.support_level === "low" ||
+    rawSignalSummary.support_level === "medium" ||
+    rawSignalSummary.support_level === "high"
+      ? rawSignalSummary.support_level
+      : null;
+  if (!supportLevel) {
+    return null;
+  }
+  const sourceCandidates = normalizeBoundedStringList(rawSignalSummary.evidence_sources, 4, 32);
+  const evidenceSources = sourceCandidates
+    .filter(
+      (
+        value,
+      ): value is "site" | "competitors" | "references" | "themes" =>
+        value === "site" || value === "competitors" || value === "references" || value === "themes",
+    );
+  const competitorSignalUsed = Boolean(rawSignalSummary.competitor_signal_used);
+  const siteSignalUsed = Boolean(rawSignalSummary.site_signal_used);
+  const referenceSignalUsed = Boolean(rawSignalSummary.reference_signal_used);
+  if (
+    evidenceSources.length === 0 &&
+    !competitorSignalUsed &&
+    !siteSignalUsed &&
+    !referenceSignalUsed
+  ) {
+    return null;
+  }
+  return {
+    supportLevel,
+    evidenceSources,
+    competitorSignalUsed,
+    siteSignalUsed,
+    referenceSignalUsed,
+  };
+}
+
+function formatNarrativeSupportLevel(value: "low" | "medium" | "high"): string {
+  switch (value) {
+    case "low":
+      return "Low";
+    case "medium":
+      return "Medium";
+    case "high":
+      return "High";
+    default:
+      return value;
+  }
+}
+
 function buildTuningPreviewKey(
   recommendationRunId: string,
   suggestion: RecommendationTuningSuggestion,
@@ -873,6 +1021,21 @@ export default function SiteWorkspacePage() {
     latestCompletedTuningSuggestions,
     tuningPreviewByKey,
   ]);
+
+  const narrativeActionSummary = useMemo(
+    () => normalizeNarrativeActionSummary(latestCompletedRecommendationNarrative),
+    [latestCompletedRecommendationNarrative],
+  );
+
+  const narrativeCompetitorInfluence = useMemo(
+    () => normalizeNarrativeCompetitorInfluence(latestCompletedRecommendationNarrative),
+    [latestCompletedRecommendationNarrative],
+  );
+
+  const narrativeSignalSummary = useMemo(
+    () => normalizeNarrativeSignalSummary(latestCompletedRecommendationNarrative),
+    [latestCompletedRecommendationNarrative],
+  );
 
   useEffect(() => {
     setShowAllAiOpportunities(false);
@@ -3131,6 +3294,70 @@ export default function SiteWorkspacePage() {
                     Open latest narrative
                   </Link>
                 </p>
+                {narrativeActionSummary ? (
+                  <div className="panel panel-compact stack" data-testid="narrative-action-summary">
+                    <span className="hint muted">Next best move</span>
+                    <strong>{narrativeActionSummary.primaryAction}</strong>
+                    {narrativeActionSummary.whyItMatters ? (
+                      <span className="hint">Why this matters: {narrativeActionSummary.whyItMatters}</span>
+                    ) : null}
+                    {narrativeActionSummary.firstStep ? (
+                      <span className="hint success">Start here: {narrativeActionSummary.firstStep}</span>
+                    ) : null}
+                    {narrativeActionSummary.evidence.length > 0 ? (
+                      <div className="stack-tight">
+                        <span className="hint muted">Evidence</span>
+                        <div className="link-row">
+                          {narrativeActionSummary.evidence.map((evidenceItem) => (
+                            <span key={evidenceItem} className="badge badge-muted">
+                              {evidenceItem}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                {narrativeCompetitorInfluence ? (
+                  <div className="panel panel-compact stack-tight" data-testid="narrative-competitor-influence">
+                    <span className="hint muted">Competitor-informed</span>
+                    {narrativeCompetitorInfluence.summary ? (
+                      <span className="hint">{narrativeCompetitorInfluence.summary}</span>
+                    ) : null}
+                    {narrativeCompetitorInfluence.topOpportunities.length > 0 ? (
+                      <span className="hint muted">
+                        Top opportunities: {narrativeCompetitorInfluence.topOpportunities.join(", ")}
+                      </span>
+                    ) : null}
+                    {narrativeCompetitorInfluence.competitorNames.length > 0 ? (
+                      <span className="hint muted">
+                        Nearby competitors: {narrativeCompetitorInfluence.competitorNames.join(", ")}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+                {narrativeSignalSummary ? (
+                  <div className="panel panel-compact stack-tight" data-testid="narrative-signal-summary">
+                    <span className="hint muted">Backed by</span>
+                    <span className="hint">
+                      Support level: {formatNarrativeSupportLevel(narrativeSignalSummary.supportLevel)}
+                    </span>
+                    {narrativeSignalSummary.evidenceSources.length > 0 ? (
+                      <div className="link-row">
+                        {narrativeSignalSummary.evidenceSources.map((source) => (
+                          <span key={source} className="badge badge-muted">
+                            {source}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    <span className="hint muted">
+                      Signal check: site {narrativeSignalSummary.siteSignalUsed ? "yes" : "no"}; competitors{" "}
+                      {narrativeSignalSummary.competitorSignalUsed ? "yes" : "no"}; references{" "}
+                      {narrativeSignalSummary.referenceSignalUsed ? "yes" : "no"}.
+                    </span>
+                  </div>
+                ) : null}
                 {latestCompletedRecommendationNarrative.narrative_text ? (
                   <p>{latestCompletedRecommendationNarrative.narrative_text}</p>
                 ) : null}
