@@ -21,6 +21,7 @@ from app.repositories.seo_competitor_profile_generation_repository import (
 )
 from app.repositories.seo_recommendation_narrative_repository import SEORecommendationNarrativeRepository
 from app.repositories.seo_recommendation_repository import SEORecommendationRepository
+from app.services.competitors.normalizer import normalize_competitor_response
 from app.services.seo_competitor_profile_candidate_quality import (
     BIG_BOX_PENALTY_MAX,
     BIG_BOX_PENALTY_MIN,
@@ -39,6 +40,9 @@ from app.services.seo_competitor_profile_candidate_quality import (
     MIN_RELEVANCE_SCORE_MAX,
     MIN_RELEVANCE_SCORE_MIN,
     default_exclusion_reason_counts,
+)
+from app.services.seo_recommendation_competitor_context import (
+    extract_recommendation_competitor_context,
 )
 from app.services.seo_recommendation_narrative_prompt import SEO_RECOMMENDATION_NARRATIVE_PROMPT_VERSION
 
@@ -139,6 +143,10 @@ class SEORecommendationNarrativeService:
             business_id=business_id,
             site_id=site_id,
         )
+        competitor_context = self._build_competitor_context(
+            business_id=business_id,
+            site_id=site_id,
+        )
         current_tuning_values = self._build_current_tuning_values(business)
 
         version = self.seo_recommendation_narrative_repository.next_version(
@@ -157,6 +165,7 @@ class SEORecommendationNarrativeService:
                 by_priority_band=by_priority_band,
                 backlog=backlog,
                 competitor_telemetry_summary=competitor_telemetry_summary,
+                competitor_context=competitor_context,
                 current_tuning_values=current_tuning_values,
             )
             narrative = SEORecommendationNarrative(
@@ -515,6 +524,36 @@ class SEORecommendationNarrativeService:
             "total_excluded_candidate_count": int(total_excluded_candidate_count),
             "exclusion_counts_by_reason": exclusion_counts_by_reason,
         }
+
+    def _build_competitor_context(self, *, business_id: str, site_id: str) -> dict[str, object]:
+        empty_context = extract_recommendation_competitor_context(None)
+        runs = self.seo_competitor_profile_generation_repository.list_runs_for_business_site(
+            business_id=business_id,
+            site_id=site_id,
+        )
+        for run in runs:
+            if run.status != "completed":
+                continue
+            raw_output = str(run.raw_output or "").strip()
+            if not raw_output:
+                continue
+            try:
+                normalized_payload = normalize_competitor_response(raw_output)
+                context = extract_recommendation_competitor_context(normalized_payload)
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    (
+                        "Failed to extract competitor context for recommendation narrative "
+                        "business_id=%s site_id=%s run_id=%s"
+                    ),
+                    business_id,
+                    site_id,
+                    run.id,
+                )
+                return empty_context
+            if any(context.get(key) for key in ("top_opportunities", "competitor_summary", "competitor_names")):
+                return context
+        return empty_context
 
     def _merge_tuning_overrides(
         self,

@@ -103,6 +103,7 @@ class SEORecommendationNarrativeProvider(Protocol):
         backlog: list[SEORecommendation],
         competitor_telemetry_summary: dict[str, object],
         current_tuning_values: dict[str, int],
+        competitor_context: dict[str, object] | None = None,
     ) -> SEORecommendationNarrativeOutput: ...
 
 
@@ -292,8 +293,9 @@ class MockSEORecommendationNarrativeProvider:
         backlog: list[SEORecommendation],
         competitor_telemetry_summary: dict[str, object],
         current_tuning_values: dict[str, int],
+        competitor_context: dict[str, object] | None = None,
     ) -> SEORecommendationNarrativeOutput:
-        del competitor_telemetry_summary, current_tuning_values
+        del competitor_telemetry_summary, competitor_context, current_tuning_values
         total = len(recommendations)
         backlog_total = len(backlog)
         dominant_category = max(by_category.items(), key=lambda item: item[1])[0] if by_category else "TECHNICAL"

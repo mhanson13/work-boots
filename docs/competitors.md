@@ -35,3 +35,15 @@ If AI output cannot be parsed as JSON, normalization returns:
 - This layer improves reliability, not quality.
 - It does not change prompt/model behavior.
 - It does not score or re-rank competitors beyond required field normalization.
+
+## Recommendation Integration (Optional, Bounded)
+Normalized competitor output can optionally inform recommendation narrative generation. The recommendation layer only consumes these fields:
+- `top_opportunities` (bounded list)
+- `summary` (bounded string)
+- competitor `name` values (bounded list)
+
+Behavior is intentionally conservative:
+- Integration is optional and non-blocking.
+- Missing/empty competitor data keeps recommendation behavior unchanged.
+- Normalizer fallback payloads are treated as no-signal to avoid injecting generic noise.
+- Raw malformed competitor output is never passed directly to recommendation prompts.

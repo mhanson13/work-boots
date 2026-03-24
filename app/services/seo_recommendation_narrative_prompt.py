@@ -49,6 +49,11 @@ _MAX_SOURCE_COUNTS = 8
 _MAX_FINDING_TYPE_COUNTS = 12
 _MAX_SIGNAL_RECOMMENDATION_IDS = 10
 _MAX_LOCAL_MARKET_TERMS = 6
+_MAX_COMPETITOR_SIGNAL_OPPORTUNITIES = 5
+_MAX_COMPETITOR_SIGNAL_NAMES = 5
+_MAX_COMPETITOR_SIGNAL_OPPORTUNITY_LENGTH = 140
+_MAX_COMPETITOR_SIGNAL_NAME_LENGTH = 120
+_MAX_COMPETITOR_SIGNAL_SUMMARY_LENGTH = 320
 _LOCAL_MARKET_TOKENS = ("local", "location", "nearby", "map", "gmb", "gbp", "citation", "nap")
 _SERVICE_COVERAGE_TOKENS = ("service", "services", "coverage", "page", "pages", "content")
 
@@ -97,6 +102,7 @@ def build_seo_recommendation_narrative_prompt(
     by_priority_band: dict[str, int],
     backlog: list[SEORecommendation],
     competitor_telemetry_summary: dict[str, object] | None = None,
+    competitor_context: dict[str, object] | None = None,
     current_tuning_values: dict[str, int] | None = None,
     prompt_version: str = SEO_RECOMMENDATION_NARRATIVE_PROMPT_VERSION,
     prompt_text_recommendations: str | None = None,
@@ -119,6 +125,7 @@ def build_seo_recommendation_narrative_prompt(
     normalized_competitor_telemetry_summary = _normalize_competitor_telemetry_summary(
         competitor_telemetry_summary
     )
+    normalized_competitor_context = _normalize_competitor_context(competitor_context)
     normalized_current_tuning_values = _normalize_current_tuning_values(current_tuning_values)
     site_business_context = _normalize_site_business_context(run)
     structured_gap_context = _normalize_structured_gap_context(
@@ -157,6 +164,7 @@ def build_seo_recommendation_narrative_prompt(
         "site_business_context": site_business_context,
         "structured_gap_context": structured_gap_context,
         "competitor_candidate_telemetry": normalized_competitor_telemetry_summary,
+        "competitor_signal_context": normalized_competitor_context,
         "current_candidate_quality_tuning": normalized_current_tuning_values,
         "allowed_tuning_settings": _allowed_tuning_settings_schema(),
     }
@@ -179,11 +187,17 @@ def build_seo_recommendation_narrative_prompt(
         "4. recommendation_references must only include IDs present in allowed_recommendation_ids.\n"
         "5. Use site_business_context and structured_gap_context to keep recommendations business-specific and local-context aware.\n"
         "6. You may suggest adjustments to scoring parameters ONLY if justified by provided recommendation and telemetry data.\n"
+        "7. If competitor_signal_context has data, use it to make recommendations more specific and competitive.\n"
+        "8. Do not invent competitor facts beyond competitor_signal_context.\n"
         "BUSINESS CONTEXT SNAPSHOT:\n"
         f"- Site Name: {site_business_context['site_display_name']}\n"
         f"- Site Domain: {site_business_context['site_normalized_domain']}\n"
         f"- Location Context: {site_business_context['location_context']}\n"
         f"- Industry Context: {site_business_context['industry_context']}\n"
+        "COMPETITOR SIGNAL SNAPSHOT (OPTIONAL):\n"
+        f"- Top Opportunities: {', '.join(normalized_competitor_context['top_opportunities']) or 'none'}\n"
+        f"- Competitor Names: {', '.join(normalized_competitor_context['competitor_names']) or 'none'}\n"
+        f"- Competitor Summary: {normalized_competitor_context['competitor_summary'] or 'none'}\n"
         "RECOMMENDATION SPECIFICITY RULES:\n"
         "1. Prefer concrete, evidence-anchored recommendations over generic advice.\n"
         "2. Tie themes and next_actions to specific gaps from structured_gap_context when possible.\n"
@@ -543,6 +557,27 @@ def _normalize_current_tuning_values(raw: dict[str, int] | None) -> dict[str, in
             default=default_value,
         )
     return normalized
+
+
+def _normalize_competitor_context(raw: dict[str, object] | None) -> dict[str, object]:
+    context = raw if isinstance(raw, dict) else {}
+    top_opportunities = _to_sanitized_list(
+        context.get("top_opportunities"),
+        max_length=_MAX_COMPETITOR_SIGNAL_OPPORTUNITY_LENGTH,
+    )[:_MAX_COMPETITOR_SIGNAL_OPPORTUNITIES]
+    competitor_names = _to_sanitized_list(
+        context.get("competitor_names"),
+        max_length=_MAX_COMPETITOR_SIGNAL_NAME_LENGTH,
+    )[:_MAX_COMPETITOR_SIGNAL_NAMES]
+    competitor_summary = _sanitize_optional(
+        context.get("competitor_summary"),
+        max_length=_MAX_COMPETITOR_SIGNAL_SUMMARY_LENGTH,
+    ) or ""
+    return {
+        "top_opportunities": top_opportunities,
+        "competitor_names": competitor_names,
+        "competitor_summary": competitor_summary,
+    }
 
 
 def _allowed_tuning_settings_schema() -> dict[str, dict[str, int]]:

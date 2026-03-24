@@ -175,6 +175,11 @@ def test_openai_recommendation_narrative_provider_parses_structured_response(mon
         backlog=_recommendations(),
         competitor_telemetry_summary=_competitor_telemetry(),
         current_tuning_values=_current_tuning_values(),
+        competitor_context={
+            "top_opportunities": ["Expand service coverage pages", "Improve local trust signals"],
+            "competitor_summary": "Nearby competitors have stronger local page coverage.",
+            "competitor_names": ["Alpha Plumbing", "Beta HVAC"],
+        },
     )
 
     assert output.provider_name == "openai"
@@ -197,6 +202,9 @@ def test_openai_recommendation_narrative_provider_parses_structured_response(mon
     assert output.sections["status_rollup"] == {"in_progress": 1, "open": 1}
     assert captured_payload["model"] == "gpt-4.1-mini"
     assert captured_payload["response_format"]["type"] == "json_schema"
+    user_prompt = captured_payload["messages"][1]["content"]
+    assert "Expand service coverage pages" in user_prompt
+    assert "Alpha Plumbing" in user_prompt
 
 
 def test_openai_recommendation_narrative_provider_timeout_is_normalized(monkeypatch) -> None:

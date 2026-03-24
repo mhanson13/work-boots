@@ -109,6 +109,7 @@ class MisconfiguredSEORecommendationNarrativeProvider:
         backlog: list[SEORecommendation],
         competitor_telemetry_summary: dict[str, object],
         current_tuning_values: dict[str, int],
+        competitor_context: dict[str, object] | None = None,
     ) -> SEORecommendationNarrativeOutput:
         del (
             run,
@@ -121,6 +122,7 @@ class MisconfiguredSEORecommendationNarrativeProvider:
             backlog,
             competitor_telemetry_summary,
             current_tuning_values,
+            competitor_context,
         )
         raise SEORecommendationNarrativeProviderError(
             code=_PROVIDER_ERROR_AUTH_CONFIG,
@@ -180,6 +182,7 @@ class OpenAISEORecommendationNarrativeProvider:
         backlog: list[SEORecommendation],
         competitor_telemetry_summary: dict[str, object],
         current_tuning_values: dict[str, int],
+        competitor_context: dict[str, object] | None = None,
     ) -> SEORecommendationNarrativeOutput:
         self._log_prompt_resolution_metadata()
         prompt = build_seo_recommendation_narrative_prompt(
@@ -193,6 +196,7 @@ class OpenAISEORecommendationNarrativeProvider:
             backlog=backlog,
             competitor_telemetry_summary=competitor_telemetry_summary,
             current_tuning_values=current_tuning_values,
+            competitor_context=competitor_context,
             prompt_version=self.prompt_version,
             prompt_text_recommendations=self.prompt_text_recommendations,
         )

@@ -82,6 +82,7 @@ class _CapturingRecommendationNarrativeProvider:
         backlog,
         competitor_telemetry_summary,
         current_tuning_values,
+        competitor_context=None,
     ) -> SEORecommendationNarrativeOutput:
         self.calls.append(
             {
@@ -96,6 +97,7 @@ class _CapturingRecommendationNarrativeProvider:
                 "backlog_rule_keys": [item.rule_key for item in backlog],
                 "competitor_telemetry_summary": dict(competitor_telemetry_summary),
                 "current_tuning_values": dict(current_tuning_values),
+                "competitor_context": dict(competitor_context or {}),
             }
         )
         return SEORecommendationNarrativeOutput(
@@ -261,6 +263,7 @@ def _seed_competitor_generation_telemetry_run(
     included_candidate_count: int,
     excluded_candidate_count: int,
     exclusion_counts_by_reason: dict[str, int],
+    raw_output: str | None = None,
 ) -> str:
     run = SEOCompetitorProfileGenerationRun(
         id=str(uuid4()),
@@ -278,7 +281,7 @@ def _seed_competitor_generation_telemetry_run(
         model_name="mock-seo-competitor-profile-v1",
         prompt_version="seo-competitor-profile-v1",
         failure_category=None,
-        raw_output=None,
+        raw_output=raw_output,
         error_summary=None,
     )
     db_session.add(run)
@@ -490,6 +493,58 @@ def test_recommendation_narrative_is_grounded_in_persisted_recommendation_artifa
     assert call["by_priority_band"].get("critical", 0) >= 1
     assert call["competitor_telemetry_summary"]["lookback_days"] == 30
     assert "competitor_candidate_min_relevance_score" in call["current_tuning_values"]
+    assert call["competitor_context"] == {
+        "competitor_names": [],
+        "competitor_summary": "",
+        "top_opportunities": [],
+    }
+
+
+def test_recommendation_narrative_optionally_includes_normalized_competitor_context(
+    db_session,
+    seeded_business,
+) -> None:
+    capturing_provider = _CapturingRecommendationNarrativeProvider()
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        narrative_provider=capturing_provider,
+    )
+    site_id, run_id = _create_completed_recommendation_run(client, db_session, seeded_business.id)
+    _seed_competitor_generation_telemetry_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        raw_candidate_count=6,
+        included_candidate_count=3,
+        excluded_candidate_count=3,
+        exclusion_counts_by_reason={
+            "duplicate": 1,
+            "low_relevance": 1,
+            "directory_or_aggregator": 1,
+            "big_box_mismatch": 0,
+            "existing_domain_match": 0,
+            "invalid_candidate": 0,
+        },
+        raw_output=(
+            '{"competitors":[{"name":"Alpha Plumbing"},{"name":"Beta HVAC"}],'
+            '"top_opportunities":["Improve emergency pages","Improve emergency pages","Add local proof"],'
+            '"summary":"Competitors emphasize emergency response and local trust."}'
+        ),
+    )
+
+    response = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs/{run_id}/narratives"
+    )
+    assert response.status_code == 201
+
+    assert len(capturing_provider.calls) == 1
+    call = capturing_provider.calls[0]
+    assert call["competitor_context"] == {
+        "top_opportunities": ["Improve emergency pages", "Add local proof"],
+        "competitor_summary": "Competitors emphasize emergency response and local trust.",
+        "competitor_names": ["Alpha Plumbing", "Beta HVAC"],
+    }
 
 
 def test_phase3c_v1_site_scoped_narrative_routes(db_session, seeded_business) -> None:

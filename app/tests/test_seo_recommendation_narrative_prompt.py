@@ -126,6 +126,11 @@ def test_prompt_contains_grounded_deterministic_context() -> None:
     assert top_item["id"] == "rec-2"
     assert len(top_item["rationale_excerpt"]) <= 320
     assert prompt.grounded_context["competitor_candidate_telemetry"]["total_excluded_candidate_count"] == 4
+    assert prompt.grounded_context["competitor_signal_context"] == {
+        "top_opportunities": [],
+        "competitor_names": [],
+        "competitor_summary": "",
+    }
     assert (
         prompt.grounded_context["current_candidate_quality_tuning"]["competitor_candidate_directory_penalty"] == 35
     )
@@ -193,6 +198,47 @@ def test_prompt_appends_additional_recommendation_text_safely() -> None:
 
     assert "ADDITIONAL_RECOMMENDATIONS_TEXT" in prompt.user_prompt
     assert "Prefer concise operator language." in prompt.user_prompt
+
+
+def test_prompt_includes_bounded_optional_competitor_context() -> None:
+    prompt = build_seo_recommendation_narrative_prompt(
+        run=_run(),
+        recommendations=_recommendations(),
+        by_status={"open": 1},
+        by_category={"SEO": 1},
+        by_severity={"WARNING": 1},
+        by_effort_bucket={"LOW": 1},
+        by_priority_band={"high": 1},
+        backlog=_recommendations(),
+        competitor_telemetry_summary={},
+        competitor_context={
+            "top_opportunities": [f"Opportunity {idx}" for idx in range(1, 9)],
+            "competitor_names": [f"Competitor {idx}" for idx in range(1, 9)],
+            "competitor_summary": "  Competitor gaps indicate weak local service page depth.  ",
+        },
+        current_tuning_values={},
+    )
+
+    competitor_signal_context = prompt.grounded_context["competitor_signal_context"]
+    assert competitor_signal_context["top_opportunities"] == [
+        "Opportunity 1",
+        "Opportunity 2",
+        "Opportunity 3",
+        "Opportunity 4",
+        "Opportunity 5",
+    ]
+    assert competitor_signal_context["competitor_names"] == [
+        "Competitor 1",
+        "Competitor 2",
+        "Competitor 3",
+        "Competitor 4",
+        "Competitor 5",
+    ]
+    assert competitor_signal_context["competitor_summary"] == (
+        "Competitor gaps indicate weak local service page depth."
+    )
+    assert "COMPETITOR SIGNAL SNAPSHOT (OPTIONAL)" in prompt.user_prompt
+    assert "Do not invent competitor facts beyond competitor_signal_context." in prompt.user_prompt
 
 
 def test_prompt_is_deterministic_for_same_inputs() -> None:
