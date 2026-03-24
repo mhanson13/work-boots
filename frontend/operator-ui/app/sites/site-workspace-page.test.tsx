@@ -2670,6 +2670,52 @@ describe("site workspace timeline controls", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders deterministic start-here-by-theme helper when provided", async () => {
+    seedRichWorkspaceData();
+    const user = userEvent.setup();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        start_here: {
+          theme: "trust_and_legitimacy",
+          theme_label: "Trust & legitimacy",
+          recommendation_id: "rec-1",
+          title: "Fix title tags",
+          reason: "Start here because competitor-backed evidence highlights this gap first.",
+          context_flags: ["competitor_backed", "pending_refresh_context"],
+        },
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    const helper = await screen.findByTestId("start-here-theme-helper");
+    expect(within(helper).getByText("Start here by theme")).toBeInTheDocument();
+    expect(within(helper).getByText("Trust & legitimacy")).toBeInTheDocument();
+    expect(within(helper).getByText("Fix title tags")).toBeInTheDocument();
+    expect(
+      within(helper).getByText("Start here because competitor-backed evidence highlights this gap first."),
+    ).toBeInTheDocument();
+    expect(within(helper).getByText("Competitor-backed")).toBeInTheDocument();
+    expect(within(helper).getByText("Refresh pending")).toBeInTheDocument();
+
+    await user.click(within(helper).getByRole("button", { name: "Jump to recommendation" }));
+    expect(document.getElementById("workspace-recommendation-rec-1")).toHaveClass("start-here-target-active");
+  });
+
+  it("keeps start-here-by-theme helper hidden when summary omits it", async () => {
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        start_here: null,
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("heading", { name: "AI Narrative Overlay" });
+    expect(screen.queryByTestId("start-here-theme-helper")).not.toBeInTheDocument();
+  });
+
   it("renders only action summary when competitor and support context are absent", async () => {
     seedRichWorkspaceData();
     mockFetchRecommendationWorkspaceSummary.mockResolvedValue(

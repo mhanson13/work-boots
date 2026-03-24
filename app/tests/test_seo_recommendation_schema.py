@@ -5,7 +5,11 @@ from uuid import uuid4
 
 import pytest
 
-from app.schemas.seo_recommendation import SEORecommendationRead, infer_eeat_categories_from_signals
+from app.schemas.seo_recommendation import (
+    SEORecommendationRead,
+    SEORecommendationStartHereRead,
+    infer_eeat_categories_from_signals,
+)
 
 
 def _recommendation_payload(**overrides):
@@ -192,3 +196,31 @@ def test_recommendation_read_falls_back_to_general_theme_for_sparse_metadata() -
     )
     assert recommendation.theme == "general_site_improvement"
     assert recommendation.theme_label == "General site improvement"
+
+
+def test_recommendation_start_here_read_normalizes_context_flags() -> None:
+    start_here = SEORecommendationStartHereRead.model_validate(
+        {
+            "theme": "trust_and_legitimacy",
+            "theme_label": "Trust & legitimacy",
+            "recommendation_id": str(uuid4()),
+            "title": "Publish license and insurance trust proof",
+            "reason": "Start here to close a high-visibility trust and legitimacy gap.",
+            "context_flags": ["pending_refresh_context", "pending_refresh_context", "ignored", "competitor_backed"],
+        }
+    )
+    assert start_here.context_flags == ["pending_refresh_context", "competitor_backed"]
+
+
+def test_recommendation_start_here_read_rejects_invalid_theme() -> None:
+    with pytest.raises(ValueError):
+        SEORecommendationStartHereRead.model_validate(
+            {
+                "theme": "invalid_theme",
+                "theme_label": "Invalid",
+                "recommendation_id": str(uuid4()),
+                "title": "Invalid",
+                "reason": "Invalid",
+                "context_flags": [],
+            }
+        )

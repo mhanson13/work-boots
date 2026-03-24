@@ -87,6 +87,7 @@ from app.schemas.seo_recommendation import (
     SEORecommendationListQuery,
     SEORecommendationListResponse,
     SEORecommendationOrderingExplanationRead,
+    SEORecommendationStartHereRead,
     SEORecommendationThemeGroupRead,
     SEORecommendationWorkspaceSummaryRead,
     SEORecommendationTuningImpactPreviewRead,
@@ -197,6 +198,7 @@ _WORKSPACE_RECOMMENDATION_THEME_ORDER = (
 )
 _WORKSPACE_LOCATION_CONTEXT_MAX_CHARS = 220
 _WORKSPACE_PRIMARY_LOCATION_MAX_CHARS = 255
+_WORKSPACE_START_HERE_REASON_MAX_CHARS = 320
 logger = logging.getLogger(__name__)
 
 
@@ -681,6 +683,117 @@ def _build_workspace_grouped_recommendations(
     return grouped
 
 
+def _find_recommendation_by_id(
+    *,
+    recommendations: list[SEORecommendationRead],
+    recommendation_id: str,
+) -> SEORecommendationRead | None:
+    for recommendation in recommendations:
+        if recommendation.id == recommendation_id:
+            return recommendation
+    return None
+
+
+def _build_workspace_start_here_reason(
+    *,
+    theme: str,
+    recommendation: SEORecommendationRead,
+    analysis_freshness: SEORecommendationAnalysisFreshnessRead | None,
+) -> tuple[str, list[str]]:
+    base_reason_map = {
+        "trust_and_legitimacy": "Start here to close a high-visibility trust and legitimacy gap.",
+        "experience_and_proof": "Start here to make real work proof more visible to potential customers.",
+        "authority_and_visibility": "Start here to strengthen authority and visibility signals customers can verify.",
+        "expertise_and_process": "Start here to clarify expertise and execution process for buyers.",
+        "general_site_improvement": "Start here because this is the first action in your strongest visible gap theme.",
+    }
+    context_flags: list[str] = []
+    reason = base_reason_map.get(
+        theme,
+        "Start here because this is the first action in your strongest visible gap theme.",
+    )
+    if "competitor_gap" in recommendation.priority_reasons:
+        reason = "Start here because competitor-backed evidence highlights this gap first."
+        context_flags.append("competitor_backed")
+    if analysis_freshness is not None and analysis_freshness.status == "pending_refresh":
+        context_flags.append("pending_refresh_context")
+        reason = f"{reason} Based on the latest available analysis; refresh pending."
+    compacted = _compact_workspace_text(reason, max_length=_WORKSPACE_START_HERE_REASON_MAX_CHARS)
+    return (
+        compacted
+        or "Start here because this is the first action in your strongest visible gap theme.",
+        list(dict.fromkeys(context_flags)),
+    )
+
+
+def _build_workspace_start_here(
+    *,
+    recommendations: list[SEORecommendationRead],
+    grouped_recommendations: list[SEORecommendationThemeGroupRead],
+    analysis_freshness: SEORecommendationAnalysisFreshnessRead | None,
+) -> SEORecommendationStartHereRead | None:
+    if not recommendations:
+        return None
+
+    selected_theme: str | None = None
+    selected_theme_label: str | None = None
+    selected_recommendation_id: str | None = None
+
+    for group in grouped_recommendations:
+        if not group.recommendation_ids:
+            continue
+        selected_theme = group.theme
+        selected_theme_label = group.label
+        selected_recommendation_id = group.recommendation_ids[0]
+        break
+
+    if selected_recommendation_id is None:
+        for theme in _WORKSPACE_RECOMMENDATION_THEME_ORDER:
+            for recommendation in recommendations:
+                if (recommendation.theme or "general_site_improvement") != theme:
+                    continue
+                selected_theme = theme
+                selected_theme_label = recommendation.theme_label or format_recommendation_theme_label(theme)  # type: ignore[arg-type]
+                selected_recommendation_id = recommendation.id
+                break
+            if selected_recommendation_id is not None:
+                break
+
+    if selected_recommendation_id is None:
+        fallback = recommendations[0]
+        selected_theme = fallback.theme or "general_site_improvement"
+        selected_theme_label = fallback.theme_label or format_recommendation_theme_label(selected_theme)  # type: ignore[arg-type]
+        selected_recommendation_id = fallback.id
+
+    selected_recommendation = _find_recommendation_by_id(
+        recommendations=recommendations,
+        recommendation_id=selected_recommendation_id,
+    )
+    if selected_recommendation is None:
+        return None
+
+    reason, context_flags = _build_workspace_start_here_reason(
+        theme=selected_theme or "general_site_improvement",
+        recommendation=selected_recommendation,
+        analysis_freshness=analysis_freshness,
+    )
+
+    try:
+        return SEORecommendationStartHereRead.model_validate(
+            {
+                "theme": selected_theme or "general_site_improvement",
+                "theme_label": selected_theme_label
+                or format_recommendation_theme_label((selected_theme or "general_site_improvement")),  # type: ignore[arg-type]
+                "recommendation_id": selected_recommendation.id,
+                "title": selected_recommendation.title,
+                "reason": reason,
+                "context_flags": context_flags,
+            }
+        )
+    except Exception:  # noqa: BLE001
+        return None
+
+
 @router.get("/sites", response_model=SEOSiteListResponse)
 def list_seo_sites(
     business_id: str,
@@ -1118,6 +1231,7 @@ def get_seo_recommendation_workspace_summary(
     apply_outcome: SEORecommendationApplyOutcomeRead | None = None
     analysis_freshness: SEORecommendationAnalysisFreshnessRead | None = None
     ordering_explanation: SEORecommendationOrderingExplanationRead | None = None
+    start_here: SEORecommendationStartHereRead | None = None
     eeat_gap_summary: SEORecommendationEEATGapSummaryRead | None = None
     competitor_prompt_preview = None
     recommendation_prompt_preview = None
@@ -1305,6 +1419,11 @@ def get_seo_recommendation_workspace_summary(
         recommendations=recommendations_payload.items,
         analysis_freshness=analysis_freshness,
     )
+    start_here = _build_workspace_start_here(
+        recommendations=recommendations_payload.items,
+        grouped_recommendations=grouped_recommendations,
+        analysis_freshness=analysis_freshness,
+    )
 
     return SEORecommendationWorkspaceSummaryRead(
         business_id=scoped_business_id,
@@ -1321,6 +1440,7 @@ def get_seo_recommendation_workspace_summary(
         apply_outcome=apply_outcome,
         analysis_freshness=analysis_freshness,
         ordering_explanation=ordering_explanation,
+        start_here=start_here,
         eeat_gap_summary=eeat_gap_summary,
         competitor_prompt_preview=competitor_prompt_preview,
         recommendation_prompt_preview=recommendation_prompt_preview,

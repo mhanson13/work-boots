@@ -256,6 +256,26 @@ Display guidance:
 - avoid empty placeholders when field is null/absent
 - avoid language that implies weighted/AI scoring
 
+## Deterministic Start Here (Theme Helper)
+
+Workspace summary payloads may include optional `start_here` metadata for a compact operator helper:
+
+- `theme`, `theme_label`
+- `recommendation_id`, `title`
+- `reason`
+- optional `context_flags`
+
+Rendering guidance:
+- show as a compact secondary helper near Top Insights
+- keep it additive and non-banner-like
+- use it as “where to begin” guidance, not a ranking score
+- allow a simple jump-to-recommendation action when practical
+- hide the block entirely when `start_here` is missing/null
+
+Behavior notes:
+- helper selection is deterministic from existing grouping/order metadata
+- pending-refresh context may be shown via subtle badges/labels when present in `context_flags`
+
 ## AI -> Action Bridge
 
 The workspace now links AI opportunities directly to the deterministic tuning/apply loop when linkage data exists.

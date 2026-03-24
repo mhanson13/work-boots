@@ -259,6 +259,28 @@ Workspace summary payloads now include optional additive ordering metadata:
 This explains why recommendations are surfaced prominently using existing deterministic metadata.
 It does not introduce weighted scoring or AI prioritization.
 
+## Deterministic Start Here (Theme Helper)
+
+Workspace summary payloads now include an optional additive `start_here` object:
+
+- `theme`
+- `theme_label`
+- `recommendation_id`
+- `title`
+- `reason`
+- `context_flags`
+
+Selection is deterministic and metadata-driven:
+- Uses existing grouped recommendation themes when available.
+- Chooses the first populated theme in deterministic theme order.
+- Chooses the first recommendation in that theme while preserving existing list order.
+- Falls back to flat recommendation metadata if grouped data is unavailable.
+
+This is a guidance helper, not a score/ranking model.
+No numeric weighting, AI prioritization, or persistence is added.
+
+If `analysis_freshness.status == pending_refresh`, the helper may include contextual pending-refresh flagging, but this does not change the underlying deterministic selection.
+
 ## Deterministic Recommendation Themes and Grouping
 
 Workspace recommendations now include additive deterministic theme metadata for operator clarity.

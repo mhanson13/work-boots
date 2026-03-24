@@ -913,6 +913,11 @@ def test_recommendation_workspace_summary_returns_latest_completed_run(db_sessio
     flat_ids = [item["id"] for item in payload["recommendations"]["items"]]
     assert grouped_ids
     assert grouped_ids == flat_ids
+    assert payload["start_here"] is not None
+    assert payload["start_here"]["recommendation_id"] == flat_ids[0]
+    assert payload["start_here"]["title"] == payload["recommendations"]["items"][0]["title"]
+    assert payload["start_here"]["reason"]
+    assert payload["start_here"]["context_flags"] == []
     assert payload["latest_narrative"] is None
     assert payload["tuning_suggestions"] == []
     assert payload["apply_outcome"] is None
@@ -962,6 +967,7 @@ def test_recommendation_workspace_summary_reflects_primary_business_zip_location
     assert summary.status_code == 200
     payload = summary.json()
     assert payload["state"] == "no_runs"
+    assert payload["start_here"] is None
     assert payload["site_location_context_strength"] == "strong"
     assert payload["site_location_context_source"] == "zip_capture"
     assert payload["site_primary_business_zip"] == "80538"
@@ -986,6 +992,7 @@ def test_recommendation_workspace_summary_reflects_explicit_location_source(
     )
     assert summary.status_code == 200
     payload = summary.json()
+    assert payload["start_here"] is None
     assert payload["site_location_context_strength"] == "strong"
     assert payload["site_location_context_source"] == "explicit_location"
     assert payload["site_primary_location"] == "Loveland, Colorado"
@@ -1010,6 +1017,7 @@ def test_recommendation_workspace_summary_reflects_service_area_location_source(
     )
     assert summary.status_code == 200
     payload = summary.json()
+    assert payload["start_here"] is None
     assert payload["site_location_context_strength"] == "strong"
     assert payload["site_location_context_source"] == "service_area"
     assert payload["site_primary_location"] is None
@@ -1097,6 +1105,10 @@ def test_recommendation_workspace_summary_groups_recommendations_by_theme_withou
         grouped_ids.extend(ids)
 
     assert set(grouped_ids) == set(flat_ids)
+    assert payload["start_here"] is not None
+    assert payload["start_here"]["recommendation_id"] == grouped[0]["recommendation_ids"][0]
+    assert payload["start_here"]["theme"] == grouped[0]["theme"]
+    assert payload["start_here"]["theme_label"] == grouped[0]["label"]
 
 
 def test_recommendation_workspace_summary_includes_latest_narrative_and_bounded_suggestions(
@@ -1412,6 +1424,8 @@ def test_recommendation_workspace_summary_includes_latest_apply_outcome(db_sessi
     assert payload["analysis_freshness"]["last_apply_at"] is not None
     assert payload["ordering_explanation"] is not None
     assert "pending_refresh_context" in payload["ordering_explanation"]["context_reasons"]
+    assert payload["start_here"] is not None
+    assert "pending_refresh_context" in payload["start_here"]["context_flags"]
     assert payload["apply_outcome"]["applied"] is True
     assert payload["apply_outcome"]["source"] == "recommendation"
     assert payload["apply_outcome"]["recommendation_label"] == recommendation_title
@@ -1469,6 +1483,8 @@ def test_recommendation_workspace_summary_handles_partial_apply_metadata_safely(
     assert payload["apply_outcome"]["expected_change"]
     assert payload["apply_outcome"]["reflected_on_next_run"]
     assert payload["analysis_freshness"]["status"] == "pending_refresh"
+    assert payload["start_here"] is not None
+    assert payload["start_here"]["context_flags"]
 
 
 def test_recommendation_workspace_summary_handles_in_progress_runs_safely(db_session, seeded_business) -> None:
@@ -1510,6 +1526,7 @@ def test_recommendation_workspace_summary_handles_in_progress_runs_safely(db_ses
     assert payload["recommendations"]["total"] == 0
     assert payload["latest_narrative"] is None
     assert payload["apply_outcome"] is None
+    assert payload["start_here"] is None
     assert payload["analysis_freshness"]["status"] == "unknown"
     assert payload["analysis_freshness"]["analysis_generated_at"] is None
     assert payload["competitor_prompt_preview"] is not None
@@ -1567,6 +1584,8 @@ def test_recommendation_workspace_summary_marks_fresh_when_apply_is_older_than_a
     assert payload["analysis_freshness"]["status"] == "fresh"
     assert payload["analysis_freshness"]["analysis_generated_at"] is not None
     assert payload["analysis_freshness"]["last_apply_at"] is not None
+    assert payload["start_here"] is not None
+    assert payload["start_here"]["context_flags"] == []
 
 
 def test_recommendation_workspace_summary_marks_unknown_when_no_analysis_exists(
@@ -1581,6 +1600,7 @@ def test_recommendation_workspace_summary_marks_unknown_when_no_analysis_exists(
     assert summary.status_code == 200
     payload = summary.json()
     assert payload["state"] == "no_runs"
+    assert payload["start_here"] is None
     assert payload["analysis_freshness"]["status"] == "unknown"
     assert payload["analysis_freshness"]["analysis_generated_at"] is None
     assert payload["analysis_freshness"]["last_apply_at"] is None
@@ -1617,6 +1637,7 @@ def test_recommendation_workspace_summary_marks_unknown_when_apply_exists_withou
     )
     assert summary.status_code == 200
     payload = summary.json()
+    assert payload["start_here"] is None
     assert payload["analysis_freshness"]["status"] == "unknown"
     assert payload["analysis_freshness"]["analysis_generated_at"] is None
     assert payload["analysis_freshness"]["last_apply_at"] is not None

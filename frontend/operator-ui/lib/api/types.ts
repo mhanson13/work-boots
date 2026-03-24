@@ -756,6 +756,7 @@ export interface RecommendationWorkspaceSummaryResponse {
   apply_outcome?: RecommendationApplyOutcome | null;
   analysis_freshness?: RecommendationAnalysisFreshness | null;
   ordering_explanation?: RecommendationOrderingExplanation | null;
+  start_here?: RecommendationStartHere | null;
   eeat_gap_summary?: RecommendationEEATGapSummary | null;
   competitor_prompt_preview?: AIPromptPreview | null;
   recommendation_prompt_preview?: AIPromptPreview | null;
@@ -776,6 +777,15 @@ export interface RecommendationThemeGroup {
   label: string;
   count: number;
   recommendation_ids: string[];
+}
+
+export interface RecommendationStartHere {
+  theme: RecommendationTheme;
+  theme_label: string;
+  recommendation_id: string;
+  title: string;
+  reason: string;
+  context_flags: ("pending_refresh_context" | "competitor_backed")[];
 }
 
 export interface RecommendationEEATGapSummary {

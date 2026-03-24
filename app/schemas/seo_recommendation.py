@@ -35,6 +35,7 @@ SEORecommendationLocationContextSource = Literal[
     "zip_capture",
     "fallback",
 ]
+SEORecommendationStartHereContextFlag = Literal["pending_refresh_context", "competitor_backed"]
 SEORecommendationEEATCategory = Literal[
     "experience",
     "expertise",
@@ -91,6 +92,8 @@ _RECOMMENDATION_THEME_GROUP_RECOMMENDATION_ID_MAX_ITEMS = 200
 _LOCATION_CONTEXT_MAX_CHARS = 220
 _PRIMARY_LOCATION_MAX_CHARS = 255
 _PRIMARY_ZIP_MAX_CHARS = 5
+_START_HERE_TITLE_MAX_CHARS = 180
+_START_HERE_REASON_MAX_CHARS = 320
 _EEAT_CATEGORY_ORDER: tuple[SEORecommendationEEATCategory, ...] = (
     "experience",
     "expertise",
@@ -734,6 +737,76 @@ class SEORecommendationThemeGroupRead(BaseModel):
             normalized.append(cleaned)
             if len(normalized) >= _RECOMMENDATION_THEME_GROUP_RECOMMENDATION_ID_MAX_ITEMS:
                 break
+        return normalized
+
+
+class SEORecommendationStartHereRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    theme: SEORecommendationTheme
+    theme_label: str = Field(min_length=1, max_length=_RECOMMENDATION_THEME_GROUP_LABEL_MAX_CHARS)
+    recommendation_id: str = Field(min_length=1, max_length=36)
+    title: str = Field(min_length=1, max_length=_START_HERE_TITLE_MAX_CHARS)
+    reason: str = Field(min_length=1, max_length=_START_HERE_REASON_MAX_CHARS)
+    context_flags: list[SEORecommendationStartHereContextFlag] = Field(default_factory=list)
+
+    @field_validator("theme", mode="before")
+    @classmethod
+    def normalize_theme(cls, value: Any) -> SEORecommendationTheme:
+        normalized = _normalize_recommendation_theme(value)
+        if normalized is None:
+            raise ValueError("Invalid recommendation theme")
+        return normalized
+
+    @field_validator("theme_label", mode="before")
+    @classmethod
+    def normalize_theme_label(cls, value: Any) -> str:
+        cleaned = _compact_text(value, max_length=_RECOMMENDATION_THEME_GROUP_LABEL_MAX_CHARS)
+        if cleaned is None:
+            raise ValueError("theme_label is required")
+        return cleaned
+
+    @field_validator("recommendation_id", mode="before")
+    @classmethod
+    def normalize_recommendation_id(cls, value: Any) -> str:
+        cleaned = _strip_or_none(str(value) if value is not None else None)
+        if cleaned is None:
+            raise ValueError("recommendation_id is required")
+        return cleaned
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_title(cls, value: Any) -> str:
+        cleaned = _compact_text(value, max_length=_START_HERE_TITLE_MAX_CHARS)
+        if cleaned is None:
+            raise ValueError("title is required")
+        return cleaned
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def normalize_reason(cls, value: Any) -> str:
+        cleaned = _compact_text(value, max_length=_START_HERE_REASON_MAX_CHARS)
+        if cleaned is None:
+            raise ValueError("reason is required")
+        return cleaned
+
+    @field_validator("context_flags", mode="before")
+    @classmethod
+    def normalize_context_flags(cls, value: Any) -> list[SEORecommendationStartHereContextFlag]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise TypeError("context_flags must be a list")
+        normalized: list[SEORecommendationStartHereContextFlag] = []
+        seen: set[str] = set()
+        for item in value:
+            cleaned = str(item or "").strip().lower()
+            if cleaned not in {"pending_refresh_context", "competitor_backed"}:
+                continue
+            if cleaned in seen:
+                continue
+            seen.add(cleaned)
+            normalized.append(cleaned)  # type: ignore[arg-type]
         return normalized
 
 
@@ -1452,6 +1525,7 @@ class SEORecommendationWorkspaceSummaryRead(BaseModel):
     apply_outcome: SEORecommendationApplyOutcomeRead | None = None
     analysis_freshness: SEORecommendationAnalysisFreshnessRead | None = None
     ordering_explanation: SEORecommendationOrderingExplanationRead | None = None
+    start_here: SEORecommendationStartHereRead | None = None
     eeat_gap_summary: SEORecommendationEEATGapSummaryRead | None = None
     competitor_prompt_preview: AIPromptPreviewRead | None = None
     recommendation_prompt_preview: AIPromptPreviewRead | None = None

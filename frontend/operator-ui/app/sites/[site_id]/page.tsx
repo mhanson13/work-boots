@@ -46,6 +46,7 @@ import type {
   RecommendationEEATGapSummary,
   RecommendationOrderingExplanation,
   RecommendationPriorityReason,
+  RecommendationStartHere,
   RecommendationTheme,
   RecommendationThemeGroup,
   Recommendation,
@@ -1190,6 +1191,8 @@ export default function SiteWorkspacePage() {
     useState<RecommendationAnalysisFreshness | null>(null);
   const [latestRecommendationOrderingExplanation, setLatestRecommendationOrderingExplanation] =
     useState<RecommendationOrderingExplanation | null>(null);
+  const [latestRecommendationStartHere, setLatestRecommendationStartHere] =
+    useState<RecommendationStartHere | null>(null);
   const [latestRecommendationGroupedRecommendations, setLatestRecommendationGroupedRecommendations] = useState<
     RecommendationThemeGroup[]
   >([]);
@@ -1568,6 +1571,22 @@ export default function SiteWorkspacePage() {
     () => normalizeRecommendationOrderingExplanation(latestRecommendationOrderingExplanation),
     [latestRecommendationOrderingExplanation],
   );
+  const recommendationThemeStartHere = useMemo(() => {
+    if (!latestRecommendationStartHere) {
+      return null;
+    }
+    const fallbackTheme = latestRecommendationStartHere.theme;
+    const themeLabel = truncateOptionalText(latestRecommendationStartHere.theme_label, 80)
+      || formatRecommendationThemeLabel(fallbackTheme);
+    return {
+      ...latestRecommendationStartHere,
+      themeLabel,
+      title: truncateOptionalText(latestRecommendationStartHere.title, 180) || latestRecommendationStartHere.title,
+      reason: truncateOptionalText(latestRecommendationStartHere.reason, 320) || latestRecommendationStartHere.reason,
+      hasPendingRefreshContext: latestRecommendationStartHere.context_flags.includes("pending_refresh_context"),
+      hasCompetitorBackedContext: latestRecommendationStartHere.context_flags.includes("competitor_backed"),
+    };
+  }, [latestRecommendationStartHere]);
   const recommendationThemeSections = useMemo(
     () =>
       normalizeRecommendationThemeSections(
@@ -1716,6 +1735,7 @@ export default function SiteWorkspacePage() {
     setLatestRecommendationEEATGapSummary(summary.eeat_gap_summary || null);
     setLatestRecommendationAnalysisFreshness(summary.analysis_freshness || null);
     setLatestRecommendationOrderingExplanation(summary.ordering_explanation || null);
+    setLatestRecommendationStartHere(summary.start_here || null);
     setLatestRecommendationGroupedRecommendations(summary.grouped_recommendations || []);
     setSiteLocationContext(summary.site_location_context || null);
     setSitePrimaryLocation(summary.site_primary_location || null);
@@ -2466,6 +2486,7 @@ export default function SiteWorkspacePage() {
       setLatestRecommendationEEATGapSummary(null);
       setLatestRecommendationAnalysisFreshness(null);
       setLatestRecommendationOrderingExplanation(null);
+      setLatestRecommendationStartHere(null);
       setLatestRecommendationGroupedRecommendations([]);
       setSiteLocationContext(null);
       setSitePrimaryLocation(null);
@@ -2523,6 +2544,7 @@ export default function SiteWorkspacePage() {
       setLatestRecommendationEEATGapSummary(null);
       setLatestRecommendationAnalysisFreshness(null);
       setLatestRecommendationOrderingExplanation(null);
+      setLatestRecommendationStartHere(null);
       setLatestRecommendationGroupedRecommendations([]);
       setSiteLocationContext(null);
       setSitePrimaryLocation(null);
@@ -2575,6 +2597,7 @@ export default function SiteWorkspacePage() {
       setLatestRecommendationEEATGapSummary(null);
       setLatestRecommendationAnalysisFreshness(null);
       setLatestRecommendationOrderingExplanation(null);
+      setLatestRecommendationStartHere(null);
       setLatestRecommendationGroupedRecommendations([]);
       setSiteLocationContext(null);
       setSitePrimaryLocation(null);
@@ -2776,6 +2799,7 @@ export default function SiteWorkspacePage() {
         setLatestRecommendationEEATGapSummary(null);
         setLatestRecommendationAnalysisFreshness(null);
         setLatestRecommendationOrderingExplanation(null);
+        setLatestRecommendationStartHere(null);
         setLatestRecommendationGroupedRecommendations([]);
         setSiteLocationContext(null);
         setSitePrimaryLocation(null);
@@ -3094,6 +3118,29 @@ export default function SiteWorkspacePage() {
             </button>
           ) : null}
         </div>
+        {recommendationThemeStartHere ? (
+          <div className="panel panel-compact stack-tight" data-testid="start-here-theme-helper">
+            <span className="hint muted">Start here by theme</span>
+            <strong>{recommendationThemeStartHere.themeLabel}</strong>
+            <span className="hint">{recommendationThemeStartHere.title}</span>
+            <span className="hint muted">{recommendationThemeStartHere.reason}</span>
+            <div className="link-row">
+              {recommendationThemeStartHere.hasCompetitorBackedContext ? (
+                <span className="badge badge-muted">Competitor-backed</span>
+              ) : null}
+              {recommendationThemeStartHere.hasPendingRefreshContext ? (
+                <span className="badge badge-warn">Refresh pending</span>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className="button button-secondary button-inline"
+              onClick={() => focusActionTarget(recommendationRowId(recommendationThemeStartHere.recommendation_id))}
+            >
+              Jump to recommendation
+            </button>
+          </div>
+        ) : null}
       </SectionCard>
 
       {showZipCaptureModal ? (
