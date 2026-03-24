@@ -2716,6 +2716,56 @@ describe("site workspace timeline controls", () => {
     expect(screen.queryByTestId("narrative-competitor-influence")).not.toBeInTheDocument();
   });
 
+  it("renders recommendation apply outcome context when workspace summary includes apply metadata", async () => {
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        apply_outcome: {
+          applied: true,
+          applied_at: "2026-03-21T01:40:00Z",
+          recommendation_label: "Fix title tags",
+          expected_change: "Estimated increase of 2 included candidates over the last 30 days of telemetry.",
+          reflected_on_next_run: "The next completed recommendation or competitor generation run should reflect this change.",
+          source: "recommendation",
+        },
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("heading", { name: "AI Narrative Overlay" });
+    const applyOutcome = screen.getByTestId("narrative-apply-outcome");
+    expect(within(applyOutcome).getByText("Latest apply outcome")).toBeInTheDocument();
+    expect(within(applyOutcome).getByText("Applied")).toBeInTheDocument();
+    expect(within(applyOutcome).getByText("Recommendation: Fix title tags")).toBeInTheDocument();
+    expect(
+      within(applyOutcome).getByText(
+        "Expected change: Estimated increase of 2 included candidates over the last 30 days of telemetry.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(applyOutcome).getByText(
+        "Reflects on next run: The next completed recommendation or competitor generation run should reflect this change.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(applyOutcome).getByText(/Applied at:/)).toBeInTheDocument();
+    expect(within(applyOutcome).getByText("Source: recommendation-guided tuning action.")).toBeInTheDocument();
+  });
+
+  it("keeps apply outcome block hidden when workspace summary does not include apply metadata", async () => {
+    seedRichWorkspaceData();
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        apply_outcome: null,
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findByRole("heading", { name: "AI Narrative Overlay" });
+    expect(screen.queryByTestId("narrative-apply-outcome")).not.toBeInTheDocument();
+  });
+
   it("renders ai opportunities only when ai-backed recommendation signals are present", async () => {
     seedRichWorkspaceData();
     mockFetchRecommendationWorkspaceSummary.mockResolvedValue({

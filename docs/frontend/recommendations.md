@@ -101,6 +101,27 @@ Fallback rules:
 - Keep legacy `narrative_text` rendering intact.
 - Keep the UI concise and operator-oriented; avoid technical backend terminology.
 
+## Apply Outcome Visibility
+
+Workspace summary payloads may include optional `apply_outcome` metadata to show what changed after manual tuning apply.
+
+Recommended rendering:
+- Show a compact secondary block near narrative/tuning context.
+- Include:
+  - applied state (`Applied`)
+  - recommendation label (when available)
+  - expected change (one sentence)
+  - next-run reflection timing (one sentence)
+  - applied timestamp
+
+Rules:
+- Treat `apply_outcome` as optional additive data.
+- Do not render an empty container when `apply_outcome` is missing/null.
+- Keep this separate from recommendation rationale fields:
+  - rationale/explanation: `action_summary`, `competitor_influence`, `signal_summary`
+  - post-action feedback: `apply_outcome`
+- Keep copy concise and operator-friendly.
+
 ## AI -> Action Bridge
 
 The workspace now links AI opportunities directly to the deterministic tuning/apply loop when linkage data exists.

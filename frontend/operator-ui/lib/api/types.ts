@@ -593,6 +593,15 @@ export interface RecommendationNarrativeSignalSummary {
   reference_signal_used: boolean;
 }
 
+export interface RecommendationApplyOutcome {
+  applied: boolean;
+  applied_at: string | null;
+  recommendation_label: string | null;
+  expected_change: string | null;
+  reflected_on_next_run: string | null;
+  source: "recommendation" | "manual" | null;
+}
+
 export type CompetitorCandidateExclusionReason =
   | "duplicate"
   | "low_relevance"
@@ -688,6 +697,7 @@ export interface RecommendationWorkspaceSummaryResponse {
   recommendations: RecommendationListResponse;
   latest_narrative: RecommendationNarrative | null;
   tuning_suggestions: RecommendationTuningSuggestion[];
+  apply_outcome?: RecommendationApplyOutcome | null;
 }
 
 export interface Recommendation {

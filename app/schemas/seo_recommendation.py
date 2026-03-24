@@ -24,6 +24,7 @@ SEORecommendationSortBy = Literal["priority_score", "priority_band", "severity",
 SortOrder = Literal["asc", "desc"]
 SEORecommendationTuningSuggestionConfidence = Literal["low", "medium", "high"]
 SEORecommendationSignalSupportLevel = Literal["low", "medium", "high"]
+SEORecommendationApplyOutcomeSource = Literal["recommendation", "manual"]
 RecommendationTuningSetting = Literal[
     "competitor_candidate_min_relevance_score",
     "competitor_candidate_big_box_penalty",
@@ -45,6 +46,9 @@ _ACTION_SUMMARY_PRIMARY_ACTION_MAX_CHARS = 180
 _ACTION_SUMMARY_WHY_MAX_CHARS = 240
 _ACTION_SUMMARY_FIRST_STEP_MAX_CHARS = 180
 _ACTION_SUMMARY_EVIDENCE_ITEM_MAX_CHARS = 160
+_APPLY_OUTCOME_LABEL_MAX_CHARS = 180
+_APPLY_OUTCOME_EXPECTED_CHANGE_MAX_CHARS = 260
+_APPLY_OUTCOME_NEXT_RUN_MAX_CHARS = 220
 _SIGNAL_SUMMARY_EVIDENCE_SOURCE_ORDER = ("site", "competitors", "references", "themes")
 
 
@@ -256,6 +260,42 @@ class SEORecommendationSignalSummaryRead(BaseModel):
             if len(normalized) >= len(_SIGNAL_SUMMARY_EVIDENCE_SOURCE_ORDER):
                 break
         return normalized
+
+
+class SEORecommendationApplyOutcomeRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    applied: bool
+    applied_at: datetime | None = None
+    recommendation_label: str | None = Field(default=None, max_length=_APPLY_OUTCOME_LABEL_MAX_CHARS)
+    expected_change: str | None = Field(default=None, max_length=_APPLY_OUTCOME_EXPECTED_CHANGE_MAX_CHARS)
+    reflected_on_next_run: str | None = Field(default=None, max_length=_APPLY_OUTCOME_NEXT_RUN_MAX_CHARS)
+    source: SEORecommendationApplyOutcomeSource | None = None
+
+    @field_validator("recommendation_label", mode="before")
+    @classmethod
+    def normalize_recommendation_label(cls, value: Any) -> str | None:
+        return _compact_text(value, max_length=_APPLY_OUTCOME_LABEL_MAX_CHARS)
+
+    @field_validator("expected_change", mode="before")
+    @classmethod
+    def normalize_expected_change(cls, value: Any) -> str | None:
+        return _compact_text(value, max_length=_APPLY_OUTCOME_EXPECTED_CHANGE_MAX_CHARS)
+
+    @field_validator("reflected_on_next_run", mode="before")
+    @classmethod
+    def normalize_reflected_on_next_run(cls, value: Any) -> str | None:
+        return _compact_text(value, max_length=_APPLY_OUTCOME_NEXT_RUN_MAX_CHARS)
+
+    @field_validator("source", mode="before")
+    @classmethod
+    def normalize_source(cls, value: Any) -> SEORecommendationApplyOutcomeSource | None:
+        if value is None:
+            return None
+        normalized = str(value).strip().lower()
+        if normalized not in {"recommendation", "manual"}:
+            raise ValueError("Invalid apply outcome source")
+        return normalized  # type: ignore[return-value]
 
 class SEORecommendationRunCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -784,6 +824,7 @@ class SEORecommendationWorkspaceSummaryRead(BaseModel):
     recommendations: SEORecommendationListResponse
     latest_narrative: SEORecommendationNarrativeRead | None
     tuning_suggestions: list[SEORecommendationTuningSuggestionRead] = Field(default_factory=list)
+    apply_outcome: SEORecommendationApplyOutcomeRead | None = None
 
 
 class SEORecommendationTuningValuesPatch(BaseModel):

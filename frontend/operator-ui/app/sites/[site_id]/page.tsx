@@ -38,6 +38,7 @@ import type {
   CompetitorProfileGenerationSummaryResponse,
   CompetitorSet,
   CompetitorSnapshotRun,
+  RecommendationApplyOutcome,
   Recommendation,
   RecommendationListResponse,
   RecommendationNarrative,
@@ -534,6 +535,42 @@ function normalizeNarrativeSignalSummary(
   };
 }
 
+interface RecommendationApplyOutcomeView {
+  applied: boolean;
+  appliedAt: string | null;
+  recommendationLabel: string | null;
+  expectedChange: string | null;
+  reflectedOnNextRun: string | null;
+  source: "recommendation" | "manual" | null;
+}
+
+function normalizeRecommendationApplyOutcome(
+  applyOutcome: RecommendationApplyOutcome | null | undefined,
+): RecommendationApplyOutcomeView | null {
+  if (!applyOutcome || !applyOutcome.applied) {
+    return null;
+  }
+  const recommendationLabel = truncateOptionalText(applyOutcome.recommendation_label, 180);
+  const expectedChange = truncateOptionalText(applyOutcome.expected_change, 240);
+  const reflectedOnNextRun = truncateOptionalText(applyOutcome.reflected_on_next_run, 220);
+  const appliedAt = truncateOptionalText(applyOutcome.applied_at, 64);
+  const source =
+    applyOutcome.source === "recommendation" || applyOutcome.source === "manual"
+      ? applyOutcome.source
+      : null;
+  if (!recommendationLabel && !expectedChange && !reflectedOnNextRun && !appliedAt) {
+    return null;
+  }
+  return {
+    applied: true,
+    appliedAt,
+    recommendationLabel,
+    expectedChange,
+    reflectedOnNextRun,
+    source,
+  };
+}
+
 function formatNarrativeSupportLevel(value: "low" | "medium" | "high"): string {
   switch (value) {
     case "low":
@@ -701,6 +738,8 @@ export default function SiteWorkspacePage() {
     useState<RecommendationNarrative | null>(null);
   const [latestCompletedTuningSuggestions, setLatestCompletedTuningSuggestions] =
     useState<RecommendationTuningSuggestion[]>([]);
+  const [latestRecommendationApplyOutcome, setLatestRecommendationApplyOutcome] =
+    useState<RecommendationApplyOutcome | null>(null);
   const [recommendationWorkspaceSummaryState, setRecommendationWorkspaceSummaryState] =
     useState<RecommendationWorkspaceSummaryResponse["state"] | null>(null);
   const [latestCompletedRecommendationsError, setLatestCompletedRecommendationsError] = useState<string | null>(null);
@@ -1037,6 +1076,11 @@ export default function SiteWorkspacePage() {
     [latestCompletedRecommendationNarrative],
   );
 
+  const recommendationApplyOutcome = useMemo(
+    () => normalizeRecommendationApplyOutcome(latestRecommendationApplyOutcome),
+    [latestRecommendationApplyOutcome],
+  );
+
   useEffect(() => {
     setShowAllAiOpportunities(false);
     setExpandedAiOpportunityIds(new Set());
@@ -1150,6 +1194,7 @@ export default function SiteWorkspacePage() {
     setLatestCompletedRecommendations(summary.recommendations.items);
     setLatestCompletedRecommendationNarrative(summary.latest_narrative);
     setLatestCompletedTuningSuggestions(summary.tuning_suggestions);
+    setLatestRecommendationApplyOutcome(summary.apply_outcome || null);
     setLatestCompletedRecommendationsError(null);
   }
 
@@ -1770,6 +1815,7 @@ export default function SiteWorkspacePage() {
       setLatestCompletedRecommendations([]);
       setLatestCompletedRecommendationNarrative(null);
       setLatestCompletedTuningSuggestions([]);
+      setLatestRecommendationApplyOutcome(null);
       setRecommendationWorkspaceSummaryState(null);
       setLatestCompletedRecommendationsError(null);
       setTuningPreviewByKey({});
@@ -1813,6 +1859,7 @@ export default function SiteWorkspacePage() {
       setLatestCompletedRecommendations([]);
       setLatestCompletedRecommendationNarrative(null);
       setLatestCompletedTuningSuggestions([]);
+      setLatestRecommendationApplyOutcome(null);
       setRecommendationWorkspaceSummaryState(null);
       setLatestCompletedRecommendationsError(null);
       setTuningPreviewByKey({});
@@ -1851,6 +1898,7 @@ export default function SiteWorkspacePage() {
       setLatestCompletedRecommendations([]);
       setLatestCompletedRecommendationNarrative(null);
       setLatestCompletedTuningSuggestions([]);
+      setLatestRecommendationApplyOutcome(null);
       setRecommendationWorkspaceSummaryState(null);
       setLatestCompletedRecommendationsError(null);
       setTuningPreviewByKey({});
@@ -2037,6 +2085,7 @@ export default function SiteWorkspacePage() {
         setLatestCompletedRecommendations(summary.recommendations.items);
         setLatestCompletedRecommendationNarrative(summary.latest_narrative);
         setLatestCompletedTuningSuggestions(summary.tuning_suggestions);
+        setLatestRecommendationApplyOutcome(summary.apply_outcome || null);
         setLatestCompletedRecommendationsError(null);
       } else {
         setRecommendationWorkspaceSummaryState(null);
@@ -2044,6 +2093,7 @@ export default function SiteWorkspacePage() {
         setLatestCompletedRecommendations([]);
         setLatestCompletedRecommendationNarrative(null);
         setLatestCompletedTuningSuggestions([]);
+        setLatestRecommendationApplyOutcome(null);
         setLatestCompletedRecommendationsError(
           safeSectionErrorMessage("recommendation workspace summary", recommendationWorkspaceSummaryResult.reason),
         );
@@ -3356,6 +3406,29 @@ export default function SiteWorkspacePage() {
                       {narrativeSignalSummary.competitorSignalUsed ? "yes" : "no"}; references{" "}
                       {narrativeSignalSummary.referenceSignalUsed ? "yes" : "no"}.
                     </span>
+                  </div>
+                ) : null}
+                {recommendationApplyOutcome ? (
+                  <div className="panel panel-compact stack-tight" data-testid="narrative-apply-outcome">
+                    <span className="hint muted">Latest apply outcome</span>
+                    <span className="hint success">Applied</span>
+                    {recommendationApplyOutcome.recommendationLabel ? (
+                      <span className="hint">Recommendation: {recommendationApplyOutcome.recommendationLabel}</span>
+                    ) : null}
+                    {recommendationApplyOutcome.expectedChange ? (
+                      <span className="hint muted">Expected change: {recommendationApplyOutcome.expectedChange}</span>
+                    ) : null}
+                    {recommendationApplyOutcome.reflectedOnNextRun ? (
+                      <span className="hint muted">
+                        Reflects on next run: {recommendationApplyOutcome.reflectedOnNextRun}
+                      </span>
+                    ) : null}
+                    {recommendationApplyOutcome.appliedAt ? (
+                      <span className="hint muted">Applied at: {formatDateTime(recommendationApplyOutcome.appliedAt)}</span>
+                    ) : null}
+                    {recommendationApplyOutcome.source === "recommendation" ? (
+                      <span className="hint muted">Source: recommendation-guided tuning action.</span>
+                    ) : null}
                   </div>
                 ) : null}
                 {latestCompletedRecommendationNarrative.narrative_text ? (

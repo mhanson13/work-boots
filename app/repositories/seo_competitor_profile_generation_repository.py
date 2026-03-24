@@ -425,6 +425,26 @@ class SEOCompetitorProfileGenerationRepository:
         )
         return self.session.scalar(stmt)
 
+    def get_latest_applied_tuning_preview_event_for_business_site(
+        self,
+        *,
+        business_id: str,
+        site_id: str,
+    ) -> SEOCompetitorTuningPreviewEvent | None:
+        stmt = (
+            select(SEOCompetitorTuningPreviewEvent)
+            .where(SEOCompetitorTuningPreviewEvent.business_id == business_id)
+            .where(SEOCompetitorTuningPreviewEvent.site_id == site_id)
+            .where(SEOCompetitorTuningPreviewEvent.applied_at.is_not(None))
+            .order_by(
+                SEOCompetitorTuningPreviewEvent.applied_at.desc(),
+                SEOCompetitorTuningPreviewEvent.created_at.desc(),
+                SEOCompetitorTuningPreviewEvent.id.desc(),
+            )
+            .limit(1)
+        )
+        return self.session.scalar(stmt)
+
     def find_recent_unapplied_preview_event_for_business_matching_tuning(
         self,
         *,

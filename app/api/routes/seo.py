@@ -8,6 +8,7 @@ from app.api.deps import (
     get_seo_audit_service,
     get_seo_automation_service,
     get_seo_competitor_comparison_service,
+    get_seo_competitor_profile_generation_repository,
     get_seo_competitor_profile_generation_run_executor,
     get_seo_competitor_profile_generation_service,
     get_seo_competitor_summary_service,
@@ -22,6 +23,7 @@ from app.api.deps import (
     resolve_tenant_business_id,
 )
 from app.models.principal import Principal, PrincipalRole
+from app.models.seo_competitor_tuning_preview_event import SEOCompetitorTuningPreviewEvent
 from app.schemas.seo_audit import (
     SEOAuditFindingListResponse,
     SEOAuditFindingRead,
@@ -73,6 +75,7 @@ from app.schemas.seo_competitor import (
     SEOCompetitorSnapshotRunRead,
 )
 from app.schemas.seo_recommendation import (
+    SEORecommendationApplyOutcomeRead,
     SEORecommendationBacklogRead,
     SEORecommendationFilteredSummary,
     SEORecommendationListQuery,
@@ -90,6 +93,9 @@ from app.schemas.seo_recommendation import (
     SEORecommendationRunReportRead,
     SEORecommendationTuningSuggestionRead,
     SEORecommendationWorkflowUpdateRequest,
+)
+from app.repositories.seo_competitor_profile_generation_repository import (
+    SEOCompetitorProfileGenerationRepository,
 )
 from app.schemas.seo_automation import (
     SEOAutomationConfigPatchRequest,
@@ -149,7 +155,22 @@ _WORKSPACE_ALLOWED_TUNING_SETTINGS = {
     "competitor_candidate_directory_penalty",
     "competitor_candidate_local_alignment_bonus",
 }
+_WORKSPACE_TUNING_SETTING_ORDER = (
+    "competitor_candidate_min_relevance_score",
+    "competitor_candidate_big_box_penalty",
+    "competitor_candidate_directory_penalty",
+    "competitor_candidate_local_alignment_bonus",
+)
 _WORKSPACE_ALLOWED_TUNING_CONFIDENCE = {"low", "medium", "high"}
+_WORKSPACE_SETTING_LABELS = {
+    "competitor_candidate_min_relevance_score": "Minimum relevance score",
+    "competitor_candidate_big_box_penalty": "Big-box mismatch penalty",
+    "competitor_candidate_directory_penalty": "Directory/aggregator penalty",
+    "competitor_candidate_local_alignment_bonus": "Local alignment bonus",
+}
+_WORKSPACE_APPLY_OUTCOME_LABEL_MAX_CHARS = 180
+_WORKSPACE_APPLY_OUTCOME_EXPECTED_MAX_CHARS = 260
+_WORKSPACE_APPLY_OUTCOME_REFLECT_MAX_CHARS = 220
 
 
 def _assert_site_match(*, expected_site_id: str, actual_site_id: str, detail: str) -> None:
@@ -239,6 +260,172 @@ def _extract_workspace_tuning_suggestions(
         if len(suggestions) >= _WORKSPACE_MAX_TUNING_SUGGESTIONS:
             break
     return suggestions
+
+
+def _compact_workspace_text(value: object, *, max_length: int) -> str | None:
+    if value is None:
+        return None
+    compacted = " ".join(str(value).split()).strip()
+    if not compacted:
+        return None
+    if len(compacted) <= max_length:
+        return compacted
+    if max_length <= 1:
+        return compacted[:max_length]
+    return f"{compacted[: max_length - 1].rstrip()}…"
+
+
+def _extract_workspace_changed_tuning_values(
+    preview_response: dict[str, object] | None,
+) -> tuple[str | None, int | None, int | None]:
+    if not isinstance(preview_response, dict):
+        return (None, None, None)
+    raw_current = preview_response.get("current_values")
+    raw_proposed = preview_response.get("proposed_values")
+    if not isinstance(raw_current, dict) or not isinstance(raw_proposed, dict):
+        return (None, None, None)
+
+    parsed_current: dict[str, int] = {}
+    parsed_proposed: dict[str, int] = {}
+    for setting in _WORKSPACE_TUNING_SETTING_ORDER:
+        try:
+            parsed_current[setting] = int(raw_current.get(setting))
+            parsed_proposed[setting] = int(raw_proposed.get(setting))
+        except (TypeError, ValueError):
+            continue
+
+    for setting in _WORKSPACE_TUNING_SETTING_ORDER:
+        current_value = parsed_current.get(setting)
+        proposed_value = parsed_proposed.get(setting)
+        if current_value is None or proposed_value is None:
+            continue
+        if current_value != proposed_value:
+            return (setting, current_value, proposed_value)
+
+    for setting in _WORKSPACE_TUNING_SETTING_ORDER:
+        proposed_value = parsed_proposed.get(setting)
+        if proposed_value is None:
+            continue
+        return (setting, parsed_current.get(setting), proposed_value)
+
+    return (None, None, None)
+
+
+def _build_workspace_apply_outcome(
+    *,
+    latest_applied_preview_event: SEOCompetitorTuningPreviewEvent | None,
+    latest_run_status: str | None,
+    latest_narrative_read: SEORecommendationNarrativeRead | None,
+    recommendations: list[SEORecommendationRead],
+    tuning_suggestions: list[SEORecommendationTuningSuggestionRead],
+) -> SEORecommendationApplyOutcomeRead | None:
+    if latest_applied_preview_event is None or latest_applied_preview_event.applied_at is None:
+        return None
+
+    preview_response = (
+        latest_applied_preview_event.preview_response
+        if isinstance(latest_applied_preview_event.preview_response, dict)
+        else None
+    )
+    changed_setting, current_value, proposed_value = _extract_workspace_changed_tuning_values(preview_response)
+
+    matching_suggestion = None
+    if changed_setting:
+        for suggestion in tuning_suggestions:
+            if suggestion.setting != changed_setting:
+                continue
+            if proposed_value is not None and suggestion.recommended_value != proposed_value:
+                continue
+            matching_suggestion = suggestion
+            break
+
+    recommendation_title_by_id = {
+        item.id: _compact_workspace_text(item.title, max_length=_WORKSPACE_APPLY_OUTCOME_LABEL_MAX_CHARS)
+        for item in recommendations
+    }
+    recommendation_label = None
+    source = None
+    if matching_suggestion is not None:
+        for linked_id in matching_suggestion.linked_recommendation_ids:
+            linked_title = recommendation_title_by_id.get(linked_id)
+            if linked_title:
+                recommendation_label = linked_title
+                source = "recommendation"
+                break
+
+    if recommendation_label is None and latest_narrative_read is not None:
+        if (
+            latest_applied_preview_event.source_narrative_id is None
+            or latest_applied_preview_event.source_narrative_id == latest_narrative_read.id
+        ) and latest_narrative_read.action_summary is not None:
+            recommendation_label = _compact_workspace_text(
+                latest_narrative_read.action_summary.primary_action,
+                max_length=_WORKSPACE_APPLY_OUTCOME_LABEL_MAX_CHARS,
+            )
+            if recommendation_label:
+                source = "recommendation"
+
+    setting_label = (
+        _WORKSPACE_SETTING_LABELS.get(changed_setting, changed_setting.replace("_", " ").title())
+        if changed_setting
+        else None
+    )
+    if recommendation_label is None and setting_label:
+        if current_value is not None and proposed_value is not None:
+            recommendation_label = _compact_workspace_text(
+                f"{setting_label}: {current_value} -> {proposed_value}",
+                max_length=_WORKSPACE_APPLY_OUTCOME_LABEL_MAX_CHARS,
+            )
+        else:
+            recommendation_label = _compact_workspace_text(
+                setting_label,
+                max_length=_WORKSPACE_APPLY_OUTCOME_LABEL_MAX_CHARS,
+            )
+    if source is None and recommendation_label:
+        source = "manual"
+
+    expected_change = None
+    if isinstance(preview_response, dict):
+        estimated_impact = preview_response.get("estimated_impact")
+        if isinstance(estimated_impact, dict):
+            expected_change = _compact_workspace_text(
+                estimated_impact.get("summary"),
+                max_length=_WORKSPACE_APPLY_OUTCOME_EXPECTED_MAX_CHARS,
+            )
+    if expected_change is None and setting_label and current_value is not None and proposed_value is not None:
+        expected_change = _compact_workspace_text(
+            f"{setting_label} was updated from {current_value} to {proposed_value}.",
+            max_length=_WORKSPACE_APPLY_OUTCOME_EXPECTED_MAX_CHARS,
+        )
+    if expected_change is None:
+        expected_change = "This tuning update should improve upcoming recommendation and competitor run outputs."
+
+    if latest_run_status in {"queued", "running"}:
+        reflected_on_next_run = (
+            "An in-flight run may still reflect previous settings. The next completed run should include this change."
+        )
+    else:
+        reflected_on_next_run = (
+            "The next completed recommendation or competitor generation run should reflect this change."
+        )
+    reflected_on_next_run = _compact_workspace_text(
+        reflected_on_next_run,
+        max_length=_WORKSPACE_APPLY_OUTCOME_REFLECT_MAX_CHARS,
+    )
+
+    try:
+        return SEORecommendationApplyOutcomeRead.model_validate(
+            {
+                "applied": True,
+                "applied_at": latest_applied_preview_event.applied_at,
+                "recommendation_label": recommendation_label,
+                "expected_change": expected_change,
+                "reflected_on_next_run": reflected_on_next_run,
+                "source": source,
+            }
+        )
+    except Exception:  # noqa: BLE001
+        return None
 
 
 @router.get("/sites", response_model=SEOSiteListResponse)
@@ -646,6 +833,9 @@ def get_seo_recommendation_workspace_summary(
     site_id: str,
     tenant_context: TenantContext = Depends(get_tenant_context),
     seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    seo_competitor_profile_generation_repository: SEOCompetitorProfileGenerationRepository = Depends(
+        get_seo_competitor_profile_generation_repository
+    ),
     recommendation_service: SEORecommendationService = Depends(get_seo_recommendation_service),
     recommendation_narrative_service: SEORecommendationNarrativeService = Depends(
         get_seo_recommendation_narrative_service
@@ -668,6 +858,7 @@ def get_seo_recommendation_workspace_summary(
     latest_completed_run = next((run for run in runs if run.status == "completed"), None)
     latest_narrative_read: SEORecommendationNarrativeRead | None = None
     tuning_suggestions: list[SEORecommendationTuningSuggestionRead] = []
+    apply_outcome: SEORecommendationApplyOutcomeRead | None = None
 
     empty_recommendations = SEORecommendationListResponse(
         items=[],
@@ -713,6 +904,20 @@ def get_seo_recommendation_workspace_summary(
         except SEORecommendationNarrativeNotFoundError:
             latest_narrative_read = None
 
+        latest_applied_preview_event = (
+            seo_competitor_profile_generation_repository.get_latest_applied_tuning_preview_event_for_business_site(
+                business_id=scoped_business_id,
+                site_id=site_id,
+            )
+        )
+        apply_outcome = _build_workspace_apply_outcome(
+            latest_applied_preview_event=latest_applied_preview_event,
+            latest_run_status=latest_run.status if latest_run else None,
+            latest_narrative_read=latest_narrative_read,
+            recommendations=serialized_items,
+            tuning_suggestions=tuning_suggestions,
+        )
+
     if latest_run is None:
         state = "no_runs"
     elif latest_completed_run is None:
@@ -733,6 +938,7 @@ def get_seo_recommendation_workspace_summary(
         recommendations=recommendations_payload,
         latest_narrative=latest_narrative_read,
         tuning_suggestions=tuning_suggestions,
+        apply_outcome=apply_outcome,
     )
 
 

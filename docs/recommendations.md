@@ -124,6 +124,34 @@ No additional AI/provider calls are made.
 - `evidence_sources` is bounded, deduplicated, and uses fixed values only.
 - This is additive response shaping; no persistence, schema migration, or workflow changes.
 
+## Workspace Apply Outcome
+
+Workspace summary responses now include an optional top-level field:
+
+- `apply_outcome` (object or `null`)
+
+Shape:
+
+```json
+{
+  "applied": true,
+  "applied_at": "2026-03-21T01:40:00Z",
+  "recommendation_label": "Fix title tags",
+  "expected_change": "Estimated increase of 2 included candidates over the last 30 days of telemetry.",
+  "reflected_on_next_run": "The next completed recommendation or competitor generation run should reflect this change.",
+  "source": "recommendation"
+}
+```
+
+### When It Appears
+- Present when a recent tuning preview event has been applied for the site.
+- `null` when no applied preview metadata is available.
+
+### Fallback Behavior
+- If linkage metadata is partial, values are populated conservatively from bounded preview fields.
+- If safe derivation is not possible, `apply_outcome` remains `null`.
+- This is deterministic response shaping from existing data; no new AI calls, persistence, or schema changes.
+
 ## Recommendation Diversity and De-duplication
 
 Recommendation narrative shaping now applies a small deterministic diversity pass to `sections.next_actions` before persistence:
