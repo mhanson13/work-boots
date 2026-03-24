@@ -81,3 +81,33 @@ Workspace summary responses may include an optional `competitor_prompt_preview` 
 - Preview is read-only and optional.
 - Prompt text is sanitized for control characters and bounded for UI-safe rendering.
 - When preview data is unavailable, no prompt preview block is rendered.
+
+## Competitor Prompt Context Hardening
+
+Competitor prompt context now prefers structured business/site metadata before any heuristic fallback.
+
+### Context source order
+1. Explicit site/business metadata (`industry`, `primary_location`, `service_areas_json`, display/business names)
+2. Operator-entered location/service-area/category fields already persisted on the site/business records
+3. Deterministic identity hints from site metadata (for example domain labels) only when structured fields are missing
+
+### Location context behavior
+- Uses best available human-readable location context from `primary_location` and `service_areas_json`.
+- Falls back to:
+  - `Location not yet established from available business/site data.`
+- Does not fabricate geography.
+
+### Industry context behavior
+- Uses explicit structured `industry` when present.
+- Otherwise uses cautious deterministic inference from available business/site identity text.
+- Falls back to:
+  - `Industry not yet confidently classified from available structured data.`
+
+### Service focus term behavior
+- Prefers structured category/service hints.
+- Filters domain noise tokens (`com`, `www`, TLD fragments).
+- Uses domain-derived hints only as last resort.
+- Keeps output compact and relevant for substitutable service intent.
+
+### Weak-context safety behavior
+- If location and/or industry context is weak, prompt contract explicitly biases toward fewer high-confidence candidates instead of speculative broad matches.

@@ -20,6 +20,7 @@ Only normalized competitor output is consumed:
 - Competitor context is injected as a small, structured context block.
 - The model is instructed to use provided competitor gaps to improve specificity.
 - The model is also instructed not to invent competitor facts beyond provided context.
+- Upstream competitor prompt context now prioritizes structured site/business metadata for location/industry/service intent, with domain-token heuristics used only as a last-resort fallback.
 
 ## Deterministic EEAT Classification (Additive)
 
