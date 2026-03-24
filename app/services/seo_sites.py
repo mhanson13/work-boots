@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 import re
 from typing import Literal
@@ -35,6 +36,87 @@ SEOLocationContextSource = Literal["explicit_location", "service_area", "zip_cap
 _ZIP_CAPTURE_ALLOWED_TOKENS = {"zip", "code", "serving", "service", "area", "around", "primary"}
 _LOCATION_CONTEXT_FALLBACK_TEXT = "Location not yet established from available business/site data."
 _MAX_SERVICE_AREAS = 25
+_SITE_CONTEXT_FALLBACK_TARGET_CUSTOMER = (
+    "Customers seeking clearly substitutable services in the same market context."
+)
+_SITE_CONTEXT_FALLBACK_INDUSTRY = "Industry not yet confidently classified from available structured data."
+_SITE_CONTEXT_MAX_SERVICE_TERMS = 8
+_SITE_CONTEXT_SERVICE_NOISE_TOKENS = {
+    "about",
+    "and",
+    "biz",
+    "business",
+    "co",
+    "company",
+    "com",
+    "contact",
+    "corp",
+    "corporation",
+    "example",
+    "group",
+    "home",
+    "inc",
+    "incorporated",
+    "llc",
+    "ltd",
+    "net",
+    "org",
+    "services",
+    "service",
+    "site",
+    "welcome",
+    "www",
+}
+_SITE_CONTEXT_DOMAIN_NOISE_TOKENS = {
+    "app",
+    "biz",
+    "ca",
+    "co",
+    "com",
+    "info",
+    "io",
+    "localhost",
+    "net",
+    "online",
+    "org",
+    "site",
+    "test",
+    "uk",
+    "us",
+    "www",
+}
+_SITE_CONTEXT_SERVICE_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("general contractor", ("general contractor", "general contracting")),
+    ("construction", ("construction", "contracting", "builder", "builders")),
+    ("remodeling", ("remodel", "renovation", "renovations")),
+    ("kitchen remodel", ("kitchen remodel", "kitchen renovation", "kitchen remodeling")),
+    ("bathroom remodel", ("bathroom remodel", "bathroom renovation", "bathroom remodeling")),
+    ("commercial tenant finish", ("tenant finish", "tenant improvement", "tenant buildout", "commercial buildout")),
+    ("flooring", ("flooring", "floor installation")),
+    ("hardwood flooring", ("hardwood flooring", "hardwood floor", "hardwood installation", "wood floor")),
+    ("tile installation", ("tile installation", "tile floor", "tile flooring")),
+    ("carpet installation", ("carpet installation", "carpet flooring", "carpet replacement")),
+    ("floor refinishing", ("floor refinishing", "hardwood refinishing", "floor refinish")),
+    ("roofing", ("roofing", "roof repair", "roof replacement")),
+    ("plumbing", ("plumbing", "plumber")),
+    ("electrical", ("electrical", "electrician")),
+    ("hvac", ("hvac", "heating", "cooling", "air conditioning")),
+    ("landscaping", ("landscaping", "landscape")),
+    ("concrete", ("concrete", "foundation")),
+    ("painting", ("painting", "painter")),
+    ("home services", ("home service", "home services")),
+)
+
+
+SEOIndustryContextStrength = Literal["strong", "weak"]
+
+
+@dataclass(frozen=True)
+class SEOSiteBusinessContext:
+    industry_context: str
+    industry_context_strength: SEOIndustryContextStrength
+    service_focus_terms: list[str]
+    target_customer_context: str
 
 
 @dataclass(frozen=True)
@@ -110,11 +192,212 @@ def build_location_context(site: SEOSite) -> SEOSiteLocationContext:
     )
 
 
+def build_site_business_context(
+    *,
+    site: SEOSite,
+    location_context: SEOSiteLocationContext,
+    business_name: str | None = None,
+    normalized_domain: str | None = None,
+    site_content_signals: list[str] | None = None,
+) -> SEOSiteBusinessContext:
+    cleaned_industry = _clean_location_text(getattr(site, "industry", None))
+    cleaned_display_name = _clean_location_text(getattr(site, "display_name", None))
+    cleaned_business_name = _clean_location_text(business_name)
+    effective_domain = _clean_location_text(normalized_domain) or _clean_location_text(
+        getattr(site, "normalized_domain", None)
+    )
+    content_sources = _normalize_context_sources(site_content_signals or [])
+    structured_sources = _normalize_context_sources(
+        [
+            cleaned_industry or "",
+            cleaned_display_name or "",
+            cleaned_business_name or "",
+        ]
+    )
+    domain_sources = _extract_domain_service_source(effective_domain or "")
+
+    content_terms = _infer_service_terms_from_sources(
+        content_sources,
+        max_terms=_SITE_CONTEXT_MAX_SERVICE_TERMS,
+        allow_token_fallback=True,
+    )
+    structured_terms = _infer_service_terms_from_sources(
+        structured_sources,
+        max_terms=_SITE_CONTEXT_MAX_SERVICE_TERMS,
+        allow_token_fallback=False,
+    )
+    domain_terms = _infer_service_terms_from_sources(
+        domain_sources,
+        max_terms=_SITE_CONTEXT_MAX_SERVICE_TERMS,
+        allow_token_fallback=False,
+    )
+
+    service_focus_terms = _dedupe_terms(
+        content_terms or structured_terms or domain_terms,
+        max_terms=_SITE_CONTEXT_MAX_SERVICE_TERMS,
+    )
+    if cleaned_industry:
+        service_focus_terms = _dedupe_terms(
+            [cleaned_industry, *service_focus_terms],
+            max_terms=_SITE_CONTEXT_MAX_SERVICE_TERMS,
+        )
+
+    if cleaned_industry:
+        industry_context = cleaned_industry
+        industry_context_strength: SEOIndustryContextStrength = "strong"
+    elif content_terms:
+        qualifier = _derive_market_qualifier(content_sources)
+        primary_term = content_terms[0]
+        industry_context = f"{qualifier}{primary_term.title()} services"
+        industry_context_strength = "strong"
+    elif structured_terms:
+        industry_context = f"{structured_terms[0].title()} services (inferred from structured metadata)."
+        industry_context_strength = "weak"
+    elif domain_terms:
+        industry_context = f"{domain_terms[0].title()} services (inferred from site identity hints)."
+        industry_context_strength = "weak"
+    else:
+        industry_context = _SITE_CONTEXT_FALLBACK_INDUSTRY
+        industry_context_strength = "weak"
+
+    service_phrase = ", ".join(service_focus_terms[:3]) if service_focus_terms else None
+    if not service_phrase:
+        service_phrase = industry_context if industry_context_strength == "strong" else "clearly substitutable services"
+    target_customer_context = _build_target_customer_context(
+        location_context=location_context.location_context,
+        has_location_context=location_context.location_context_strength == "strong",
+        service_phrase=service_phrase,
+    )
+
+    return SEOSiteBusinessContext(
+        industry_context=industry_context,
+        industry_context_strength=industry_context_strength,
+        service_focus_terms=service_focus_terms,
+        target_customer_context=target_customer_context,
+    )
+
+
 def _clean_location_text(value: str | None) -> str | None:
     if value is None:
         return None
     cleaned = " ".join(value.split()).strip()
     return cleaned or None
+
+
+def _normalize_context_sources(values: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for value in values:
+        cleaned = _clean_location_text(value)
+        if cleaned:
+            normalized.append(cleaned.lower())
+    return normalized
+
+
+def _tokenize_context(value: str) -> list[str]:
+    filtered = []
+    for char in value:
+        if char.isalnum():
+            filtered.append(char.lower())
+        else:
+            filtered.append(" ")
+    tokens = " ".join("".join(filtered).split()).split(" ")
+    return [token for token in tokens if token]
+
+
+def _extract_domain_service_source(normalized_domain: str) -> list[str]:
+    labels: list[str] = []
+    for label in normalized_domain.split("."):
+        cleaned = label.strip().lower()
+        if not cleaned or cleaned in _SITE_CONTEXT_DOMAIN_NOISE_TOKENS:
+            continue
+        labels.append(cleaned)
+    return labels
+
+
+def _infer_service_terms_from_sources(
+    raw_sources: list[str],
+    *,
+    max_terms: int,
+    allow_token_fallback: bool,
+) -> list[str]:
+    if not raw_sources:
+        return []
+
+    corpus = " ".join(raw_sources)
+    inferred: list[str] = []
+    seen: set[str] = set()
+    for label, fragments in _SITE_CONTEXT_SERVICE_HINTS:
+        if len(inferred) >= max_terms:
+            break
+        if any(fragment in corpus for fragment in fragments):
+            lowered = label.lower()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            inferred.append(label)
+
+    if inferred:
+        return inferred
+
+    if not allow_token_fallback:
+        return []
+
+    token_counts: Counter[str] = Counter()
+    for source in raw_sources:
+        for token in _tokenize_context(source):
+            if len(token) < 4:
+                continue
+            if token in _SITE_CONTEXT_SERVICE_NOISE_TOKENS:
+                continue
+            token_counts[token] += 1
+
+    fallback_terms: list[str] = []
+    for token, count in token_counts.most_common(max_terms):
+        if count < 2:
+            continue
+        fallback_terms.append(token)
+    return fallback_terms
+
+
+def _dedupe_terms(terms: list[str], *, max_terms: int) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for term in terms:
+        cleaned = _clean_location_text(term)
+        if not cleaned:
+            continue
+        lowered = cleaned.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        deduped.append(cleaned)
+        if len(deduped) >= max_terms:
+            break
+    return deduped
+
+
+def _derive_market_qualifier(content_sources: list[str]) -> str:
+    corpus = " ".join(content_sources)
+    has_residential = "residential" in corpus
+    has_commercial = "commercial" in corpus
+    if has_residential and has_commercial:
+        return "Residential and commercial "
+    if has_residential:
+        return "Residential "
+    if has_commercial:
+        return "Commercial "
+    return ""
+
+
+def _build_target_customer_context(
+    *,
+    location_context: str,
+    has_location_context: bool,
+    service_phrase: str,
+) -> str:
+    if not has_location_context:
+        return f"Customers seeking {service_phrase} and evaluating clearly substitutable providers in the same market context."
+    return f"Customers in {location_context} seeking {service_phrase} and evaluating comparable local providers."
 
 
 def _normalize_location_service_areas(service_areas: list[str] | None) -> list[str]:

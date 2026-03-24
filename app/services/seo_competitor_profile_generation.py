@@ -16,6 +16,7 @@ from app.integrations.seo_summary_provider import (
     SEOCompetitorProfileDraftCandidateOutput,
     SEOCompetitorProfileGenerationProvider,
 )
+from app.models.seo_audit_page import SEOAuditPage
 from app.models.seo_competitor_domain import SEOCompetitorDomain
 from app.models.seo_competitor_profile_cleanup_execution import SEOCompetitorProfileCleanupExecution
 from app.models.seo_competitor_profile_draft import SEOCompetitorProfileDraft
@@ -23,6 +24,7 @@ from app.models.seo_competitor_profile_generation_run import SEOCompetitorProfil
 from app.models.seo_competitor_set import SEOCompetitorSet
 from app.models.seo_site import SEOSite
 from app.repositories.business_repository import BusinessRepository
+from app.repositories.seo_audit_repository import SEOAuditRepository
 from app.repositories.seo_competitor_profile_generation_repository import (
     SEOCompetitorProfileGenerationRepository,
 )
@@ -108,6 +110,10 @@ _TUNING_REJECTED_CANDIDATE_DEBUG_KEY = "tuning_rejected_candidates_debug"
 _TUNING_REJECTED_CANDIDATE_DEBUG_COUNT_KEY = "tuning_rejected_candidate_count"
 _TUNING_REJECTION_REASON_COUNTS_KEY = "tuning_rejection_reason_counts"
 _CANDIDATE_PIPELINE_SUMMARY_KEY = "candidate_pipeline_summary_debug"
+_SITE_CONTENT_SIGNALS_ATTR = "_seo_site_content_signals"
+_MAX_SITE_CONTENT_SIGNAL_PAGES = 40
+_MAX_SITE_CONTENT_SIGNALS = 120
+_MAX_SITE_CONTENT_SIGNAL_LENGTH = 200
 
 FAILURE_CATEGORY_TIMEOUT = "timeout"
 FAILURE_CATEGORY_PROVIDER_AUTH = "provider_auth"
@@ -326,6 +332,7 @@ class SEOCompetitorProfileGenerationService:
         session: Session,
         business_repository: BusinessRepository,
         seo_site_repository: SEOSiteRepository,
+        seo_audit_repository: SEOAuditRepository | None = None,
         seo_competitor_repository: SEOCompetitorRepository,
         seo_competitor_profile_generation_repository: SEOCompetitorProfileGenerationRepository,
         provider: SEOCompetitorProfileGenerationProvider,
@@ -336,6 +343,7 @@ class SEOCompetitorProfileGenerationService:
         self.session = session
         self.business_repository = business_repository
         self.seo_site_repository = seo_site_repository
+        self.seo_audit_repository = seo_audit_repository
         self.seo_competitor_repository = seo_competitor_repository
         self.seo_competitor_profile_generation_repository = seo_competitor_profile_generation_repository
         self.provider = provider
@@ -500,6 +508,7 @@ class SEOCompetitorProfileGenerationService:
                     site_id,
                 )
             ]
+            self._attach_site_content_signals(site=site, business_id=business_id, site_id=site_id)
             output = self.provider.generate_competitor_profiles(
                 site=site,
                 existing_domains=existing_domains,
@@ -765,6 +774,7 @@ class SEOCompetitorProfileGenerationService:
         resolved_prompt_version = (
             self._clean_optional(prompt_version) or self._default_prompt_version()
         )
+        self._attach_site_content_signals(site=site, business_id=business_id, site_id=site_id)
         prompt = build_seo_competitor_profile_prompt(
             site=site,
             existing_domains=[
@@ -1503,6 +1513,80 @@ class SEOCompetitorProfileGenerationService:
             prompt_text = getattr(self.provider, "prompt_text_recommendation", "")
         cleaned = self._clean_optional(str(prompt_text or ""))
         return cleaned or ""
+
+    def _attach_site_content_signals(self, *, site: SEOSite, business_id: str, site_id: str) -> None:
+        signals = self._load_site_content_signals(business_id=business_id, site_id=site_id)
+        setattr(site, _SITE_CONTENT_SIGNALS_ATTR, signals)
+
+    def _load_site_content_signals(self, *, business_id: str, site_id: str) -> list[str]:
+        if self.seo_audit_repository is None:
+            return []
+        latest_completed_run = self.seo_audit_repository.get_latest_completed_run_for_business_site(
+            business_id,
+            site_id,
+        )
+        if latest_completed_run is None:
+            return []
+        pages = self.seo_audit_repository.list_pages_for_business_run(
+            business_id,
+            latest_completed_run.id,
+        )
+        if not pages:
+            return []
+        return self._extract_site_content_signals_from_pages(pages[:_MAX_SITE_CONTENT_SIGNAL_PAGES])
+
+    def _extract_site_content_signals_from_pages(self, pages: list[SEOAuditPage]) -> list[str]:
+        signals: list[str] = []
+        seen: set[str] = set()
+
+        def add_signal(raw: str | None) -> None:
+            if len(signals) >= _MAX_SITE_CONTENT_SIGNALS:
+                return
+            cleaned = self._clean_optional(raw)
+            if cleaned is None:
+                return
+            if len(cleaned) > _MAX_SITE_CONTENT_SIGNAL_LENGTH:
+                cleaned = cleaned[:_MAX_SITE_CONTENT_SIGNAL_LENGTH]
+            lowered = cleaned.lower()
+            if lowered in seen:
+                return
+            seen.add(lowered)
+            signals.append(cleaned)
+
+        for page in pages:
+            add_signal(page.title)
+            add_signal(page.meta_description)
+            if isinstance(page.h1_json, list):
+                for item in page.h1_json[:4]:
+                    add_signal(str(item) if item is not None else None)
+            if isinstance(page.h2_json, list):
+                for item in page.h2_json[:6]:
+                    add_signal(str(item) if item is not None else None)
+            for path_phrase in self._extract_path_phrases(page.url):
+                add_signal(path_phrase)
+
+        return signals
+
+    def _extract_path_phrases(self, url: str | None) -> list[str]:
+        if not url:
+            return []
+        try:
+            parsed = urlsplit(url)
+        except ValueError:
+            return []
+        path = (parsed.path or "").strip("/")
+        if not path:
+            return []
+        phrases: list[str] = []
+        for segment in path.split("/"):
+            normalized = segment.replace("-", " ").replace("_", " ")
+            normalized = " ".join(normalized.split()).strip()
+            if not normalized:
+                continue
+            if normalized.lower() in {"about", "contact", "home", "services"}:
+                continue
+            phrases.append(normalized)
+        return phrases
 
     def _effective_lookback_days(self, lookback_days: int | None) -> int:
         if lookback_days is None:

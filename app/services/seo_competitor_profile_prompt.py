@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import json
 
 from app.models.seo_site import SEOSite
-from app.services.seo_sites import build_location_context
+from app.services.seo_sites import build_location_context, build_site_business_context
 
 
 SEO_COMPETITOR_PROFILE_PROMPT_VERSION = "seo-competitor-profile-v1"
@@ -23,64 +23,6 @@ _MAX_TARGET_CUSTOMER_CONTEXT_LENGTH = 220
 _MAX_NON_COMPETITOR_HINTS = 12
 _LOCATION_FALLBACK_TEXT = "Location not yet established from available business/site data."
 _INDUSTRY_FALLBACK_TEXT = "Industry not yet confidently classified from available structured data."
-_SERVICE_FOCUS_STOP_WORDS = {
-    "and",
-    "biz",
-    "business",
-    "client",
-    "co",
-    "company",
-    "com",
-    "corp",
-    "corporation",
-    "example",
-    "group",
-    "inc",
-    "incorporated",
-    "llc",
-    "local",
-    "ltd",
-    "org",
-    "net",
-    "site",
-    "services",
-    "service",
-    "solutions",
-    "the",
-    "www",
-}
-_DOMAIN_NOISE_TOKENS = {
-    "www",
-    "com",
-    "org",
-    "net",
-    "io",
-    "co",
-    "us",
-    "uk",
-    "ca",
-    "biz",
-    "app",
-    "site",
-    "online",
-    "info",
-}
-_SERVICE_FOCUS_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("general contractor", ("general contractor", "general contracting")),
-    ("construction", ("construction", "contracting", "builder", "builders")),
-    ("remodeling", ("remodel", "renovation", "renovations")),
-    ("kitchen remodel", ("kitchen remodel", "kitchen renovation")),
-    ("bathroom remodel", ("bathroom remodel", "bathroom renovation")),
-    ("commercial tenant finish", ("tenant finish", "tenant improvement", "tenant buildout", "commercial buildout")),
-    ("roofing", ("roofing", "roof repair", "roof replacement")),
-    ("plumbing", ("plumbing", "plumber")),
-    ("electrical", ("electrical", "electrician")),
-    ("hvac", ("hvac", "heating", "cooling", "air conditioning")),
-    ("landscaping", ("landscaping", "landscape")),
-    ("concrete", ("concrete", "foundation")),
-    ("painting", ("painting", "painter")),
-    ("home services", ("home service", "home services")),
-)
 _NON_COMPETITOR_DOMAIN_HINTS = (
     "angi.com",
     "facebook.com",
@@ -123,7 +65,6 @@ def build_seo_competitor_profile_prompt(
         fallback="example.invalid",
     ).lower()
     business_name = _extract_business_name(site)
-    industry = _sanitize_optional(site.industry, max_length=_MAX_INDUSTRY_LENGTH)
     location_context_details = build_location_context(site)
     primary_location = _sanitize_optional(
         location_context_details.primary_location,
@@ -148,32 +89,27 @@ def build_seo_competitor_profile_prompt(
         "strong" if location_context_details.location_context_strength == "strong" else "weak"
     )
     location_context_source = location_context_details.location_context_source
-    has_location_context = location_context_strength == "strong"
-    has_industry_context = bool(industry)
+    site_context_details = build_site_business_context(
+        site=site,
+        location_context=location_context_details,
+        business_name=business_name,
+        normalized_domain=normalized_domain,
+        site_content_signals=_extract_site_content_signals(site),
+    )
     industry_context = _sanitize_required(
-        _build_industry_context(
-            industry=industry,
-            display_name=display_name,
-            business_name=business_name,
-            normalized_domain=normalized_domain,
-        ),
+        site_context_details.industry_context,
         max_length=_MAX_INDUSTRY_LENGTH,
         fallback=_INDUSTRY_FALLBACK_TEXT,
     )
-    service_focus_terms = _build_service_focus_terms(
-        industry=industry,
-        display_name=display_name,
-        business_name=business_name,
-        normalized_domain=normalized_domain,
-    )
+    has_industry_context = site_context_details.industry_context_strength == "strong"
+    service_focus_terms = [
+        sanitized
+        for term in site_context_details.service_focus_terms
+        for sanitized in [_sanitize_optional(term, max_length=_MAX_SERVICE_FOCUS_TERM_LENGTH)]
+        if sanitized
+    ][:_MAX_SERVICE_FOCUS_TERMS]
     target_customer_context = _sanitize_required(
-        _build_target_customer_context(
-            location_context=location_context,
-            has_location_context=has_location_context,
-            industry_context=industry_context,
-            has_industry_context=has_industry_context,
-            service_focus_terms=service_focus_terms,
-        ),
+        site_context_details.target_customer_context,
         max_length=_MAX_TARGET_CUSTOMER_CONTEXT_LENGTH,
         fallback="Customers seeking clearly substitutable services in the same market context.",
     )
@@ -184,7 +120,7 @@ def build_seo_competitor_profile_prompt(
         "site_business_name": business_name,
         "site_base_url": base_url,
         "site_normalized_domain": normalized_domain,
-        "site_industry": industry,
+        "site_industry": _sanitize_optional(site.industry, max_length=_MAX_INDUSTRY_LENGTH),
         "site_primary_location": primary_location,
         "site_primary_business_zip": primary_business_zip,
         "site_service_areas": service_areas,
@@ -192,7 +128,7 @@ def build_seo_competitor_profile_prompt(
         "site_location_context_strength": location_context_strength,
         "site_location_context_source": location_context_source,
         "site_industry_context": industry_context,
-        "site_industry_context_strength": "strong" if has_industry_context else "weak",
+        "site_industry_context_strength": site_context_details.industry_context_strength,
         "service_focus_terms": service_focus_terms,
         "target_customer_context": target_customer_context,
         "excluded_domains": excluded_domains,
@@ -293,101 +229,6 @@ def _sanitize_optional(value: str | None, *, max_length: int) -> str | None:
     return normalized
 
 
-def _build_industry_context(
-    *,
-    industry: str | None,
-    display_name: str,
-    business_name: str | None,
-    normalized_domain: str,
-) -> str:
-    if industry:
-        return industry
-
-    inferred_from_structured = _infer_service_terms_from_sources(
-        [display_name, business_name or ""],
-    )
-    if inferred_from_structured:
-        return f"{inferred_from_structured[0].title()} services (inferred from structured metadata)."
-
-    inferred_from_domain = _infer_service_terms_from_sources(
-        _extract_domain_service_source(normalized_domain),
-    )
-    if inferred_from_domain:
-        return f"{inferred_from_domain[0].title()} services (inferred from site identity hints)."
-
-    return _INDUSTRY_FALLBACK_TEXT
-
-
-def _build_service_focus_terms(
-    *,
-    industry: str | None,
-    display_name: str,
-    business_name: str | None,
-    normalized_domain: str,
-) -> list[str]:
-    terms: list[str] = []
-    seen: set[str] = set()
-
-    def add_term(raw_term: str) -> None:
-        if len(terms) >= _MAX_SERVICE_FOCUS_TERMS:
-            return
-        normalized_term = _sanitize_optional(raw_term, max_length=_MAX_SERVICE_FOCUS_TERM_LENGTH)
-        if not normalized_term:
-            return
-        lowered = normalized_term.lower()
-        if lowered in seen:
-            return
-        seen.add(lowered)
-        terms.append(normalized_term)
-
-    if industry:
-        add_term(industry)
-
-    for inferred in _infer_service_terms_from_sources([industry or "", display_name, business_name or ""]):
-        add_term(inferred)
-
-    if not terms:
-        for inferred in _infer_service_terms_from_sources(_extract_domain_service_source(normalized_domain)):
-            add_term(inferred)
-
-    return terms
-
-
-def _build_target_customer_context(
-    *,
-    location_context: str,
-    has_location_context: bool,
-    industry_context: str,
-    has_industry_context: bool,
-    service_focus_terms: list[str],
-) -> str:
-    service_phrase = ", ".join(service_focus_terms[:3]) if service_focus_terms else None
-    if not service_phrase and has_industry_context:
-        service_phrase = industry_context
-    if not service_phrase:
-        service_phrase = "clearly substitutable services"
-
-    if not has_location_context:
-        return (
-            "Customers seeking "
-            f"{service_phrase} and evaluating clearly substitutable providers in the same market context."
-        )
-    return (
-        f"Customers in {location_context} seeking {service_phrase} and evaluating comparable local providers."
-    )
-
-
-def _tokenize_context(value: str) -> list[str]:
-    filtered = []
-    for char in value:
-        if char.isalnum():
-            filtered.append(char.lower())
-        else:
-            filtered.append(" ")
-    tokens = " ".join("".join(filtered).split()).split(" ")
-    return [token for token in tokens if token]
-
-
 def _extract_business_name(site: SEOSite) -> str | None:
     business = getattr(site, "business", None)
     if business is None:
@@ -395,33 +236,24 @@ def _extract_business_name(site: SEOSite) -> str | None:
     return _sanitize_optional(getattr(business, "name", None), max_length=_MAX_BUSINESS_NAME_LENGTH)
 
 
-def _extract_domain_service_source(normalized_domain: str) -> list[str]:
-    labels = []
-    for label in normalized_domain.split("."):
-        cleaned = label.strip().lower()
-        if not cleaned:
-            continue
-        if cleaned in _DOMAIN_NOISE_TOKENS:
-            continue
-        labels.append(cleaned)
-    return labels
-
-
-def _infer_service_terms_from_sources(raw_sources: list[str]) -> list[str]:
-    normalized_sources = []
-    for raw_source in raw_sources:
-        cleaned = _sanitize_optional(raw_source, max_length=200)
-        if cleaned:
-            normalized_sources.append(cleaned.lower())
-    if not normalized_sources:
+def _extract_site_content_signals(site: SEOSite) -> list[str]:
+    raw = getattr(site, "_seo_site_content_signals", None)
+    if not isinstance(raw, list):
         return []
-
-    corpus = " ".join(normalized_sources)
-    inferred: list[str] = []
-    for label, fragments in _SERVICE_FOCUS_HINTS:
-        if any(fragment in corpus for fragment in fragments):
-            inferred.append(label)
-    return inferred[:_MAX_SERVICE_FOCUS_TERMS]
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        normalized = _sanitize_optional(item, max_length=200)
+        if not normalized:
+            continue
+        lowered = normalized.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        cleaned.append(normalized)
+    return cleaned
 
 
 def _build_prompt_text_competitor_block(raw_text: str) -> str:

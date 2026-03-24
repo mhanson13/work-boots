@@ -467,6 +467,7 @@ def get_seo_competitor_profile_generation_run_executor(
                 session=session,
                 business_repository=BusinessRepository(session),
                 seo_site_repository=SEOSiteRepository(session),
+                seo_audit_repository=SEOAuditRepository(session),
                 seo_competitor_repository=SEOCompetitorRepository(session),
                 seo_competitor_profile_generation_repository=SEOCompetitorProfileGenerationRepository(session),
                 provider=provider,
@@ -683,6 +684,7 @@ def get_seo_competitor_profile_generation_service(
     db: Session = Depends(get_db),
     business_repository: BusinessRepository = Depends(get_business_repository),
     seo_site_repository: SEOSiteRepository = Depends(get_seo_site_repository),
+    seo_audit_repository: SEOAuditRepository = Depends(get_seo_audit_repository),
     seo_competitor_repository: SEOCompetitorRepository = Depends(get_seo_competitor_repository),
     seo_competitor_profile_generation_repository: SEOCompetitorProfileGenerationRepository = Depends(
         get_seo_competitor_profile_generation_repository
@@ -694,6 +696,7 @@ def get_seo_competitor_profile_generation_service(
         session=db,
         business_repository=business_repository,
         seo_site_repository=seo_site_repository,
+        seo_audit_repository=seo_audit_repository,
         seo_competitor_repository=seo_competitor_repository,
         seo_competitor_profile_generation_repository=seo_competitor_profile_generation_repository,
         provider=provider,

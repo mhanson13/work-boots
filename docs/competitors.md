@@ -94,9 +94,10 @@ Workspace summary responses may include an optional `competitor_prompt_preview` 
 Competitor prompt context now prefers structured business/site metadata before any heuristic fallback.
 
 ### Context source order
-1. Explicit site/business metadata (`industry`, `primary_location`, `service_areas_json`, display/business names)
-2. Operator-entered location/service-area/category fields already persisted on the site/business records
-3. Deterministic identity hints from site metadata (for example domain labels) only when structured fields are missing
+1. Existing crawl/audit-derived site metadata already stored in-platform (`title`, `meta_description`, `h1`, `h2`, and URL path labels from latest completed audit pages)
+2. Explicit site/business metadata (`industry`, `primary_location`, `service_areas_json`, display/business names)
+3. Operator-entered location/service-area/category fields already persisted on the site/business records
+4. Deterministic identity hints from site metadata (for example domain labels) only when stronger sources are missing
 
 ### Location context behavior
 - Uses a shared deterministic location-context builder (`build_location_context(site)`) so prompt and workspace use the same source/strength logic.
@@ -112,13 +113,15 @@ Competitor prompt context now prefers structured business/site metadata before a
 
 ### Industry context behavior
 - Uses explicit structured `industry` when present.
-- Otherwise uses cautious deterministic inference from available business/site identity text.
+- Otherwise uses deterministic service inference from existing website/crawl metadata when available.
+- Falls back to cautious deterministic inference from available business/site identity text only when site content is thin.
 - Falls back to:
   - `Industry not yet confidently classified from available structured data.`
 
 ### Service focus term behavior
-- Prefers structured category/service hints.
-- Filters domain noise tokens (`com`, `www`, TLD fragments).
+- Prefers website-derived service cues from existing crawl metadata (titles, headings, service-page URL segments).
+- Then uses structured category/service hints.
+- Filters navigation/domain noise tokens (`home`, `about`, `contact`, `com`, `www`, TLD fragments).
 - Uses domain-derived hints only as last resort.
 - Keeps output compact and relevant for substitutable service intent.
 

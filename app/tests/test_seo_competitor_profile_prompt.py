@@ -22,6 +22,11 @@ def _build_site(*, display_name: str = "Client Site") -> SEOSite:
     )
 
 
+def _with_site_content_signals(site: SEOSite, *signals: str) -> SEOSite:
+    setattr(site, "_seo_site_content_signals", list(signals))
+    return site
+
+
 def test_prompt_builder_uses_expected_trusted_inputs() -> None:
     prompt = build_seo_competitor_profile_prompt(
         site=_build_site(),
@@ -226,6 +231,130 @@ def test_prompt_builder_service_focus_terms_strip_domain_noise_and_keep_meaningf
     assert terms == ["construction"]
     assert "com" not in [item.lower() for item in terms]
     assert "lars" not in [item.lower() for item in terms]
+
+
+def test_prompt_builder_derives_industry_and_services_from_site_content_signals() -> None:
+    site = _build_site(display_name="Graham's Flooring")
+    site.industry = None
+    site.normalized_domain = "grahams.com"
+    _with_site_content_signals(
+        site,
+        "Graham's Flooring | Hardwood, Tile, Carpet Installation",
+        "Residential and commercial flooring services",
+        "Hardwood flooring installation and floor refinishing",
+        "Tile installation and carpet installation",
+    )
+
+    prompt = build_seo_competitor_profile_prompt(
+        site=site,
+        existing_domains=[],
+        candidate_count=2,
+    )
+
+    assert prompt.trusted_site_context["site_industry_context"] == "Residential and commercial Flooring services"
+    assert prompt.trusted_site_context["site_industry_context_strength"] == "strong"
+    terms = [term.lower() for term in prompt.trusted_site_context["service_focus_terms"]]
+    assert "flooring" in terms
+    assert "hardwood flooring" in terms
+    assert "tile installation" in terms
+    assert "carpet installation" in terms
+    assert prompt.trusted_site_context["target_customer_context"].startswith("Customers in Denver, CO")
+
+
+def test_prompt_builder_site_content_beats_weak_name_and_domain() -> None:
+    site = _build_site(display_name="Acme Holdings")
+    site.industry = None
+    site.normalized_domain = "acmeholdings.com"
+    _with_site_content_signals(
+        site,
+        "Kitchen remodeling services in Loveland",
+        "Bathroom remodel and renovation experts",
+    )
+
+    prompt = build_seo_competitor_profile_prompt(
+        site=site,
+        existing_domains=[],
+        candidate_count=2,
+    )
+
+    terms = [term.lower() for term in prompt.trusted_site_context["service_focus_terms"]]
+    assert "remodeling" in terms
+    assert "kitchen remodel" in terms
+    assert "acme" not in terms
+    assert prompt.trusted_site_context["site_industry_context_strength"] == "strong"
+
+
+def test_prompt_builder_thin_site_keeps_conservative_fallback() -> None:
+    site = _build_site(display_name="Acme Holdings")
+    site.industry = None
+    site.normalized_domain = "acmeholdings.com"
+
+    prompt = build_seo_competitor_profile_prompt(
+        site=site,
+        existing_domains=[],
+        candidate_count=2,
+    )
+
+    assert (
+        prompt.trusted_site_context["site_industry_context"]
+        == "Industry not yet confidently classified from available structured data."
+    )
+    assert prompt.trusted_site_context["site_industry_context_strength"] == "weak"
+    assert prompt.trusted_site_context["service_focus_terms"] == []
+    assert "- Service Focus Terms: Unspecified" in prompt.user_prompt
+
+
+def test_prompt_builder_filters_navigation_noise_from_site_content_signals() -> None:
+    site = _build_site(display_name="Acme Holdings")
+    site.industry = None
+    site.normalized_domain = "acmeholdings.com"
+    _with_site_content_signals(
+        site,
+        "Home",
+        "About",
+        "Welcome",
+        "Contact",
+        "Services",
+    )
+
+    prompt = build_seo_competitor_profile_prompt(
+        site=site,
+        existing_domains=[],
+        candidate_count=2,
+    )
+
+    assert prompt.trusted_site_context["service_focus_terms"] == []
+    assert prompt.trusted_site_context["site_industry_context_strength"] == "weak"
+
+
+def test_prompt_builder_mixed_service_content_returns_bounded_deterministic_terms() -> None:
+    site = _build_site(display_name="Acme Holdings")
+    site.industry = None
+    site.normalized_domain = "acmeholdings.com"
+    _with_site_content_signals(
+        site,
+        (
+            "General contractor construction remodeling kitchen remodel bathroom remodel "
+            "tenant finish flooring hardwood flooring roofing plumbing electrical hvac"
+        ),
+    )
+
+    prompt = build_seo_competitor_profile_prompt(
+        site=site,
+        existing_domains=[],
+        candidate_count=2,
+    )
+
+    assert prompt.trusted_site_context["service_focus_terms"] == [
+        "general contractor",
+        "construction",
+        "remodeling",
+        "kitchen remodel",
+        "bathroom remodel",
+        "commercial tenant finish",
+        "flooring",
+        "hardwood flooring",
+    ]
 
 
 def test_prompt_builder_appends_competitor_text_safely() -> None:

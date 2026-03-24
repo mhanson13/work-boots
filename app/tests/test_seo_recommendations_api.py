@@ -13,6 +13,7 @@ from app.api.routes.seo import router_v1 as seo_v1_router
 from app.models.business import Business
 from app.models.principal import Principal, PrincipalRole
 from app.models.seo_audit_finding import SEOAuditFinding
+from app.models.seo_audit_page import SEOAuditPage
 from app.models.seo_audit_run import SEOAuditRun
 from app.models.seo_competitor_comparison_finding import SEOCompetitorComparisonFinding
 from app.models.seo_competitor_comparison_run import SEOCompetitorComparisonRun
@@ -151,6 +152,36 @@ def _seed_completed_audit_run(
     )
     db_session.commit()
     return run.id
+
+
+def _seed_audit_pages(
+    db_session,
+    *,
+    business_id: str,
+    site_id: str,
+    audit_run_id: str,
+    pages: list[dict[str, object]],
+) -> None:
+    for page_data in pages:
+        db_session.add(
+            SEOAuditPage(
+                id=str(uuid4()),
+                business_id=business_id,
+                site_id=site_id,
+                audit_run_id=audit_run_id,
+                url=str(page_data.get("url") or "https://example.com/"),
+                status_code=200,
+                title=page_data.get("title"),
+                meta_description=page_data.get("meta_description"),
+                h1_json=page_data.get("h1_json") or [],
+                h2_json=page_data.get("h2_json") or [],
+                word_count=page_data.get("word_count") or 0,
+                internal_link_count=0,
+                image_count=0,
+                missing_alt_count=0,
+            )
+        )
+    db_session.commit()
 
 
 def _seed_completed_comparison_run(
@@ -1040,6 +1071,61 @@ def test_recommendation_workspace_summary_reflects_service_area_location_source(
     assert payload["site_location_context_source"] == "service_area"
     assert payload["site_primary_location"] is None
     assert payload["site_location_context"] == "Serves Fort Collins, Loveland"
+
+
+def test_recommendation_workspace_summary_prefers_audit_page_content_for_industry_and_service_focus(
+    db_session, seeded_business
+) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id, domain="grahams.example")
+
+    patch_site = client.patch(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}",
+        json={
+            "display_name": "Graham's",
+            "industry": None,
+        },
+    )
+    assert patch_site.status_code == 200
+
+    audit_run_id = _seed_completed_audit_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        missing_title_count=1,
+    )
+    _seed_audit_pages(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        audit_run_id=audit_run_id,
+        pages=[
+            {
+                "url": "https://grahams.example/flooring-installation",
+                "title": "Graham's Flooring - Hardwood and Tile Installation",
+                "meta_description": "Residential and commercial flooring services in Northern Colorado.",
+                "h1_json": ["Flooring Installation and Refinishing"],
+                "h2_json": ["Hardwood Flooring", "Tile Installation", "Carpet Installation"],
+                "word_count": 1200,
+            }
+        ],
+    )
+
+    summary = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/workspace-summary"
+    )
+    assert summary.status_code == 200
+    payload = summary.json()
+
+    context_health = payload["competitor_context_health"]
+    assert context_health is not None
+    check_statuses = {check["key"]: check["status"] for check in context_health["checks"]}
+    assert check_statuses["industry_context"] == "strong"
+    assert check_statuses["service_focus"] == "strong"
+    assert check_statuses["target_customer_context"] == "weak"
+
+    prompt_preview = payload["competitor_prompt_preview"]
+    assert prompt_preview is not None
 
 
 def test_recommendation_workspace_summary_context_health_strong_when_location_industry_service_and_target_are_grounded(
