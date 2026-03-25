@@ -400,6 +400,7 @@ class OpenAISEOCompetitorProfileGenerationProvider:
                     safe_message="Competitor profile generation timed out while calling the AI provider.",
                     raw_output=self._build_request_failure_debug_payload(
                         endpoint_path=normalized_endpoint,
+                        failure_kind="timeout",
                         request_debug=request_debug,
                         provider_error_body=body_text,
                     ),
@@ -409,6 +410,7 @@ class OpenAISEOCompetitorProfileGenerationProvider:
                 safe_message="Competitor profile generation provider request failed.",
                 raw_output=self._build_request_failure_debug_payload(
                     endpoint_path=normalized_endpoint,
+                    failure_kind="provider_request",
                     request_debug=request_debug,
                     provider_error_body=body_text,
                 ),
@@ -432,6 +434,7 @@ class OpenAISEOCompetitorProfileGenerationProvider:
                 safe_message="Competitor profile generation timed out while calling the AI provider.",
                 raw_output=self._build_request_failure_debug_payload(
                     endpoint_path=normalized_endpoint,
+                    failure_kind="timeout",
                     request_debug=request_debug,
                     provider_error_body=str(exc),
                 ),
@@ -456,6 +459,7 @@ class OpenAISEOCompetitorProfileGenerationProvider:
                     safe_message="Competitor profile generation timed out while calling the AI provider.",
                     raw_output=self._build_request_failure_debug_payload(
                         endpoint_path=normalized_endpoint,
+                        failure_kind="timeout",
                         request_debug=request_debug,
                         provider_error_body=str(exc.reason),
                     ),
@@ -478,6 +482,7 @@ class OpenAISEOCompetitorProfileGenerationProvider:
                 safe_message="Competitor profile generation provider request failed.",
                 raw_output=self._build_request_failure_debug_payload(
                     endpoint_path=normalized_endpoint,
+                    failure_kind="provider_request",
                     request_debug=request_debug,
                     provider_error_body=str(exc.reason),
                 ),
@@ -602,11 +607,15 @@ class OpenAISEOCompetitorProfileGenerationProvider:
         self,
         *,
         endpoint_path: str,
+        failure_kind: str,
         request_debug: dict[str, object] | None,
         provider_error_body: str | None,
     ) -> str | None:
+        normalized_failure_kind = (failure_kind or "").strip().lower()
+        if normalized_failure_kind not in {"timeout", "provider_request"}:
+            normalized_failure_kind = "provider_request"
         payload: dict[str, object] = {
-            "error": "provider_request_failed",
+            "failure_kind": normalized_failure_kind,
             "endpoint_path": endpoint_path,
         }
         if request_debug:

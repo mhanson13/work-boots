@@ -66,6 +66,7 @@ _COMPETITOR_INFLUENCE_SUMMARY_MAX_CHARS = 260
 _NARRATIVE_NEXT_ACTIONS_LIMIT = 10
 _NARRATIVE_NEXT_ACTION_MAX_LENGTH = 220
 _NARRATIVE_RECOMMENDATION_REFERENCE_LIMIT = 25
+SEO_RECOMMENDATION_PROMPT_LABEL = "resolved recommendation prompt"
 _TUNING_SETTINGS_BOUNDS: dict[str, tuple[int, int]] = {
     "competitor_candidate_min_relevance_score": (MIN_RELEVANCE_SCORE_MIN, MIN_RELEVANCE_SCORE_MAX),
     "competitor_candidate_big_box_penalty": (BIG_BOX_PENALTY_MIN, BIG_BOX_PENALTY_MAX),
@@ -113,6 +114,7 @@ class SEORecommendationNarrativePromptPreview:
     user_prompt: str
     model_name: str | None
     prompt_version: str
+    prompt_label: str | None
     prompt_source: str | None
 
 
@@ -388,6 +390,7 @@ class SEORecommendationNarrativeService:
             user_prompt=prompt.user_prompt,
             model_name=model_name,
             prompt_version=prompt.prompt_version,
+            prompt_label=SEO_RECOMMENDATION_PROMPT_LABEL,
             prompt_source=resolved_prompt.prompt_source,
         )
 

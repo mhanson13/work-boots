@@ -1425,9 +1425,8 @@ function promptPreviewSourceLabel(source: PromptPreviewView["source"]): string {
 
 function buildPromptPreviewExportText(preview: PromptPreviewView): string {
   const modelLabel = preview.model || "n/a";
-  const promptIdentityLabel = preview.promptLabel || preview.promptVersion || "n/a";
-  const promptTemplateLabel =
-    preview.promptLabel && preview.promptVersion ? preview.promptVersion : null;
+  const promptIdentityLabel = preview.promptLabel || "resolved prompt";
+  const promptTemplateLabel = preview.promptVersion || null;
   const sourceLabel = promptPreviewSourceLabel(preview.source);
   const truncationLine = preview.truncated ? "Truncated: yes" : "Truncated: no";
   const totalChars =
@@ -1470,8 +1469,8 @@ function PromptPreviewPanel({
   onDownload,
   testId,
 }: PromptPreviewPanelProps) {
-  const promptIdentityLabel = preview.promptLabel || preview.promptVersion || "n/a";
-  const promptTemplateLabel = preview.promptLabel && preview.promptVersion ? preview.promptVersion : null;
+  const promptIdentityLabel = preview.promptLabel || "resolved prompt";
+  const promptTemplateLabel = preview.promptVersion || null;
   const promptTotalChars =
     preview.promptMetrics && typeof preview.promptMetrics.total_prompt_chars === "number"
       ? preview.promptMetrics.total_prompt_chars
@@ -4267,7 +4266,7 @@ export default function SiteWorkspacePage() {
         {latestCompetitorProfileRun ? (
           <p className="hint muted">
             Provider: <code>{latestCompetitorProfileRun.provider_name}</code> | Model:{" "}
-            <code>{latestCompetitorProfileRun.model_name}</code> | Prompt:{" "}
+            <code>{latestCompetitorProfileRun.model_name}</code> | Template:{" "}
             <code>{latestCompetitorProfileRun.prompt_version}</code>
           </p>
         ) : null}
@@ -5147,7 +5146,7 @@ export default function SiteWorkspacePage() {
                   Narrative v{latestCompletedRecommendationNarrative.version} (
                   {latestCompletedRecommendationNarrative.status}) | Provider{" "}
                   {latestCompletedRecommendationNarrative.provider_name} | Model{" "}
-                  {latestCompletedRecommendationNarrative.model_name} | Prompt{" "}
+                  {latestCompletedRecommendationNarrative.model_name} | Template{" "}
                   {latestCompletedRecommendationNarrative.prompt_version}
                 </p>
                 <p>

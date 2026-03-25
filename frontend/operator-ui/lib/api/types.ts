@@ -739,10 +739,13 @@ export interface AIPromptPreview {
   system_prompt: string;
   user_prompt: string;
   model: string | null;
+  // Legacy/template compatibility identifier. Display as template metadata only.
   prompt_version: string | null;
+  // Operator-facing effective prompt identity label.
   prompt_label?: string | null;
   source?: "admin_config" | "env" | "default" | null;
   truncated: boolean;
+  // Debug-safe bounded metrics (counts/lengths only).
   prompt_metrics?: Record<string, number> | null;
 }
 

@@ -90,3 +90,17 @@ def test_build_ai_prompt_preview_read_includes_label_and_metrics() -> None:
         "total_prompt_chars": 3210,
         "context_json_chars": 712,
     }
+
+
+def test_build_ai_prompt_preview_read_preserves_version_as_template_metadata() -> None:
+    preview = build_ai_prompt_preview_read(
+        prompt_type="competitor",
+        system_prompt="system",
+        user_prompt="user",
+        prompt_label="resolved competitor prompt",
+        prompt_version="seo-competitor-profile-v1",
+    )
+
+    assert preview is not None
+    assert preview.prompt_label == "resolved competitor prompt"
+    assert preview.prompt_version == "seo-competitor-profile-v1"

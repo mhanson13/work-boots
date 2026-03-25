@@ -50,10 +50,14 @@ class AIPromptPreviewRead(BaseModel):
     system_prompt: str = ""
     user_prompt: str = ""
     model: str | None = None
+    # Compatibility field: template/version identifier retained for existing clients.
+    # This may remain a legacy value and should not be treated as operator-facing prompt identity.
     prompt_version: str | None = None
+    # Operator-facing effective prompt identity label.
     prompt_label: str | None = None
     source: AIPromptSource | None = None
     truncated: bool = False
+    # Debug-safe bounded metrics only (counts/lengths), never raw prompt bodies or secrets.
     prompt_metrics: dict[str, int] | None = None
 
     @field_validator("model", mode="before")

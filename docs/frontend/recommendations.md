@@ -169,8 +169,10 @@ This source label is informational/debug-only and helps confirm effective prompt
 
 Prompt preview cards should prefer the additive prompt identity label when available:
 
-- `prompt_label` (for competitor previews this is a neutral `resolved competitor prompt` label)
+- `prompt_label` (operator-facing effective identity; competitor previews use `resolved competitor prompt` and recommendation previews use `resolved recommendation prompt`)
 - optional template identifier from `prompt_version`
+  - treat as legacy/template metadata only
+  - do not use as the primary human-facing prompt identity when `prompt_label` is present
 
 Cards may also render compact prompt-size metadata from `prompt_metrics` when present:
 
@@ -178,6 +180,18 @@ Cards may also render compact prompt-size metadata from `prompt_metrics` when pr
 - context JSON chars
 
 This keeps prompt preview trustworthy and easier to debug without exposing full prompt bodies in logs.
+
+### Timeout/Failure Debug Interpretation
+
+When competitor generation fails and debug metadata is available, backend payloads distinguish:
+
+- `failure_kind: timeout` -> provider call timed out
+- `failure_kind: provider_request` -> provider rejected/failed the request
+
+Frontend guidance:
+- keep operator-facing messaging concise and safe
+- use prompt-size telemetry (`total_prompt_chars`, `context_json_chars`, risk bucket) as supporting debug context only
+- never render raw provider payloads, stack traces, or secrets
 
 ## Admin Prompt Overrides
 

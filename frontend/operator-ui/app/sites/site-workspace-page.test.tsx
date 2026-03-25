@@ -3678,6 +3678,7 @@ describe("site workspace timeline controls", () => {
           user_prompt: "NARRATIVE_USER",
           model: "gpt-4o-mini",
           prompt_version: "seo-recommendation-narrative-v2",
+          prompt_label: "resolved recommendation prompt",
           source: "env",
         }),
       }),
@@ -3689,9 +3690,14 @@ describe("site workspace timeline controls", () => {
     expect(within(competitorPanel).getByText("View AI prompt")).toBeInTheDocument();
     expect(within(competitorPanel).getByText(/Source: Business admin override/)).toBeInTheDocument();
     expect(within(competitorPanel).getByText(/Prompt:\s*resolved competitor prompt/)).toBeInTheDocument();
+    expect(within(competitorPanel).queryByText(/Prompt:\s*seo-competitor-profile-v1/)).not.toBeInTheDocument();
     expect(within(competitorPanel).getByText(/Size:\s*2048 chars/)).toBeInTheDocument();
     const recommendationPanel = await screen.findByTestId("recommendation-prompt-preview");
     expect(within(recommendationPanel).getByText(/Source: Deployment fallback/)).toBeInTheDocument();
+    expect(within(recommendationPanel).getByText(/Prompt:\s*resolved recommendation prompt/)).toBeInTheDocument();
+    expect(
+      within(recommendationPanel).queryByText(/Prompt:\s*seo-recommendation-narrative-v2/),
+    ).not.toBeInTheDocument();
     await user.click(within(recommendationPanel).getByText("View AI prompt"));
     expect(within(recommendationPanel).getByText("System prompt")).toBeInTheDocument();
     expect(within(recommendationPanel).getByText("NARRATIVE_SYSTEM")).toBeInTheDocument();
@@ -4463,12 +4469,12 @@ describe("site workspace ai competitor profile drafts", () => {
       return (
         text.includes("Provider:") &&
         text.includes("Model:") &&
-        text.includes("Prompt:")
+        text.includes("Template:")
       );
     });
     expect(metadataLine).toHaveTextContent(/Provider:\s*mock/);
     expect(metadataLine).toHaveTextContent(/Model:\s*mock-seo-competitor-profile-v1/);
-    expect(metadataLine).toHaveTextContent(/Prompt:\s*seo-competitor-profile-v1/);
+    expect(metadataLine).toHaveTextContent(/Template:\s*seo-competitor-profile-v1/);
     expect(screen.getByText(/Last 30d: queued 0 \| running 0 \| completed 1 \| failed 0/)).toBeInTheDocument();
     expect(screen.getByText(/Candidate telemetry \(1 runs\): raw 2 \| included 2 \| excluded 0/)).toBeInTheDocument();
     expect(screen.queryByText(/Exclusion reasons:/i)).not.toBeInTheDocument();

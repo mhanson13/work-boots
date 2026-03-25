@@ -223,6 +223,7 @@ def test_openai_provider_timeout_is_normalized(monkeypatch) -> None:
     assert exc_info.value.code == "timeout"
     assert exc_info.value.raw_output is not None
     raw_debug_payload = json.loads(exc_info.value.raw_output)
+    assert raw_debug_payload["failure_kind"] == "timeout"
     assert raw_debug_payload["endpoint_path"] in {
         "/responses",
         "/chat/completions",
@@ -368,6 +369,10 @@ def test_openai_provider_logs_bounded_provider_error_details(monkeypatch, caplog
             provider.generate_competitor_profiles(site=_site(), existing_domains=[], candidate_count=1)
 
     assert exc_info.value.code == "provider_request"
+    assert exc_info.value.raw_output is not None
+    raw_debug_payload = json.loads(exc_info.value.raw_output)
+    assert raw_debug_payload["failure_kind"] == "provider_request"
+    assert raw_debug_payload["endpoint_path"] in {"/responses", "/chat/completions"}
     assert "SEO competitor provider HTTP error status=400" in caplog.text
     assert "model_name=gpt-5-mini" in caplog.text
     assert "endpoint=/responses" in caplog.text

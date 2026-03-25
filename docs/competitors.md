@@ -73,8 +73,10 @@ Workspace summary responses may include an optional `competitor_prompt_preview` 
 ### What is shown
 - prompt type (`competitor`)
 - model label (when available)
-- prompt identity label (`resolved competitor prompt`)
-- prompt template identifier (`prompt_version`) when provided
+- operator-facing prompt identity label (`prompt_label`, for competitor previews this is `resolved competitor prompt`)
+- legacy prompt template identifier (`prompt_version`) when provided
+  - compatibility/template metadata only
+  - not the operator-facing effective prompt identity
 - prompt source (`admin_config`, `env`, `default`)
 - bounded prompt metrics (character counts) for debug sizing, including:
   - total prompt chars
@@ -149,10 +151,17 @@ Competitor provider failures now emit bounded backend log metadata to improve de
   - prompt char counts
   - context char counts
   - prompt size risk bucket (`normal`, `elevated`, `high`)
+- bounded failure kind in debug payload:
+  - `timeout`: provider call timed out
+  - `provider_request`: provider returned/raised a non-timeout request failure
 
 Safety:
 - no secrets, auth headers, or key material are logged
 - no raw environment dumps are logged
+
+Operator interpretation guidance:
+- `timeout` with `high`/`elevated` prompt-size risk usually indicates latency pressure; rerun is safe and context trimming is already applied.
+- `provider_request` indicates a provider-side request failure (for example invalid or rejected request payload) and should be investigated with the bounded error code/message metadata.
 
 ## Competitor Prompt Context Hardening
 
