@@ -26,6 +26,8 @@ class BusinessSettingsRead(BaseModel):
     competitor_candidate_big_box_penalty: int
     competitor_candidate_directory_penalty: int
     competitor_candidate_local_alignment_bonus: int
+    ai_prompt_text_competitor: str | None
+    ai_prompt_text_recommendations: str | None
     timezone: str
     created_at: datetime
     updated_at: datetime
@@ -43,6 +45,8 @@ class BusinessSettingsUpdateRequest(BaseModel):
     competitor_candidate_big_box_penalty: int | None = Field(default=None, ge=0, le=50)
     competitor_candidate_directory_penalty: int | None = Field(default=None, ge=0, le=50)
     competitor_candidate_local_alignment_bonus: int | None = Field(default=None, ge=0, le=50)
+    ai_prompt_text_competitor: str | None = Field(default=None, max_length=20000)
+    ai_prompt_text_recommendations: str | None = Field(default=None, max_length=20000)
     competitor_tuning_preview_event_id: str | None = Field(default=None, min_length=1, max_length=36)
     timezone: str | None = None
 
@@ -89,6 +93,11 @@ class BusinessSettingsUpdateRequest(BaseModel):
     @field_validator("competitor_tuning_preview_event_id", mode="before")
     @classmethod
     def normalize_preview_event_id(cls, value: str | None) -> str | None:
+        return _clean_optional_text(value)
+
+    @field_validator("ai_prompt_text_competitor", "ai_prompt_text_recommendations", mode="before")
+    @classmethod
+    def normalize_ai_prompt_text_overrides(cls, value: str | None) -> str | None:
         return _clean_optional_text(value)
 
 

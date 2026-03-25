@@ -49,3 +49,23 @@ def test_build_ai_prompt_preview_read_bounds_optional_metadata_fields() -> None:
     assert preview.prompt_version == "y" * 64
     assert preview.truncated is False
 
+
+def test_build_ai_prompt_preview_read_normalizes_prompt_source() -> None:
+    preview = build_ai_prompt_preview_read(
+        prompt_type="competitor",
+        system_prompt="system",
+        user_prompt="user",
+        source=" ADMIN_CONFIG ",
+    )
+
+    assert preview is not None
+    assert preview.source == "admin_config"
+
+    unsupported = build_ai_prompt_preview_read(
+        prompt_type="competitor",
+        system_prompt="system",
+        user_prompt="user",
+        source="unexpected_source",
+    )
+    assert unsupported is not None
+    assert unsupported.source is None

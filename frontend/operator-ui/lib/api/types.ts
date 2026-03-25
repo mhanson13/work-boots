@@ -84,6 +84,8 @@ export interface BusinessSettings {
   competitor_candidate_big_box_penalty: number;
   competitor_candidate_directory_penalty: number;
   competitor_candidate_local_alignment_bonus: number;
+  ai_prompt_text_competitor: string | null;
+  ai_prompt_text_recommendations: string | null;
   timezone: string;
   created_at: string;
   updated_at: string;
@@ -101,6 +103,8 @@ export interface BusinessSettingsUpdateRequest {
   competitor_candidate_big_box_penalty?: number;
   competitor_candidate_directory_penalty?: number;
   competitor_candidate_local_alignment_bonus?: number;
+  ai_prompt_text_competitor?: string | null;
+  ai_prompt_text_recommendations?: string | null;
   competitor_tuning_preview_event_id?: string;
   timezone?: string | null;
 }
@@ -736,6 +740,7 @@ export interface AIPromptPreview {
   user_prompt: string;
   model: string | null;
   prompt_version: string | null;
+  source?: "admin_config" | "env" | "default" | null;
   truncated: boolean;
 }
 

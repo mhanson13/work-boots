@@ -156,6 +156,8 @@ function buildBusinessSettings(overrides: Partial<BusinessSettings> = {}): Busin
     competitor_candidate_big_box_penalty: 20,
     competitor_candidate_directory_penalty: 35,
     competitor_candidate_local_alignment_bonus: 10,
+    ai_prompt_text_competitor: null,
+    ai_prompt_text_recommendations: null,
     timezone: "America/Denver",
     created_at: "2026-03-20T00:00:00Z",
     updated_at: "2026-03-21T00:00:00Z",
@@ -3663,6 +3665,7 @@ describe("site workspace timeline controls", () => {
           user_prompt: "COMPETITOR_USER",
           model: "gpt-4o-mini",
           prompt_version: "seo-competitor-profile-v1",
+          source: "admin_config",
         }),
         recommendation_prompt_preview: buildAIPromptPreview({
           prompt_type: "recommendation",
@@ -3670,6 +3673,7 @@ describe("site workspace timeline controls", () => {
           user_prompt: "NARRATIVE_USER",
           model: "gpt-4o-mini",
           prompt_version: "seo-recommendation-narrative-v2",
+          source: "env",
         }),
       }),
     );
@@ -3678,7 +3682,9 @@ describe("site workspace timeline controls", () => {
 
     const competitorPanel = await screen.findByTestId("competitor-prompt-preview");
     expect(within(competitorPanel).getByText("View AI prompt")).toBeInTheDocument();
+    expect(within(competitorPanel).getByText(/Source: Admin override/)).toBeInTheDocument();
     const recommendationPanel = await screen.findByTestId("recommendation-prompt-preview");
+    expect(within(recommendationPanel).getByText(/Source: Deployment fallback/)).toBeInTheDocument();
     await user.click(within(recommendationPanel).getByText("View AI prompt"));
     expect(within(recommendationPanel).getByText("System prompt")).toBeInTheDocument();
     expect(within(recommendationPanel).getByText("NARRATIVE_SYSTEM")).toBeInTheDocument();
@@ -3710,6 +3716,7 @@ describe("site workspace timeline controls", () => {
           prompt_type: "recommendation",
           system_prompt: "REC_SYSTEM",
           user_prompt: "REC_USER",
+          source: "env",
         }),
       }),
     );
@@ -3739,6 +3746,7 @@ describe("site workspace timeline controls", () => {
     await user.click(within(recommendationPanel).getByRole("button", { name: "Copy Prompt" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     expect(writeText.mock.calls[0][0]).toContain("Prompt Type: Recommendation Narrative");
+    expect(writeText.mock.calls[0][0]).toContain("Source: Deployment fallback");
     expect(writeText.mock.calls[0][0]).toContain("System Prompt:");
     expect(writeText.mock.calls[0][0]).toContain("REC_SYSTEM");
     expect(writeText.mock.calls[0][0]).toContain("User Prompt:");

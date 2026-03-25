@@ -89,6 +89,23 @@ Workspace summary responses may include an optional `competitor_prompt_preview` 
 - Prompt text is sanitized for control characters and bounded for UI-safe rendering.
 - When preview data is unavailable, no prompt preview block is rendered.
 
+## Admin-Managed Prompt Overrides
+
+Competitor prompt supplemental text can now be managed in persisted admin settings via:
+
+- `ai_prompt_text_competitor` (business-scoped admin override)
+
+Effective prompt resolution order is deterministic:
+
+1. persisted admin override (`ai_prompt_text_competitor`) when non-empty
+2. deployment env fallback (`AI_PROMPT_TEXT_COMPETITOR`, with legacy env compatibility handled in config)
+3. existing default/empty fallback behavior
+
+Behavior notes:
+- Prompt edits apply to future runs and previews only.
+- Clearing the admin override returns behavior to deployment/default fallback.
+- Prompt preview/debug now includes `source` attribution (`admin_config`, `env`, `default`) so operators can verify which configuration path is active.
+
 ## Web Search Enabled Competitor Discovery
 
 Competitor generation now uses OpenAI `/responses` as the primary path with `web_search` enabled.

@@ -16,6 +16,7 @@ from app.integrations.seo_summary_provider import (
     SEOCompetitorProfileDraftCandidateOutput,
     SEOCompetitorProfileGenerationProvider,
 )
+from app.models.business import Business
 from app.models.seo_audit_page import SEOAuditPage
 from app.models.seo_competitor_domain import SEOCompetitorDomain
 from app.models.seo_competitor_profile_cleanup_execution import SEOCompetitorProfileCleanupExecution
@@ -66,6 +67,7 @@ from app.services.seo_competitor_profile_prompt import SEO_COMPETITOR_PROFILE_PR
 from app.services.seo_competitor_profile_prompt import (
     build_seo_competitor_profile_prompt,
 )
+from app.services.ai_prompt_settings import resolve_ai_prompt_text
 from app.services.seo_crawler import SEOCrawler
 
 
@@ -181,6 +183,7 @@ class SEOCompetitorPromptPreview:
     user_prompt: str
     model_name: str | None
     prompt_version: str
+    prompt_source: str | None
     trusted_site_context: dict[str, object]
 
 
@@ -457,7 +460,7 @@ class SEOCompetitorProfileGenerationService:
         site_id: str,
         generation_run_id: str,
     ) -> SEOCompetitorProfileGenerationRunDetail | None:
-        self._require_business(business_id)
+        business = self._require_business(business_id)
         site = self._require_site(business_id=business_id, site_id=site_id)
 
         existing_run = self._get_run_for_site(
@@ -509,6 +512,7 @@ class SEOCompetitorProfileGenerationService:
                 )
             ]
             self._attach_site_content_signals(site=site, business_id=business_id, site_id=site_id)
+            self._apply_resolved_competitor_prompt_settings(business)
             output = self.provider.generate_competitor_profiles(
                 site=site,
                 existing_domains=existing_domains,
@@ -765,7 +769,7 @@ class SEOCompetitorProfileGenerationService:
         prompt_version: str | None = None,
     ) -> SEOCompetitorPromptPreview | None:
         try:
-            self._require_business(business_id)
+            business = self._require_business(business_id)
             site = self._require_site(business_id=business_id, site_id=site_id)
         except SEOCompetitorProfileGenerationNotFoundError:
             return None
@@ -774,6 +778,7 @@ class SEOCompetitorProfileGenerationService:
         resolved_prompt_version = (
             self._clean_optional(prompt_version) or self._default_prompt_version()
         )
+        resolved_prompt = self._resolve_competitor_prompt_settings(business)
         self._attach_site_content_signals(site=site, business_id=business_id, site_id=site_id)
         prompt = build_seo_competitor_profile_prompt(
             site=site,
@@ -786,13 +791,14 @@ class SEOCompetitorProfileGenerationService:
             ],
             candidate_count=bounded_candidate_count,
             prompt_version=resolved_prompt_version,
-            prompt_text_competitor=self._provider_prompt_text_competitor(),
+            prompt_text_competitor=resolved_prompt.prompt_text,
         )
         return SEOCompetitorPromptPreview(
             system_prompt=prompt.system_prompt,
             user_prompt=prompt.user_prompt,
             model_name=self._clean_optional(self._default_model_name()),
             prompt_version=prompt.prompt_version,
+            prompt_source=resolved_prompt.prompt_source,
             trusted_site_context=prompt.trusted_site_context,
         )
 
@@ -1374,10 +1380,11 @@ class SEOCompetitorProfileGenerationService:
             raise SEOCompetitorProfileGenerationNotFoundError("Competitor profile draft not found")
         return draft
 
-    def _require_business(self, business_id: str) -> None:
+    def _require_business(self, business_id: str) -> Business:
         business = self.business_repository.get(business_id)
         if business is None:
             raise SEOCompetitorProfileGenerationNotFoundError("Business not found")
+        return business
 
     def _resolve_candidate_quality_tuning(self, *, business_id: str) -> CompetitorCandidateQualityTuning:
         business = self.business_repository.get(business_id)
@@ -1513,6 +1520,28 @@ class SEOCompetitorProfileGenerationService:
             prompt_text = getattr(self.provider, "prompt_text_recommendation", "")
         cleaned = self._clean_optional(str(prompt_text or ""))
         return cleaned or ""
+
+    def _provider_prompt_legacy_config_used(self) -> bool:
+        return bool(getattr(self.provider, "legacy_config_used", False))
+
+    def _resolve_competitor_prompt_settings(self, business) -> object:
+        return resolve_ai_prompt_text(
+            admin_prompt_text=getattr(business, "ai_prompt_text_competitor", None),
+            env_prompt_text=self._provider_prompt_text_competitor(),
+            env_legacy_config_used=self._provider_prompt_legacy_config_used(),
+        )
+
+    def _apply_resolved_competitor_prompt_settings(self, business) -> None:
+        resolved = self._resolve_competitor_prompt_settings(business)
+        if hasattr(self.provider, "prompt_text_competitor"):
+            setattr(self.provider, "prompt_text_competitor", resolved.prompt_text)
+        # DEPRECATED: maintain backward compatibility for legacy prompt-text access.
+        if hasattr(self.provider, "prompt_text_recommendation"):
+            setattr(self.provider, "prompt_text_recommendation", resolved.prompt_text)
+        if hasattr(self.provider, "prompt_source"):
+            setattr(self.provider, "prompt_source", resolved.prompt_source)
+        if hasattr(self.provider, "legacy_config_used"):
+            setattr(self.provider, "legacy_config_used", resolved.legacy_config_used)
 
     def _attach_site_content_signals(self, *, site: SEOSite, business_id: str, site_id: str) -> None:
         signals = self._load_site_content_signals(business_id=business_id, site_id=site_id)

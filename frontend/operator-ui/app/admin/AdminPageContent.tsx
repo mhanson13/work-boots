@@ -326,6 +326,32 @@ function safeCandidateQualitySettingsUpdateErrorMessage(error: unknown): string 
   return "Failed to update competitor quality settings.";
 }
 
+function safePromptSettingsUpdateErrorMessage(error: unknown): string {
+  if (error instanceof ApiRequestError) {
+    if (error.status === 401) {
+      return "Session expired. Sign in again.";
+    }
+    if (error.status === 403) {
+      return "Only admin principals can update AI prompt overrides.";
+    }
+    if (error.status === 404) {
+      return "Business settings were not found in this tenant scope.";
+    }
+    if (error.status === 422) {
+      return "Unable to save AI prompt overrides. Keep each prompt under 20,000 characters.";
+    }
+  }
+  return "Failed to update AI prompt overrides.";
+}
+
+function normalizePromptOverrideInput(value: string): string | null {
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+  return normalized;
+}
+
 function formatIdentityLabel(identity: PrincipalIdentity): string {
   return identity.email || `${identity.provider}:${identity.provider_subject}`;
 }
@@ -373,6 +399,11 @@ export default function AdminPage() {
   const [candidateQualitySubmitting, setCandidateQualitySubmitting] = useState(false);
   const [candidateQualityMessage, setCandidateQualityMessage] = useState<string | null>(null);
   const [candidateQualityError, setCandidateQualityError] = useState<string | null>(null);
+  const [competitorPromptOverrideInput, setCompetitorPromptOverrideInput] = useState("");
+  const [recommendationsPromptOverrideInput, setRecommendationsPromptOverrideInput] = useState("");
+  const [promptOverrideSubmitting, setPromptOverrideSubmitting] = useState(false);
+  const [promptOverrideMessage, setPromptOverrideMessage] = useState<string | null>(null);
+  const [promptOverrideError, setPromptOverrideError] = useState<string | null>(null);
 
   const isAdmin = principal?.role === "admin";
 
@@ -507,6 +538,8 @@ export default function AdminPage() {
         setCandidateBigBoxPenaltyInput(String(settings.competitor_candidate_big_box_penalty));
         setCandidateDirectoryPenaltyInput(String(settings.competitor_candidate_directory_penalty));
         setCandidateLocalAlignmentBonusInput(String(settings.competitor_candidate_local_alignment_bonus));
+        setCompetitorPromptOverrideInput(settings.ai_prompt_text_competitor || "");
+        setRecommendationsPromptOverrideInput(settings.ai_prompt_text_recommendations || "");
       } catch (err) {
         if (!cancelled) {
           setBusinessSettingsLoadError(safeBusinessSettingsErrorMessage(err));
@@ -664,6 +697,7 @@ export default function AdminPage() {
     setCandidateQualityError(null);
     setCrawlPageLimitMessage(null);
     setCandidateQualityMessage(null);
+    setPromptOverrideMessage(null);
 
     const minRelevanceScore = parseBoundedInteger(candidateMinRelevanceScoreInput, {
       min: COMPETITOR_MIN_RELEVANCE_SCORE_MIN,
@@ -739,6 +773,52 @@ export default function AdminPage() {
       setCandidateQualityError(safeCandidateQualitySettingsUpdateErrorMessage(err));
     } finally {
       setCandidateQualitySubmitting(false);
+    }
+  };
+
+  const handleSavePromptOverrides = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setPromptOverrideMessage(null);
+    setPromptOverrideError(null);
+    setCrawlPageLimitMessage(null);
+    setCandidateQualityMessage(null);
+
+    setPromptOverrideSubmitting(true);
+    try {
+      const updated = await updateBusinessSettings(context.token, context.businessId, {
+        ai_prompt_text_competitor: normalizePromptOverrideInput(competitorPromptOverrideInput),
+        ai_prompt_text_recommendations: normalizePromptOverrideInput(recommendationsPromptOverrideInput),
+      });
+      setBusinessSettings(updated);
+      setCompetitorPromptOverrideInput(updated.ai_prompt_text_competitor || "");
+      setRecommendationsPromptOverrideInput(updated.ai_prompt_text_recommendations || "");
+      setPromptOverrideMessage("AI prompt overrides updated.");
+    } catch (err) {
+      setPromptOverrideError(safePromptSettingsUpdateErrorMessage(err));
+    } finally {
+      setPromptOverrideSubmitting(false);
+    }
+  };
+
+  const handleClearPromptOverrides = async () => {
+    setPromptOverrideMessage(null);
+    setPromptOverrideError(null);
+    setCrawlPageLimitMessage(null);
+    setCandidateQualityMessage(null);
+    setPromptOverrideSubmitting(true);
+    try {
+      const updated = await updateBusinessSettings(context.token, context.businessId, {
+        ai_prompt_text_competitor: null,
+        ai_prompt_text_recommendations: null,
+      });
+      setBusinessSettings(updated);
+      setCompetitorPromptOverrideInput(updated.ai_prompt_text_competitor || "");
+      setRecommendationsPromptOverrideInput(updated.ai_prompt_text_recommendations || "");
+      setPromptOverrideMessage("AI prompt overrides cleared. Deployment fallback/default is now active.");
+    } catch (err) {
+      setPromptOverrideError(safePromptSettingsUpdateErrorMessage(err));
+    } finally {
+      setPromptOverrideSubmitting(false);
     }
   };
 
@@ -1135,6 +1215,64 @@ export default function AdminPage() {
           </div>
           {candidateQualityMessage ? <p className="hint">{candidateQualityMessage}</p> : null}
           {candidateQualityError ? <p className="hint error">{candidateQualityError}</p> : null}
+        </FormContainer>
+
+        <FormContainer onSubmit={(event) => void handleSavePromptOverrides(event)} noValidate>
+          <h2>AI Prompt Overrides</h2>
+          <p className="hint muted">
+            Admin-managed prompt overrides for competitor and recommendation generation.
+          </p>
+          <p className="hint muted">
+            Saved values override deployment defaults. Leave blank or clear overrides to use deployment fallback/default.
+          </p>
+
+          <label htmlFor="ai-prompt-text-competitor">Competitor Prompt</label>
+          <textarea
+            id="ai-prompt-text-competitor"
+            rows={8}
+            value={competitorPromptOverrideInput}
+            onChange={(event) => setCompetitorPromptOverrideInput(event.target.value)}
+            disabled={businessSettingsLoading || promptOverrideSubmitting}
+          />
+          <p className="hint muted">
+            Current source:{" "}
+            <strong>{businessSettings?.ai_prompt_text_competitor ? "Admin override" : "Deployment/default fallback"}</strong>
+          </p>
+
+          <label htmlFor="ai-prompt-text-recommendations">Recommendations Prompt</label>
+          <textarea
+            id="ai-prompt-text-recommendations"
+            rows={8}
+            value={recommendationsPromptOverrideInput}
+            onChange={(event) => setRecommendationsPromptOverrideInput(event.target.value)}
+            disabled={businessSettingsLoading || promptOverrideSubmitting}
+          />
+          <p className="hint muted">
+            Current source:{" "}
+            <strong>
+              {businessSettings?.ai_prompt_text_recommendations ? "Admin override" : "Deployment/default fallback"}
+            </strong>
+          </p>
+
+          <div className="form-actions">
+            <button
+              className="button button-primary"
+              type="submit"
+              disabled={businessSettingsLoading || promptOverrideSubmitting}
+            >
+              {promptOverrideSubmitting ? "Saving..." : "Save Prompt Overrides"}
+            </button>
+            <button
+              className="button button-tertiary"
+              type="button"
+              onClick={() => void handleClearPromptOverrides()}
+              disabled={businessSettingsLoading || promptOverrideSubmitting}
+            >
+              Use Deployment Fallbacks
+            </button>
+          </div>
+          {promptOverrideMessage ? <p className="hint">{promptOverrideMessage}</p> : null}
+          {promptOverrideError ? <p className="hint error">{promptOverrideError}</p> : null}
         </FormContainer>
 
         <div className="message-stack">

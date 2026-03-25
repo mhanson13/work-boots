@@ -23,6 +23,23 @@ Only normalized competitor output is consumed:
 - Upstream competitor prompt context now prioritizes existing crawl/audit-derived site metadata (titles/headings/service-page labels) plus structured site/business metadata for location/industry/service intent, with domain-token heuristics used only as a last-resort fallback.
 - Upstream competitor candidate quality now uses a deterministic eligibility gate before admin tuning/scoring, so obviously invalid parked/dead/out-of-market domains are filtered before recommendation-facing competitor context is derived.
 
+## Admin-Managed Prompt Overrides (With Deployment Fallback)
+
+Recommendation narrative prompt supplemental text can now be managed in persisted admin settings via:
+
+- `ai_prompt_text_recommendations` (business-scoped admin override)
+
+Effective prompt resolution order:
+
+1. persisted admin override (`ai_prompt_text_recommendations`) when non-empty
+2. deployment env fallback (`AI_PROMPT_TEXT_RECOMMENDATIONS`, with legacy fallback compatibility preserved)
+3. existing default/empty fallback behavior
+
+Notes:
+- Admin edits affect future narrative runs and prompt previews only.
+- Clearing the override reverts to deployment/default fallback behavior.
+- Prompt preview payloads now include `source` attribution (`admin_config`, `env`, `default`) for operator/debug visibility.
+
 ## Admin Competitor Candidate Quality Controls (Operator Guidance)
 
 The Admin panel includes plain-English helper guidance for the four competitor candidate tuning controls.

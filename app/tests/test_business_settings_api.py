@@ -88,6 +88,8 @@ def test_get_business_settings_endpoint(db_session, seeded_business) -> None:
     assert payload["competitor_candidate_big_box_penalty"] == 20
     assert payload["competitor_candidate_directory_penalty"] == 35
     assert payload["competitor_candidate_local_alignment_bonus"] == 10
+    assert payload["ai_prompt_text_competitor"] is None
+    assert payload["ai_prompt_text_recommendations"] is None
 
 
 def test_patch_business_settings_valid_partial_update_succeeds(db_session, seeded_business) -> None:
@@ -116,6 +118,34 @@ def test_patch_business_settings_valid_partial_update_succeeds(db_session, seede
     assert payload["competitor_candidate_directory_penalty"] == 30
     assert payload["competitor_candidate_local_alignment_bonus"] == 14
     assert payload["sms_enabled"] is True
+
+
+def test_patch_business_settings_accepts_and_clears_ai_prompt_text_overrides(db_session, seeded_business) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+
+    save_response = client.patch(
+        f"/api/businesses/{seeded_business.id}/settings",
+        json={
+            "ai_prompt_text_competitor": "  Prefer local competitors only.  ",
+            "ai_prompt_text_recommendations": "  Focus on specific action steps.  ",
+        },
+    )
+    assert save_response.status_code == 200
+    save_payload = save_response.json()
+    assert save_payload["ai_prompt_text_competitor"] == "Prefer local competitors only."
+    assert save_payload["ai_prompt_text_recommendations"] == "Focus on specific action steps."
+
+    clear_response = client.patch(
+        f"/api/businesses/{seeded_business.id}/settings",
+        json={
+            "ai_prompt_text_competitor": "   ",
+            "ai_prompt_text_recommendations": "",
+        },
+    )
+    assert clear_response.status_code == 200
+    clear_payload = clear_response.json()
+    assert clear_payload["ai_prompt_text_competitor"] is None
+    assert clear_payload["ai_prompt_text_recommendations"] is None
 
 
 def test_patch_business_settings_normalizes_email_and_phone(db_session, seeded_business) -> None:

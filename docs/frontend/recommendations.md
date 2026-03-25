@@ -155,6 +155,28 @@ Safety and fallback:
 - use bounded/sanitized text from the backend only
 - do not expose provider secrets or environment values in UI copy
 
+### Prompt Source Attribution
+
+Prompt preview cards should show prompt source attribution from API payload `source`:
+
+- `admin_config` -> `Admin override`
+- `env` -> `Deployment fallback`
+- `default` -> `Built-in default`
+
+This source label is informational/debug-only and helps confirm effective prompt resolution.
+
+## Admin Prompt Overrides
+
+The Admin page includes two business-scoped prompt override textareas:
+
+- `Competitor Prompt`
+- `Recommendations Prompt`
+
+Behavior:
+- saved non-empty values override deployment prompt text for future runs
+- empty/cleared values fall back to deployment/default behavior
+- saves are section-scoped and admin-only through existing business settings update flow
+
 ## Apply Outcome Visibility
 
 Workspace summary payloads may include optional `apply_outcome` metadata to show what changed after manual tuning apply.

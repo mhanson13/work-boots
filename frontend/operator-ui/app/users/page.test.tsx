@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import UsersCompatibilityPage from "./page";
 import { ApiRequestError } from "../../lib/api/client";
@@ -92,6 +93,8 @@ function buildBusinessSettings(overrides: Partial<BusinessSettings> = {}): Busin
     competitor_candidate_big_box_penalty: 20,
     competitor_candidate_directory_penalty: 35,
     competitor_candidate_local_alignment_bonus: 10,
+    ai_prompt_text_competitor: null,
+    ai_prompt_text_recommendations: null,
     timezone: "America/Denver",
     created_at: "2026-03-20T00:00:00Z",
     updated_at: "2026-03-20T00:00:00Z",
@@ -986,5 +989,71 @@ describe("admin page compatibility route", () => {
       }),
     );
     await screen.findByText("AI competitor candidate quality settings updated.");
+  });
+
+  it("updates admin-managed AI prompt overrides", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockUpdateBusinessSettings.mockResolvedValueOnce(
+      buildBusinessSettings({
+        ai_prompt_text_competitor: "Prefer local and substitutable competitors.",
+        ai_prompt_text_recommendations: "Prioritize specific next-step recommendations.",
+      }),
+    );
+
+    const user = userEvent.setup();
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    await user.clear(screen.getByLabelText("Competitor Prompt"));
+    await user.type(
+      screen.getByLabelText("Competitor Prompt"),
+      "Prefer local and substitutable competitors.",
+    );
+    await user.clear(screen.getByLabelText("Recommendations Prompt"));
+    await user.type(
+      screen.getByLabelText("Recommendations Prompt"),
+      "Prioritize specific next-step recommendations.",
+    );
+    await user.click(screen.getByRole("button", { name: "Save Prompt Overrides" }));
+
+    await waitFor(() =>
+      expect(mockUpdateBusinessSettings).toHaveBeenCalledWith("token-1", "biz-1", {
+        ai_prompt_text_competitor: "Prefer local and substitutable competitors.",
+        ai_prompt_text_recommendations: "Prioritize specific next-step recommendations.",
+      }),
+    );
+    await screen.findByText("AI prompt overrides updated.");
+  });
+
+  it("clears AI prompt overrides back to deployment/default fallback", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockFetchBusinessSettings.mockResolvedValueOnce(
+      buildBusinessSettings({
+        ai_prompt_text_competitor: "Existing competitor prompt override.",
+        ai_prompt_text_recommendations: "Existing recommendation prompt override.",
+      }),
+    );
+    mockUpdateBusinessSettings.mockResolvedValueOnce(
+      buildBusinessSettings({
+        ai_prompt_text_competitor: null,
+        ai_prompt_text_recommendations: null,
+      }),
+    );
+
+    const user = userEvent.setup();
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    await user.click(screen.getByRole("button", { name: "Use Deployment Fallbacks" }));
+
+    await waitFor(() =>
+      expect(mockUpdateBusinessSettings).toHaveBeenCalledWith("token-1", "biz-1", {
+        ai_prompt_text_competitor: null,
+        ai_prompt_text_recommendations: null,
+      }),
+    );
+    await screen.findByText("AI prompt overrides cleared. Deployment fallback/default is now active.");
   });
 });

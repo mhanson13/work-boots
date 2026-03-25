@@ -5,6 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 AIPromptType = Literal["competitor", "recommendation"]
+AIPromptSource = Literal["admin_config", "env", "default"]
 
 _PROMPT_TEXT_MAX_CHARS = 20000
 _PROMPT_MODEL_MAX_CHARS = 128
@@ -47,6 +48,7 @@ class AIPromptPreviewRead(BaseModel):
     user_prompt: str = ""
     model: str | None = None
     prompt_version: str | None = None
+    source: AIPromptSource | None = None
     truncated: bool = False
 
     @field_validator("model", mode="before")
@@ -71,6 +73,7 @@ def build_ai_prompt_preview_read(
     user_prompt: Any,
     model: Any = None,
     prompt_version: Any = None,
+    source: Any = None,
 ) -> AIPromptPreviewRead | None:
     normalized_system_prompt, system_truncated = _sanitize_prompt_text(
         system_prompt,
@@ -91,6 +94,17 @@ def build_ai_prompt_preview_read(
             "user_prompt": normalized_user_prompt,
             "model": _compact_optional_text(model, max_chars=_PROMPT_MODEL_MAX_CHARS),
             "prompt_version": _compact_optional_text(prompt_version, max_chars=_PROMPT_VERSION_MAX_CHARS),
+            "source": _normalize_prompt_source(source),
             "truncated": system_truncated or user_truncated,
         }
     )
+
+
+def _normalize_prompt_source(value: Any) -> str | None:
+    compacted = _compact_optional_text(value, max_chars=32)
+    if compacted is None:
+        return None
+    lowered = compacted.lower()
+    if lowered in {"admin_config", "env", "default"}:
+        return lowered
+    return None

@@ -249,6 +249,14 @@ class BusinessSettingsService:
                 "competitor_candidate_local_alignment_bonus",
                 business.competitor_candidate_local_alignment_bonus,
             ),
+            "ai_prompt_text_competitor": updates.get(
+                "ai_prompt_text_competitor",
+                business.ai_prompt_text_competitor,
+            ),
+            "ai_prompt_text_recommendations": updates.get(
+                "ai_prompt_text_recommendations",
+                business.ai_prompt_text_recommendations,
+            ),
             "timezone": updates.get("timezone", business.timezone),
         }
 

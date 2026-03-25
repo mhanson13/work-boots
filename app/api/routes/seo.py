@@ -1918,6 +1918,7 @@ def get_seo_recommendation_workspace_summary(
                 user_prompt=recommendation_prompt_preview_data.user_prompt,
                 model=recommendation_prompt_preview_data.model_name,
                 prompt_version=recommendation_prompt_preview_data.prompt_version,
+                source=recommendation_prompt_preview_data.prompt_source,
             )
         eeat_gap_summary = _build_workspace_eeat_gap_summary(
             recommendations=serialized_items,
@@ -1951,6 +1952,7 @@ def get_seo_recommendation_workspace_summary(
             user_prompt=competitor_prompt_preview_data.user_prompt,
             model=competitor_prompt_preview_data.model_name,
             prompt_version=competitor_prompt_preview_data.prompt_version,
+            source=competitor_prompt_preview_data.prompt_source,
         )
         trusted_site_context = (
             competitor_prompt_preview_data.trusted_site_context

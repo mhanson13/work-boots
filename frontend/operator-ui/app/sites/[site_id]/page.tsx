@@ -1344,6 +1344,7 @@ interface PromptPreviewView {
   userPrompt: string;
   model: string | null;
   promptVersion: string | null;
+  source: "admin_config" | "env" | "default" | null;
   truncated: boolean;
 }
 
@@ -1370,6 +1371,10 @@ function normalizePromptPreview(
     userPrompt,
     model: truncateOptionalText(preview.model, 128),
     promptVersion: truncateOptionalText(preview.prompt_version, 64),
+    source:
+      preview.source === "admin_config" || preview.source === "env" || preview.source === "default"
+        ? preview.source
+        : null,
     truncated: Boolean(preview.truncated),
   };
 }
@@ -1381,15 +1386,30 @@ function promptPreviewTypeLabel(promptType: PromptPreviewType): string {
   return "Recommendation Narrative";
 }
 
+function promptPreviewSourceLabel(source: PromptPreviewView["source"]): string {
+  switch (source) {
+    case "admin_config":
+      return "Admin override";
+    case "env":
+      return "Deployment fallback";
+    case "default":
+      return "Built-in default";
+    default:
+      return "Unknown";
+  }
+}
+
 function buildPromptPreviewExportText(preview: PromptPreviewView): string {
   const modelLabel = preview.model || "n/a";
   const promptVersionLabel = preview.promptVersion || "n/a";
+  const sourceLabel = promptPreviewSourceLabel(preview.source);
   const truncationLine = preview.truncated ? "Truncated: yes" : "Truncated: no";
   const systemPromptBlock = preview.systemPrompt || "(empty)";
   const userPromptBlock = preview.userPrompt || "(empty)";
 
   return [
     `Prompt Type: ${promptPreviewTypeLabel(preview.promptType)}`,
+    `Source: ${sourceLabel}`,
     `Model: ${modelLabel}`,
     `Prompt Version: ${promptVersionLabel}`,
     truncationLine,
@@ -1424,7 +1444,8 @@ function PromptPreviewPanel({
         Read-only preview of the final {promptPreviewTypeLabel(preview.promptType).toLowerCase()} prompt sent to AI.
       </span>
       <span className="hint muted">
-        Model: {preview.model || "n/a"} | Prompt: {preview.promptVersion || "n/a"}
+        Source: {promptPreviewSourceLabel(preview.source)} | Model: {preview.model || "n/a"} | Prompt:{" "}
+        {preview.promptVersion || "n/a"}
         {preview.truncated ? " | Preview is truncated for safety." : ""}
       </span>
       <details>

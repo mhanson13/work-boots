@@ -22,6 +22,7 @@ from app.repositories.seo_competitor_profile_generation_repository import (
 from app.repositories.seo_recommendation_narrative_repository import SEORecommendationNarrativeRepository
 from app.repositories.seo_recommendation_repository import SEORecommendationRepository
 from app.services.competitors.normalizer import normalize_competitor_response
+from app.services.ai_prompt_settings import ResolvedAIPromptText, resolve_ai_prompt_text
 from app.services.seo_competitor_profile_candidate_quality import (
     BIG_BOX_PENALTY_MAX,
     BIG_BOX_PENALTY_MIN,
@@ -112,6 +113,7 @@ class SEORecommendationNarrativePromptPreview:
     user_prompt: str
     model_name: str | None
     prompt_version: str
+    prompt_source: str | None
 
 
 class SEORecommendationNarrativeService:
@@ -173,6 +175,7 @@ class SEORecommendationNarrativeService:
         )
 
         try:
+            self._apply_resolved_recommendation_prompt_settings(business)
             output = self.provider.generate_narrative(
                 run=run,
                 recommendations=recommendations,
@@ -363,7 +366,7 @@ class SEORecommendationNarrativeService:
             str(getattr(self.provider, "prompt_version", "") or "").strip()
             or SEO_RECOMMENDATION_NARRATIVE_PROMPT_VERSION
         )
-        prompt_text_recommendations = self._provider_prompt_text_recommendations()
+        resolved_prompt = self._resolve_recommendation_prompt_settings(business)
         prompt = build_seo_recommendation_narrative_prompt(
             run=run,
             recommendations=recommendations,
@@ -377,7 +380,7 @@ class SEORecommendationNarrativeService:
             competitor_context=competitor_context,
             current_tuning_values=current_tuning_values,
             prompt_version=prompt_version,
-            prompt_text_recommendations=prompt_text_recommendations,
+            prompt_text_recommendations=resolved_prompt.prompt_text,
         )
         model_name = str(getattr(self.provider, "model_name", "") or "").strip() or None
         return SEORecommendationNarrativePromptPreview(
@@ -385,6 +388,7 @@ class SEORecommendationNarrativeService:
             user_prompt=prompt.user_prompt,
             model_name=model_name,
             prompt_version=prompt.prompt_version,
+            prompt_source=resolved_prompt.prompt_source,
         )
 
     def preview_tuning_impact(
@@ -563,6 +567,28 @@ class SEORecommendationNarrativeService:
         if prompt_text is None:
             prompt_text = getattr(self.provider, "prompt_text_recommendation", "")
         return str(prompt_text or "").strip()
+
+    def _provider_prompt_legacy_config_used(self) -> bool:
+        return bool(getattr(self.provider, "legacy_config_used", False))
+
+    def _resolve_recommendation_prompt_settings(self, business: Business) -> ResolvedAIPromptText:
+        return resolve_ai_prompt_text(
+            admin_prompt_text=getattr(business, "ai_prompt_text_recommendations", None),
+            env_prompt_text=self._provider_prompt_text_recommendations(),
+            env_legacy_config_used=self._provider_prompt_legacy_config_used(),
+        )
+
+    def _apply_resolved_recommendation_prompt_settings(self, business: Business) -> None:
+        resolved = self._resolve_recommendation_prompt_settings(business)
+        if hasattr(self.provider, "prompt_text_recommendations"):
+            setattr(self.provider, "prompt_text_recommendations", resolved.prompt_text)
+        # DEPRECATED: maintain backward compatibility for legacy prompt-text access.
+        if hasattr(self.provider, "prompt_text_recommendation"):
+            setattr(self.provider, "prompt_text_recommendation", resolved.prompt_text)
+        if hasattr(self.provider, "prompt_source"):
+            setattr(self.provider, "prompt_source", resolved.prompt_source)
+        if hasattr(self.provider, "legacy_config_used"):
+            setattr(self.provider, "legacy_config_used", resolved.legacy_config_used)
 
     def _build_current_tuning_values(self, business: Business) -> dict[str, int]:
         raw_values = {
