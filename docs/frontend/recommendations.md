@@ -205,6 +205,7 @@ Behavior:
 - empty/cleared values fall back to deployment fallback when configured, otherwise built-in default behavior
 - saves are section-scoped and admin-only through existing business settings update flow
 - override persistence is business-level (stored on `businesses`), not global across tenants/businesses
+- competitor and recommendation resolvers both use an immutable configured fallback baseline, so preview/runtime do not drift because of mutable runtime provider fields
 
 ## Apply Outcome Visibility
 

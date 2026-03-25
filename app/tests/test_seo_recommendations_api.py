@@ -1136,6 +1136,79 @@ def test_workspace_competitor_prompt_preview_uses_business_override_without_env_
         get_settings.cache_clear()
 
 
+def test_workspace_recommendation_prompt_preview_uses_business_override_without_env_fallback(
+    db_session,
+    seeded_business,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("AI_PROMPT_TEXT_COMPETITOR", raising=False)
+    monkeypatch.delenv("AI_PROMPT_TEXT_RECOMMENDATIONS", raising=False)
+    monkeypatch.delenv("AI_PROMPT_TEXT_RECOMMENDATION", raising=False)
+    get_settings.cache_clear()
+    try:
+        client = _make_client(db_session, business_id=seeded_business.id)
+        site_id = _create_site(client, seeded_business.id)
+        audit_run_id = _seed_completed_audit_run(
+            db_session,
+            business_id=seeded_business.id,
+            site_id=site_id,
+        )
+        seeded_business.ai_prompt_text_recommendations = "Keep recommendation guidance concise and specific."
+        db_session.add(seeded_business)
+        db_session.commit()
+
+        created = client.post(
+            f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+            json={"audit_run_id": audit_run_id},
+        )
+        assert created.status_code == 201
+
+        first_summary = client.get(
+            f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/workspace-summary"
+        )
+        assert first_summary.status_code == 200
+        first_payload = first_summary.json()
+        first_preview = first_payload["recommendation_prompt_preview"]
+        assert first_preview is not None
+        assert first_preview["source"] == "admin_config"
+        assert "Keep recommendation guidance concise and specific." in first_preview["user_prompt"]
+
+        reloaded_business = db_session.get(Business, seeded_business.id)
+        assert reloaded_business is not None
+        reloaded_business.ai_prompt_text_recommendations = "Prioritize operator action wording and clear first steps."
+        db_session.add(reloaded_business)
+        db_session.commit()
+
+        refreshed_summary = client.get(
+            f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/workspace-summary"
+        )
+        assert refreshed_summary.status_code == 200
+        refreshed_payload = refreshed_summary.json()
+        refreshed_preview = refreshed_payload["recommendation_prompt_preview"]
+        assert refreshed_preview is not None
+        assert refreshed_preview["source"] == "admin_config"
+        assert "Prioritize operator action wording and clear first steps." in refreshed_preview["user_prompt"]
+        assert "Keep recommendation guidance concise and specific." not in refreshed_preview["user_prompt"]
+
+        reloaded_business = db_session.get(Business, seeded_business.id)
+        assert reloaded_business is not None
+        reloaded_business.ai_prompt_text_recommendations = None
+        db_session.add(reloaded_business)
+        db_session.commit()
+
+        cleared_summary = client.get(
+            f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/workspace-summary"
+        )
+        assert cleared_summary.status_code == 200
+        cleared_payload = cleared_summary.json()
+        cleared_preview = cleared_payload["recommendation_prompt_preview"]
+        assert cleared_preview is not None
+        assert cleared_preview["source"] == "default"
+        assert "Prioritize operator action wording and clear first steps." not in cleared_preview["user_prompt"]
+    finally:
+        get_settings.cache_clear()
+
+
 def test_recommendation_workspace_summary_reflects_primary_business_zip_location_context(
     db_session, seeded_business
 ) -> None:

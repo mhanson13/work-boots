@@ -121,6 +121,7 @@ Behavior notes:
 - Clearing the admin override returns behavior to deployment fallback when configured, otherwise built-in default behavior.
 - Whitespace-only overrides are treated as unset and fall back safely.
 - Prompt preview/debug now includes `source` attribution (`admin_config`, `env`, `default`) so operators can verify which configuration path is active.
+- Prompt fallback baselines are captured from configured deployment defaults and resolved immutably per request; runtime provider mutation does not become the fallback source of truth.
 
 ## Web Search Enabled Competitor Discovery
 

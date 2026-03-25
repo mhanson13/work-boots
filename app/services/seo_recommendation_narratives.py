@@ -135,6 +135,16 @@ class SEORecommendationNarrativeService:
         self.seo_recommendation_narrative_repository = seo_recommendation_narrative_repository
         self.seo_competitor_profile_generation_repository = seo_competitor_profile_generation_repository
         self.provider = provider
+        # Capture deployment-configured prompt fallback once. Provider prompt fields
+        # are mutated per business run/preview, so resolver fallback must not read
+        # mutable runtime provider state.
+        configured_prompt_text = getattr(self.provider, "prompt_text_recommendations", None)
+        if configured_prompt_text is None:
+            configured_prompt_text = getattr(self.provider, "prompt_text_recommendation", "")
+        self._configured_prompt_text_recommendations = str(configured_prompt_text or "").strip()
+        self._configured_prompt_legacy_config_used = bool(
+            getattr(self.provider, "legacy_config_used", False)
+        )
 
     def summarize_run(
         self,
@@ -566,13 +576,10 @@ class SEORecommendationNarrativeService:
         return provider_name, model_name, prompt_version
 
     def _provider_prompt_text_recommendations(self) -> str:
-        prompt_text = getattr(self.provider, "prompt_text_recommendations", None)
-        if prompt_text is None:
-            prompt_text = getattr(self.provider, "prompt_text_recommendation", "")
-        return str(prompt_text or "").strip()
+        return self._configured_prompt_text_recommendations
 
     def _provider_prompt_legacy_config_used(self) -> bool:
-        return bool(getattr(self.provider, "legacy_config_used", False))
+        return self._configured_prompt_legacy_config_used
 
     def _resolve_recommendation_prompt_settings(self, business: Business) -> ResolvedAIPromptText:
         return resolve_ai_prompt_text(
