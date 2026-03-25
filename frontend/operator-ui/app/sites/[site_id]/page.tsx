@@ -49,6 +49,7 @@ import type {
   RecommendationEEATCategory,
   RecommendationEEATGapSummary,
   RecommendationOrderingExplanation,
+  RecommendationLifecycleState,
   RecommendationProgressStatus,
   RecommendationPriorityReason,
   RecommendationStartHere,
@@ -1070,6 +1071,13 @@ interface RecommendationProgressView {
   summary: string;
 }
 
+interface RecommendationLifecycleView {
+  state: RecommendationLifecycleState;
+  label: string;
+  badgeClass: string;
+  summary: string;
+}
+
 function recommendationProgressLabel(status: RecommendationProgressStatus): string {
   switch (status) {
     case "applied_pending_refresh":
@@ -1119,6 +1127,69 @@ function normalizeRecommendationProgress(item: Recommendation): RecommendationPr
     status,
     label: recommendationProgressLabel(status),
     badgeClass: recommendationProgressBadgeClass(status),
+    summary,
+  };
+}
+
+function recommendationLifecycleLabel(state: RecommendationLifecycleState): string {
+  switch (state) {
+    case "applied_waiting_validation":
+      return "Applied, waiting validation";
+    case "reflected_still_relevant":
+      return "Reflected, still relevant";
+    case "likely_resolved":
+      return "Likely resolved";
+    case "active":
+    default:
+      return "Active";
+  }
+}
+
+function recommendationLifecycleBadgeClass(state: RecommendationLifecycleState): string {
+  switch (state) {
+    case "applied_waiting_validation":
+      return "badge badge-warn";
+    case "reflected_still_relevant":
+      return "badge badge-warn";
+    case "likely_resolved":
+      return "badge badge-success";
+    case "active":
+    default:
+      return "badge badge-muted";
+  }
+}
+
+function recommendationLifecycleDefaultSummary(state: RecommendationLifecycleState): string {
+  switch (state) {
+    case "applied_waiting_validation":
+      return "Applied and waiting for refreshed validation.";
+    case "reflected_still_relevant":
+      return "Reflected in analysis, but still appears relevant.";
+    case "likely_resolved":
+      return "Likely addressed in the latest analysis.";
+    case "active":
+    default:
+      return "Still an active recommendation.";
+  }
+}
+
+function normalizeRecommendationLifecycle(item: Recommendation): RecommendationLifecycleView | null {
+  if (!item.recommendation_lifecycle_state && !truncateOptionalText(item.recommendation_lifecycle_summary, 220)) {
+    return null;
+  }
+  const state: RecommendationLifecycleState =
+    item.recommendation_lifecycle_state === "applied_waiting_validation"
+    || item.recommendation_lifecycle_state === "reflected_still_relevant"
+    || item.recommendation_lifecycle_state === "likely_resolved"
+    || item.recommendation_lifecycle_state === "active"
+      ? item.recommendation_lifecycle_state
+      : "active";
+  const summary = truncateOptionalText(item.recommendation_lifecycle_summary, 220)
+    || recommendationLifecycleDefaultSummary(state);
+  return {
+    state,
+    label: recommendationLifecycleLabel(state),
+    badgeClass: recommendationLifecycleBadgeClass(state),
     summary,
   };
 }
@@ -4720,6 +4791,7 @@ export default function SiteWorkspacePage() {
                         const eeatCategories = normalizeEEATCategories(item.eeat_categories);
                         const priorityReasons = normalizeRecommendationPriorityReasons(item.priority_reasons);
                         const recommendationProgress = normalizeRecommendationProgress(item);
+                        const recommendationLifecycle = normalizeRecommendationLifecycle(item);
                         const recommendationEvidenceSummary = normalizeRecommendationEvidenceSummary(item);
                         const recommendationObservedGapSummary = normalizeRecommendationObservedGapSummary(item);
                         const recommendationEvidenceTrace = normalizeRecommendationEvidenceTrace(item);
@@ -4774,6 +4846,15 @@ export default function SiteWorkspacePage() {
                                 <span className={recommendationProgress.badgeClass}>{recommendationProgress.label}</span>
                                 <span className="hint muted">{recommendationProgress.summary}</span>
                               </div>
+                              {recommendationLifecycle ? (
+                                <>
+                                  <span className="hint muted">Lifecycle</span>
+                                  <div className="link-row" data-testid="recommendation-lifecycle-state">
+                                    <span className={recommendationLifecycle.badgeClass}>{recommendationLifecycle.label}</span>
+                                    <span className="hint muted">{recommendationLifecycle.summary}</span>
+                                  </div>
+                                </>
+                              ) : null}
                               {recommendationEvidenceSummary ? (
                                 <span className="hint muted" data-testid="recommendation-evidence-summary">
                                   Why this matters: {recommendationEvidenceSummary}
@@ -4861,6 +4942,7 @@ export default function SiteWorkspacePage() {
                               const eeatCategories = normalizeEEATCategories(item.eeat_categories);
                               const priorityReasons = normalizeRecommendationPriorityReasons(item.priority_reasons);
                               const recommendationProgress = normalizeRecommendationProgress(item);
+                              const recommendationLifecycle = normalizeRecommendationLifecycle(item);
                               const recommendationEvidenceSummary = normalizeRecommendationEvidenceSummary(item);
                               const recommendationObservedGapSummary = normalizeRecommendationObservedGapSummary(item);
                               const recommendationEvidenceTrace = normalizeRecommendationEvidenceTrace(item);
@@ -4915,6 +4997,17 @@ export default function SiteWorkspacePage() {
                                       <span className={recommendationProgress.badgeClass}>{recommendationProgress.label}</span>
                                       <span className="hint muted">{recommendationProgress.summary}</span>
                                     </div>
+                                    {recommendationLifecycle ? (
+                                      <>
+                                        <span className="hint muted">Lifecycle</span>
+                                        <div className="link-row" data-testid="recommendation-lifecycle-state">
+                                          <span className={recommendationLifecycle.badgeClass}>
+                                            {recommendationLifecycle.label}
+                                          </span>
+                                          <span className="hint muted">{recommendationLifecycle.summary}</span>
+                                        </div>
+                                      </>
+                                    ) : null}
                                     {recommendationEvidenceSummary ? (
                                       <span className="hint muted" data-testid="recommendation-evidence-summary">
                                         Why this matters: {recommendationEvidenceSummary}

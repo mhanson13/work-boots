@@ -818,6 +818,51 @@ def _derive_workspace_recommendation_progress_metadata(
     analysis_freshness: SEORecommendationAnalysisFreshnessRead | None,
 ) -> dict[str, dict[str, str]]:
     progress_metadata: dict[str, dict[str, str]] = {}
+
+    def derive_lifecycle_state(
+        *,
+        recommendation: SEORecommendationRead,
+        progress_status: str,
+    ) -> tuple[str, str]:
+        if progress_status == "applied_pending_refresh":
+            return "applied_waiting_validation", "Applied and waiting for refreshed validation."
+
+        if progress_status == "reflected_in_latest_analysis":
+            observed_gap = str(recommendation.recommendation_observed_gap_summary or "").strip().lower()
+            has_meaningful_observed_gap = bool(
+                observed_gap
+                and observed_gap != "current site signals in this recommendation area appear limited or inconsistent."
+            )
+            meaningful_priority_reasons = [
+                reason
+                for reason in recommendation.priority_reasons
+                if reason not in {"general", "pending_refresh_context"}
+            ]
+            meaningful_trace_tokens = [
+                token
+                for token in recommendation.recommendation_evidence_trace
+                if str(token or "").strip().lower() not in {"audit-backed", "general site signals"}
+            ]
+            has_specific_target_context = (
+                recommendation.recommendation_target_context is not None
+                and recommendation.recommendation_target_context != "general"
+            )
+            has_current_signal = any(
+                [
+                    has_meaningful_observed_gap,
+                    recommendation.recommendation_evidence_summary,
+                    bool(meaningful_trace_tokens),
+                    has_specific_target_context,
+                    bool(meaningful_priority_reasons),
+                    bool(recommendation.eeat_categories),
+                ]
+            )
+            if has_current_signal:
+                return "reflected_still_relevant", "Reflected in analysis, but still appears relevant."
+            return "likely_resolved", "Likely addressed in the latest analysis."
+
+        return "active", "Still an active recommendation."
+
     for recommendation in recommendations:
         status = "suggested"
         summary = "Suggested action not yet applied."
@@ -834,9 +879,15 @@ def _derive_workspace_recommendation_progress_metadata(
             ):
                 status = "reflected_in_latest_analysis"
                 summary = "Applied and reflected in the latest analysis."
+        lifecycle_state, lifecycle_summary = derive_lifecycle_state(
+            recommendation=recommendation,
+            progress_status=status,
+        )
         progress_metadata[recommendation.id] = {
             "recommendation_progress_status": status,
             "recommendation_progress_summary": summary,
+            "recommendation_lifecycle_state": lifecycle_state,
+            "recommendation_lifecycle_summary": lifecycle_summary,
         }
     return progress_metadata
 

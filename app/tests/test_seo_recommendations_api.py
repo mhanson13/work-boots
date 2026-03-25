@@ -954,6 +954,8 @@ def test_recommendation_workspace_summary_returns_latest_completed_run(db_sessio
         payload["recommendations"]["items"][0]["recommendation_progress_summary"]
         == "Suggested action not yet applied."
     )
+    assert payload["recommendations"]["items"][0]["recommendation_lifecycle_state"] == "active"
+    assert payload["recommendations"]["items"][0]["recommendation_lifecycle_summary"] == "Still an active recommendation."
     assert (
         payload["recommendations"]["items"][0]["recommendation_evidence_summary"]
         == "This is backed by structured site findings from the latest analysis."
@@ -1760,6 +1762,11 @@ def test_recommendation_workspace_summary_includes_latest_apply_outcome(db_sessi
         payload["recommendations"]["items"][0]["recommendation_progress_summary"]
         == "Applied. Waiting for the next analysis refresh to reflect this change."
     )
+    assert payload["recommendations"]["items"][0]["recommendation_lifecycle_state"] == "applied_waiting_validation"
+    assert (
+        payload["recommendations"]["items"][0]["recommendation_lifecycle_summary"]
+        == "Applied and waiting for refreshed validation."
+    )
 
 
 def test_recommendation_workspace_summary_handles_partial_apply_metadata_safely(
@@ -2017,6 +2024,11 @@ def test_recommendation_workspace_summary_marks_reflected_when_apply_link_is_fre
     assert (
         payload["recommendations"]["items"][0]["recommendation_progress_summary"]
         == "Applied and reflected in the latest analysis."
+    )
+    assert payload["recommendations"]["items"][0]["recommendation_lifecycle_state"] == "reflected_still_relevant"
+    assert (
+        payload["recommendations"]["items"][0]["recommendation_lifecycle_summary"]
+        == "Reflected in analysis, but still appears relevant."
     )
 
 

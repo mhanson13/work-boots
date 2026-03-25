@@ -2606,6 +2606,8 @@ describe("site workspace timeline controls", () => {
             buildRecommendation({
               id: "rec-progress-suggested",
               title: "Suggested recommendation",
+              recommendation_lifecycle_state: "active",
+              recommendation_lifecycle_summary: "Still an active recommendation.",
             }),
             buildRecommendation({
               id: "rec-progress-pending",
@@ -2613,15 +2615,27 @@ describe("site workspace timeline controls", () => {
               recommendation_progress_status: "applied_pending_refresh",
               recommendation_progress_summary:
                 "Applied. Waiting for the next analysis refresh to reflect this change.",
+              recommendation_lifecycle_state: "applied_waiting_validation",
+              recommendation_lifecycle_summary: "Applied and waiting for refreshed validation.",
             }),
             buildRecommendation({
               id: "rec-progress-reflected",
               title: "Reflected recommendation",
               recommendation_progress_status: "reflected_in_latest_analysis",
               recommendation_progress_summary: "Applied and reflected in the latest analysis.",
+              recommendation_lifecycle_state: "reflected_still_relevant",
+              recommendation_lifecycle_summary: "Reflected in analysis, but still appears relevant.",
+            }),
+            buildRecommendation({
+              id: "rec-progress-resolved",
+              title: "Likely resolved recommendation",
+              recommendation_progress_status: "reflected_in_latest_analysis",
+              recommendation_progress_summary: "Applied and reflected in the latest analysis.",
+              recommendation_lifecycle_state: "likely_resolved",
+              recommendation_lifecycle_summary: "Likely addressed in the latest analysis.",
             }),
           ],
-          total: 3,
+          total: 4,
         },
       }),
     );
@@ -2636,8 +2650,18 @@ describe("site workspace timeline controls", () => {
     expect(
       screen.getByText("Applied. Waiting for the next analysis refresh to reflect this change."),
     ).toBeInTheDocument();
-    expect(screen.getByText("Reflected in latest analysis")).toBeInTheDocument();
-    expect(screen.getByText("Applied and reflected in the latest analysis.")).toBeInTheDocument();
+    expect(screen.getAllByText("Reflected in latest analysis")).toHaveLength(2);
+    expect(screen.getAllByText("Applied and reflected in the latest analysis.")).toHaveLength(2);
+    const lifecycleLines = screen.getAllByTestId("recommendation-lifecycle-state");
+    expect(lifecycleLines).toHaveLength(4);
+    expect(lifecycleLines[0]).toHaveTextContent("Active");
+    expect(lifecycleLines[0]).toHaveTextContent("Still an active recommendation.");
+    expect(lifecycleLines[1]).toHaveTextContent("Applied, waiting validation");
+    expect(lifecycleLines[1]).toHaveTextContent("Applied and waiting for refreshed validation.");
+    expect(lifecycleLines[2]).toHaveTextContent("Reflected, still relevant");
+    expect(lifecycleLines[2]).toHaveTextContent("Reflected in analysis, but still appears relevant.");
+    expect(lifecycleLines[3]).toHaveTextContent("Likely resolved");
+    expect(lifecycleLines[3]).toHaveTextContent("Likely addressed in the latest analysis.");
   });
 
   it("renders compact recommendation evidence summaries only when metadata is present", async () => {
@@ -2670,6 +2694,7 @@ describe("site workspace timeline controls", () => {
       "Why this matters: Competitors show stronger trust signals in this area.",
     );
     expect(screen.queryByText("Why this matters: Recommendation without evidence summary")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("recommendation-lifecycle-state")).not.toBeInTheDocument();
   });
 
   it("renders recommendation action clarity and expected outcome lines when metadata is present", async () => {

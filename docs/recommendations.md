@@ -273,6 +273,33 @@ No AI calls, scoring, or workflow-state persistence is added.
 - `analysis_freshness` answers whether the latest analysis is newer than the latest apply.
 - `recommendation_progress_status` applies that shared freshness truth at recommendation-row level when linkage is deterministic.
 
+## Recommendation Lifecycle State (Deterministic, Additive)
+
+Workspace recommendation rows now include additive lifecycle metadata:
+
+- `recommendation_lifecycle_state`
+- `recommendation_lifecycle_summary`
+
+Lifecycle values:
+- `active`
+- `applied_waiting_validation`
+- `reflected_still_relevant`
+- `likely_resolved`
+
+Derivation (deterministic, conservative):
+- `active`:
+  - recommendation is still a suggested/current action.
+- `applied_waiting_validation`:
+  - recommendation is applied and analysis is still pending refresh.
+- `reflected_still_relevant`:
+  - recommendation was reflected in fresh analysis and still has meaningful current gap/evidence signals.
+- `likely_resolved`:
+  - recommendation was reflected in fresh analysis and meaningful current gap/evidence signals are not present.
+
+Notes:
+- lifecycle is operator guidance only, not a workflow engine/state machine.
+- `likely_resolved` is intentionally conservative and only used when deterministic support exists.
+
 ## Recommendation Action Specificity (Deterministic)
 
 Recommendation rows now include additive deterministic action-specificity fields:

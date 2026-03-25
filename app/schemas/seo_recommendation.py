@@ -33,6 +33,12 @@ SEORecommendationProgressStatus = Literal[
     "applied_pending_refresh",
     "reflected_in_latest_analysis",
 ]
+SEORecommendationLifecycleState = Literal[
+    "active",
+    "applied_waiting_validation",
+    "reflected_still_relevant",
+    "likely_resolved",
+]
 SEORecommendationTargetContext = Literal[
     "homepage",
     "service_pages",
@@ -105,6 +111,7 @@ _APPLY_OUTCOME_LABEL_MAX_CHARS = 180
 _APPLY_OUTCOME_EXPECTED_CHANGE_MAX_CHARS = 260
 _APPLY_OUTCOME_NEXT_RUN_MAX_CHARS = 220
 _RECOMMENDATION_PROGRESS_SUMMARY_MAX_CHARS = 220
+_RECOMMENDATION_LIFECYCLE_SUMMARY_MAX_CHARS = 220
 _RECOMMENDATION_EVIDENCE_SUMMARY_MAX_CHARS = 220
 _RECOMMENDATION_OBSERVED_GAP_SUMMARY_MAX_CHARS = 220
 _RECOMMENDATION_ACTION_CLARITY_MAX_CHARS = 220
@@ -1533,6 +1540,11 @@ class SEORecommendationRead(BaseModel):
         default=None,
         max_length=_RECOMMENDATION_PROGRESS_SUMMARY_MAX_CHARS,
     )
+    recommendation_lifecycle_state: SEORecommendationLifecycleState = "active"
+    recommendation_lifecycle_summary: str | None = Field(
+        default=None,
+        max_length=_RECOMMENDATION_LIFECYCLE_SUMMARY_MAX_CHARS,
+    )
     recommendation_evidence_summary: str | None = Field(
         default=None,
         max_length=_RECOMMENDATION_EVIDENCE_SUMMARY_MAX_CHARS,
@@ -1609,6 +1621,27 @@ class SEORecommendationRead(BaseModel):
     @classmethod
     def normalize_recommendation_progress_summary(cls, value: Any) -> str | None:
         return _compact_text(value, max_length=_RECOMMENDATION_PROGRESS_SUMMARY_MAX_CHARS)
+
+    @field_validator("recommendation_lifecycle_state", mode="before")
+    @classmethod
+    def normalize_recommendation_lifecycle_state(
+        cls,
+        value: Any,
+    ) -> SEORecommendationLifecycleState:
+        normalized = str(value or "").strip().lower()
+        if normalized not in {
+            "active",
+            "applied_waiting_validation",
+            "reflected_still_relevant",
+            "likely_resolved",
+        }:
+            return "active"
+        return normalized  # type: ignore[return-value]
+
+    @field_validator("recommendation_lifecycle_summary", mode="before")
+    @classmethod
+    def normalize_recommendation_lifecycle_summary(cls, value: Any) -> str | None:
+        return _compact_text(value, max_length=_RECOMMENDATION_LIFECYCLE_SUMMARY_MAX_CHARS)
 
     @field_validator("recommendation_evidence_summary", mode="before")
     @classmethod
@@ -1889,6 +1922,56 @@ class SEORecommendationRead(BaseModel):
             evidence_json=self.evidence_json if isinstance(self.evidence_json, dict) else None,
             theme=self.theme,
         )
+        return self
+
+    @model_validator(mode="after")
+    def derive_recommendation_lifecycle(self) -> "SEORecommendationRead":
+        if self.recommendation_lifecycle_state == "active":
+            if self.recommendation_progress_status == "applied_pending_refresh":
+                self.recommendation_lifecycle_state = "applied_waiting_validation"
+            elif self.recommendation_progress_status == "reflected_in_latest_analysis":
+                observed_gap = (self.recommendation_observed_gap_summary or "").strip().lower()
+                has_meaningful_observed_gap = bool(
+                    observed_gap
+                    and observed_gap != "current site signals in this recommendation area appear limited or inconsistent."
+                )
+                meaningful_priority_reasons = [
+                    reason
+                    for reason in self.priority_reasons
+                    if reason not in {"general", "pending_refresh_context"}
+                ]
+                meaningful_trace_tokens = [
+                    token
+                    for token in self.recommendation_evidence_trace
+                    if token.lower() not in {"audit-backed", "general site signals"}
+                ]
+                has_specific_target_context = (
+                    self.recommendation_target_context is not None
+                    and self.recommendation_target_context != "general"
+                )
+                has_current_signal = any(
+                    [
+                        has_meaningful_observed_gap,
+                        self.recommendation_evidence_summary,
+                        bool(meaningful_trace_tokens),
+                        has_specific_target_context,
+                        bool(meaningful_priority_reasons),
+                        bool(self.eeat_categories),
+                    ]
+                )
+                self.recommendation_lifecycle_state = (
+                    "reflected_still_relevant" if has_current_signal else "likely_resolved"
+                )
+
+        if self.recommendation_lifecycle_summary is None:
+            if self.recommendation_lifecycle_state == "applied_waiting_validation":
+                self.recommendation_lifecycle_summary = "Applied and waiting for refreshed validation."
+            elif self.recommendation_lifecycle_state == "reflected_still_relevant":
+                self.recommendation_lifecycle_summary = "Reflected in analysis, but still appears relevant."
+            elif self.recommendation_lifecycle_state == "likely_resolved":
+                self.recommendation_lifecycle_summary = "Likely addressed in the latest analysis."
+            else:
+                self.recommendation_lifecycle_summary = "Still an active recommendation."
         return self
 
 

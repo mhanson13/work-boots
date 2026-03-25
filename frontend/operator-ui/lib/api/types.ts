@@ -695,6 +695,11 @@ export type RecommendationProgressStatus =
   | "suggested"
   | "applied_pending_refresh"
   | "reflected_in_latest_analysis";
+export type RecommendationLifecycleState =
+  | "active"
+  | "applied_waiting_validation"
+  | "reflected_still_relevant"
+  | "likely_resolved";
 
 export interface RecommendationAnalysisFreshness {
   status: RecommendationAnalysisFreshnessStatus;
@@ -895,6 +900,8 @@ export interface Recommendation {
   theme_label?: string | null;
   recommendation_progress_status?: RecommendationProgressStatus;
   recommendation_progress_summary?: string | null;
+  recommendation_lifecycle_state?: RecommendationLifecycleState;
+  recommendation_lifecycle_summary?: string | null;
   recommendation_evidence_summary?: string | null;
   recommendation_observed_gap_summary?: string | null;
   recommendation_evidence_trace?: string[];

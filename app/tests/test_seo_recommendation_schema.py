@@ -226,6 +226,53 @@ def test_recommendation_read_derives_default_progress_summary_from_status() -> N
     assert reflected.recommendation_progress_summary == "Applied and reflected in the latest analysis."
 
 
+def test_recommendation_read_derives_lifecycle_state_from_progress_status() -> None:
+    suggested = SEORecommendationRead.model_validate(
+        _recommendation_payload(
+            recommendation_progress_status="suggested",
+            recommendation_progress_summary=None,
+        )
+    )
+    pending_refresh = SEORecommendationRead.model_validate(
+        _recommendation_payload(
+            recommendation_progress_status="applied_pending_refresh",
+            recommendation_progress_summary=None,
+        )
+    )
+    reflected = SEORecommendationRead.model_validate(
+        _recommendation_payload(
+            recommendation_progress_status="reflected_in_latest_analysis",
+            recommendation_progress_summary=None,
+        )
+    )
+
+    assert suggested.recommendation_lifecycle_state == "active"
+    assert suggested.recommendation_lifecycle_summary == "Still an active recommendation."
+    assert pending_refresh.recommendation_lifecycle_state == "applied_waiting_validation"
+    assert pending_refresh.recommendation_lifecycle_summary == "Applied and waiting for refreshed validation."
+    assert reflected.recommendation_lifecycle_state == "reflected_still_relevant"
+    assert reflected.recommendation_lifecycle_summary == "Reflected in analysis, but still appears relevant."
+
+
+def test_recommendation_read_derives_likely_resolved_only_for_sparse_reflected_signals() -> None:
+    reflected_sparse = SEORecommendationRead.model_validate(
+        _recommendation_payload(
+            rule_key="",
+            title="Metadata review",
+            rationale="",
+            recommendation_progress_status="reflected_in_latest_analysis",
+            recommendation_progress_summary=None,
+            recommendation_evidence_summary=None,
+            recommendation_observed_gap_summary="Current site signals in this recommendation area appear limited or inconsistent.",
+            recommendation_target_context="general",
+            recommendation_evidence_trace=[],
+            eeat_categories=[],
+            priority_reasons=[],
+        )
+    )
+    assert reflected_sparse.recommendation_lifecycle_state == "likely_resolved"
+    assert reflected_sparse.recommendation_lifecycle_summary == "Likely addressed in the latest analysis."
+
 def test_recommendation_read_derives_competitor_backed_evidence_summary() -> None:
     recommendation = SEORecommendationRead.model_validate(
         _recommendation_payload(

@@ -222,6 +222,27 @@ Fallback rules:
 - do not infer reflected state from UI-only heuristics
 - rely on backend-provided deterministic status, which is aligned to workspace `analysis_freshness`
 
+## Recommendation Lifecycle Rendering
+
+Recommendation rows may include additive lifecycle metadata:
+
+- `recommendation_lifecycle_state`
+- `recommendation_lifecycle_summary`
+
+Recommended treatment:
+- render a compact `Lifecycle` row near `Progress`
+- show a subtle badge and one-line summary
+- supported states:
+  - `Active`
+  - `Applied, waiting validation`
+  - `Reflected, still relevant`
+  - `Likely resolved`
+
+Fallback rules:
+- if lifecycle fields are missing on older payloads, hide the lifecycle row cleanly
+- do not infer lifecycle from UI-only heuristics
+- treat lifecycle as operator guidance, not a workflow state machine
+
 ## Recommendation Evidence Summary Rendering
 
 Recommendation rows can include optional additive evidence clarity text:
