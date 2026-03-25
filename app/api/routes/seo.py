@@ -3,10 +3,13 @@ from __future__ import annotations
 from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 import logging
+import re
+from urllib.parse import urlparse
 
 from app.api.deps import (
     TenantContext,
     SEOCompetitorProfileGenerationRunExecutor,
+    get_seo_audit_repository,
     get_seo_audit_service,
     get_seo_automation_service,
     get_seo_competitor_comparison_service,
@@ -25,6 +28,7 @@ from app.api.deps import (
     resolve_tenant_business_id,
 )
 from app.models.principal import Principal, PrincipalRole
+from app.models.seo_audit_page import SEOAuditPage
 from app.models.seo_competitor_tuning_preview_event import SEOCompetitorTuningPreviewEvent
 from app.schemas.seo_audit import (
     SEOAuditFindingListResponse,
@@ -113,6 +117,7 @@ from app.schemas.seo_recommendation import (
 from app.repositories.seo_competitor_profile_generation_repository import (
     SEOCompetitorProfileGenerationRepository,
 )
+from app.repositories.seo_audit_repository import SEOAuditRepository
 from app.schemas.seo_automation import (
     SEOAutomationConfigPatchRequest,
     SEOAutomationConfigRead,
@@ -225,6 +230,63 @@ _WORKSPACE_CONTEXT_HEALTH_SERVICE_FOCUS_THIN_TERMS = {
     "business",
     "company",
     "local services",
+}
+_WORKSPACE_RECOMMENDATION_TARGET_HINT_MAX_ITEMS = 3
+_WORKSPACE_RECOMMENDATION_TARGET_HINT_MAX_CHARS = 120
+_WORKSPACE_RECOMMENDATION_TARGET_HINT_TOKEN_NOISE = {
+    "home",
+    "index",
+    "page",
+    "pages",
+}
+_WORKSPACE_RECOMMENDATION_TARGET_CONTACT_ABOUT_KEYWORDS = (
+    "about",
+    "contact",
+    "team",
+    "license",
+    "licenses",
+    "insurance",
+    "review",
+    "reviews",
+    "testimonial",
+    "testimonials",
+    "bbb",
+)
+_WORKSPACE_RECOMMENDATION_TARGET_SERVICE_KEYWORDS = (
+    "service",
+    "services",
+    "installation",
+    "install",
+    "repair",
+    "remodel",
+    "renovation",
+    "contractor",
+    "construction",
+    "flooring",
+    "roofing",
+    "plumbing",
+    "electrical",
+    "hvac",
+)
+_WORKSPACE_RECOMMENDATION_TARGET_LOCATION_KEYWORDS = (
+    "location",
+    "locations",
+    "area",
+    "areas",
+    "city",
+    "cities",
+    "service area",
+    "service areas",
+    "areas we serve",
+    "cities we serve",
+)
+_WORKSPACE_RECOMMENDATION_TARGET_ALLOWED_CONTEXTS = {
+    "homepage",
+    "service_pages",
+    "contact_about",
+    "location_pages",
+    "sitewide",
+    "general",
 }
 logger = logging.getLogger(__name__)
 
@@ -1076,6 +1138,187 @@ def _build_workspace_start_here(
         return None
 
 
+def _normalize_workspace_recommendation_target_context(value: object) -> str | None:
+    normalized = str(value or "").strip().lower()
+    if normalized in _WORKSPACE_RECOMMENDATION_TARGET_ALLOWED_CONTEXTS:
+        return normalized
+    return None
+
+
+def _normalize_workspace_audit_page_path(url: object) -> str | None:
+    compacted = _compact_workspace_text(url, max_length=2048)
+    if compacted is None:
+        return None
+
+    parsed = urlparse(compacted)
+    path = (parsed.path or "/").strip()
+    if not path:
+        path = "/"
+    if not path.startswith("/"):
+        path = f"/{path}"
+    path = re.sub(r"/+", "/", path)
+    if path != "/":
+        path = path.rstrip("/")
+    return path or "/"
+
+
+def _is_workspace_homepage_path(path: str) -> bool:
+    normalized = path.lower()
+    return normalized in {"", "/", "/home", "/index", "/index.html", "/default", "/default.aspx"}
+
+
+def _build_workspace_recommendation_page_match_text(*, page: SEOAuditPage, path: str) -> str:
+    raw_parts: list[object] = [path, page.title, page.meta_description]
+    if isinstance(page.h1_json, list):
+        raw_parts.extend(page.h1_json[:4])
+    if isinstance(page.h2_json, list):
+        raw_parts.extend(page.h2_json[:6])
+
+    compact_parts: list[str] = []
+    for value in raw_parts:
+        compacted = _compact_workspace_text(value, max_length=180)
+        if compacted:
+            compact_parts.append(compacted.lower())
+    return " ".join(compact_parts)
+
+
+def _build_workspace_page_hint_from_audit_page(*, page: SEOAuditPage, path: str) -> str | None:
+    if _is_workspace_homepage_path(path):
+        return "Homepage"
+
+    compact_path = _compact_workspace_text(path, max_length=_WORKSPACE_RECOMMENDATION_TARGET_HINT_MAX_CHARS)
+    if compact_path and compact_path != "/":
+        return compact_path
+
+    return _compact_workspace_text(page.title, max_length=_WORKSPACE_RECOMMENDATION_TARGET_HINT_MAX_CHARS)
+
+
+def _collect_workspace_recommendation_page_hints_by_context(
+    pages: list[SEOAuditPage],
+) -> dict[str, list[str]]:
+    hints_by_context: dict[str, list[str]] = {
+        "homepage": [],
+        "contact_about": [],
+        "service_pages": [],
+        "location_pages": [],
+        "core": [],
+    }
+    seen_by_context: dict[str, set[str]] = {key: set() for key in hints_by_context}
+
+    def add_hint(context: str, hint: str) -> None:
+        if context not in hints_by_context:
+            return
+        normalized_key = hint.lower()
+        if normalized_key in seen_by_context[context]:
+            return
+        seen_by_context[context].add(normalized_key)
+        hints_by_context[context].append(hint)
+
+    for page in pages:
+        path = _normalize_workspace_audit_page_path(page.url)
+        if path is None:
+            continue
+        hint = _build_workspace_page_hint_from_audit_page(page=page, path=path)
+        if hint is None:
+            continue
+
+        match_text = _build_workspace_recommendation_page_match_text(page=page, path=path)
+        is_homepage = _is_workspace_homepage_path(path)
+        if is_homepage:
+            add_hint("homepage", hint)
+        else:
+            add_hint("core", hint)
+
+        if any(keyword in match_text for keyword in _WORKSPACE_RECOMMENDATION_TARGET_CONTACT_ABOUT_KEYWORDS):
+            add_hint("contact_about", hint)
+        if any(keyword in match_text for keyword in _WORKSPACE_RECOMMENDATION_TARGET_SERVICE_KEYWORDS):
+            add_hint("service_pages", hint)
+        if any(keyword in match_text for keyword in _WORKSPACE_RECOMMENDATION_TARGET_LOCATION_KEYWORDS):
+            add_hint("location_pages", hint)
+
+    return hints_by_context
+
+
+def _derive_workspace_target_page_hints_for_context(
+    *,
+    target_context: object,
+    hints_by_context: dict[str, list[str]],
+) -> list[str]:
+    normalized_context = _normalize_workspace_recommendation_target_context(target_context)
+    if normalized_context is None:
+        return []
+
+    if normalized_context == "homepage":
+        return hints_by_context.get("homepage", [])[:1]
+    if normalized_context == "contact_about":
+        return hints_by_context.get("contact_about", [])[:_WORKSPACE_RECOMMENDATION_TARGET_HINT_MAX_ITEMS]
+    if normalized_context == "service_pages":
+        return hints_by_context.get("service_pages", [])[:_WORKSPACE_RECOMMENDATION_TARGET_HINT_MAX_ITEMS]
+    if normalized_context == "location_pages":
+        return hints_by_context.get("location_pages", [])[:_WORKSPACE_RECOMMENDATION_TARGET_HINT_MAX_ITEMS]
+    if normalized_context == "sitewide":
+        hints: list[str] = []
+        seen: set[str] = set()
+        for bucket in ("homepage", "service_pages", "contact_about", "location_pages", "core"):
+            for hint in hints_by_context.get(bucket, []):
+                key = hint.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                hints.append(hint)
+                if len(hints) >= _WORKSPACE_RECOMMENDATION_TARGET_HINT_MAX_ITEMS:
+                    return hints
+        return hints
+    return []
+
+
+def _derive_workspace_recommendation_target_page_hints(
+    *,
+    recommendations: list[SEORecommendationRead],
+    audit_pages: list[SEOAuditPage],
+) -> dict[str, list[str]]:
+    if not recommendations or not audit_pages:
+        return {}
+    hints_by_context = _collect_workspace_recommendation_page_hints_by_context(audit_pages)
+    hints_by_recommendation_id: dict[str, list[str]] = {}
+    for recommendation in recommendations:
+        hints = _derive_workspace_target_page_hints_for_context(
+            target_context=recommendation.recommendation_target_context,
+            hints_by_context=hints_by_context,
+        )
+        if hints:
+            hints_by_recommendation_id[recommendation.id] = hints
+    return hints_by_recommendation_id
+
+
+def _load_workspace_audit_pages_for_recommendations(
+    *,
+    business_id: str,
+    site_id: str,
+    recommendation_audit_run_id: str | None,
+    seo_audit_repository: SEOAuditRepository,
+) -> list[SEOAuditPage]:
+    candidate_run_ids: list[str] = []
+    if recommendation_audit_run_id:
+        candidate_run_ids.append(recommendation_audit_run_id)
+
+    latest_audit_run = seo_audit_repository.get_latest_completed_run_for_business_site(
+        business_id=business_id,
+        site_id=site_id,
+    )
+    if latest_audit_run is not None and latest_audit_run.id not in candidate_run_ids:
+        candidate_run_ids.append(latest_audit_run.id)
+
+    for audit_run_id in candidate_run_ids:
+        pages = seo_audit_repository.list_pages_for_business_run(
+            business_id=business_id,
+            run_id=audit_run_id,
+        )
+        if pages:
+            return pages
+    return []
+
+
 @router.get("/sites", response_model=SEOSiteListResponse)
 def list_seo_sites(
     business_id: str,
@@ -1481,6 +1724,7 @@ def get_seo_recommendation_workspace_summary(
     site_id: str,
     tenant_context: TenantContext = Depends(get_tenant_context),
     seo_site_service: SEOSiteService = Depends(get_seo_site_service),
+    seo_audit_repository: SEOAuditRepository = Depends(get_seo_audit_repository),
     seo_competitor_profile_generation_repository: SEOCompetitorProfileGenerationRepository = Depends(
         get_seo_competitor_profile_generation_repository
     ),
@@ -1519,6 +1763,7 @@ def get_seo_recommendation_workspace_summary(
     competitor_prompt_preview = None
     recommendation_prompt_preview = None
     trusted_site_context: dict[str, object] = {}
+    workspace_audit_pages: list[SEOAuditPage] = []
     latest_applied_preview_event = (
         seo_competitor_profile_generation_repository.get_latest_applied_tuning_preview_event_for_business_site(
             business_id=scoped_business_id,
@@ -1569,6 +1814,12 @@ def get_seo_recommendation_workspace_summary(
             by_severity=by_severity,
             by_effort_bucket=by_effort_bucket,
             by_priority_band=by_priority_band,
+        )
+        workspace_audit_pages = _load_workspace_audit_pages_for_recommendations(
+            business_id=scoped_business_id,
+            site_id=site_id,
+            recommendation_audit_run_id=latest_completed_run.audit_run_id,
+            seo_audit_repository=seo_audit_repository,
         )
         grouped_recommendations = _build_workspace_grouped_recommendations(
             recommendations=serialized_items,
@@ -1715,8 +1966,20 @@ def get_seo_recommendation_workspace_summary(
         applied_recommendation_ids=applied_recommendation_ids,
         analysis_freshness=analysis_freshness,
     )
+    recommendation_target_page_hints_by_id = _derive_workspace_recommendation_target_page_hints(
+        recommendations=recommendations_payload.items,
+        audit_pages=workspace_audit_pages,
+    )
     recommendations_payload.items = [
-        recommendation.model_copy(update=recommendation_progress_metadata.get(recommendation.id, {}))
+        recommendation.model_copy(
+            update={
+                **recommendation_progress_metadata.get(recommendation.id, {}),
+                "recommendation_target_page_hints": recommendation_target_page_hints_by_id.get(
+                    recommendation.id,
+                    [],
+                ),
+            }
+        )
         for recommendation in recommendations_payload.items
     ]
     ordering_explanation = _build_workspace_ordering_explanation(

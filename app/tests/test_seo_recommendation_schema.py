@@ -328,6 +328,21 @@ def test_recommendation_read_derives_safe_expected_outcome_fallback_for_sparse_m
     assert recommendation.recommendation_expected_outcome == "Improves core site clarity for prospective customers."
 
 
+def test_recommendation_read_normalizes_target_page_hints_with_bounds() -> None:
+    recommendation = SEORecommendationRead.model_validate(
+        _recommendation_payload(
+            recommendation_target_page_hints=[
+                "Homepage",
+                "  /services  ",
+                "homepage",
+                "/about",
+                "/contact",
+            ]
+        )
+    )
+    assert recommendation.recommendation_target_page_hints == ["Homepage", "/services", "/about"]
+
+
 def test_recommendation_read_derives_contact_about_target_context_for_trust_signals() -> None:
     recommendation = SEORecommendationRead.model_validate(
         _recommendation_payload(

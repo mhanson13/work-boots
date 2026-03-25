@@ -2684,6 +2684,7 @@ describe("site workspace timeline controls", () => {
               recommendation_action_clarity: "Add stronger review and trust proof to key service pages.",
               recommendation_expected_outcome: "Helps visitors trust the business faster.",
               recommendation_target_context: "service_pages",
+              recommendation_target_page_hints: ["Homepage", "/services/flooring"],
             }),
             buildRecommendation({
               id: "rec-action-2",
@@ -2713,6 +2714,10 @@ describe("site workspace timeline controls", () => {
     const targetContextLines = screen.getAllByTestId("recommendation-target-context");
     expect(targetContextLines).toHaveLength(1);
     expect(targetContextLines[0]).toHaveTextContent("Where: Service pages");
+
+    const targetPageHintLines = screen.getAllByTestId("recommendation-target-page-hints");
+    expect(targetPageHintLines).toHaveLength(1);
+    expect(targetPageHintLines[0]).toHaveTextContent("Likely pages: Homepage, /services/flooring");
 
     expect(
       screen.queryByText("Action: Recommendation without action metadata"),
@@ -3101,6 +3106,7 @@ describe("site workspace timeline controls", () => {
               primary_eeat_category: "trustworthiness",
               theme: "trust_and_legitimacy",
               theme_label: "Trust & legitimacy",
+              recommendation_target_page_hints: ["/about", "/contact"],
             }),
             buildRecommendation({
               id: "rec-theme-2",
@@ -3194,6 +3200,7 @@ describe("site workspace timeline controls", () => {
         "Improve visible business trust signals like reviews, verification, and contact legitimacy.",
       ),
     ).toBeInTheDocument();
+    expect(within(trustGroup).getByText("Likely pages: /about, /contact")).toBeInTheDocument();
     expect(within(trustGroup).getAllByRole("row")).toHaveLength(2);
 
     const experienceGroup = screen.getByTestId("recommendation-theme-group-experience_and_proof");

@@ -899,6 +899,7 @@ export interface Recommendation {
   recommendation_action_clarity?: string | null;
   recommendation_expected_outcome?: string | null;
   recommendation_target_context?: RecommendationTargetContext | null;
+  recommendation_target_page_hints?: string[];
   decision_reason: string | null;
   created_at: string;
   updated_at: string;

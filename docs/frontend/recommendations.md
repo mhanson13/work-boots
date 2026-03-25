@@ -282,6 +282,22 @@ Notes:
 - it is deterministic metadata, not AI-selected page mapping
 - it does not introduce editing workflow or page-level task orchestration
 
+## Recommendation Target Page Hint Rendering
+
+Recommendation rows may include additive deterministic page hints:
+
+- `recommendation_target_page_hints` (bounded list, max 3)
+
+Rendering guidance:
+- display as a compact row-level line, for example `Likely pages: Homepage, /services`
+- keep it subtle and near `Where`, `Action`, and `Expected outcome`
+- render only when hints are present
+
+Notes:
+- hints are derived from existing persisted audit inventory and target context metadata
+- hints are operator guidance only, not guaranteed exact page mappings
+- when inventory is sparse/ambiguous, omit the line instead of guessing
+
 ## Competitor Context Health Indicator
 
 Workspace summary payloads can include optional `competitor_context_health` metadata:

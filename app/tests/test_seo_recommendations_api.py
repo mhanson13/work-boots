@@ -968,6 +968,8 @@ def test_recommendation_workspace_summary_returns_latest_completed_run(db_sessio
         "sitewide",
         "general",
     }
+    assert isinstance(payload["recommendations"]["items"][0]["recommendation_target_page_hints"], list)
+    assert payload["recommendations"]["items"][0]["recommendation_target_page_hints"] == []
     assert payload["latest_narrative"] is None
     assert payload["tuning_suggestions"] == []
     assert payload["apply_outcome"] is None
@@ -1444,6 +1446,130 @@ def test_recommendation_workspace_summary_derives_eeat_categories_and_gap_summar
     assert payload["eeat_gap_summary"]["message"]
     assert payload["ordering_explanation"] is not None
     assert "Competitor-backed" in payload["ordering_explanation"]["message"]
+
+
+def test_recommendation_workspace_summary_derives_target_page_hints_from_audit_inventory(
+    db_session, seeded_business
+) -> None:
+    client = _make_client(db_session, business_id=seeded_business.id)
+    site_id = _create_site(client, seeded_business.id)
+    audit_run_id = _seed_completed_audit_run(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+    )
+    _seed_audit_pages(
+        db_session,
+        business_id=seeded_business.id,
+        site_id=site_id,
+        audit_run_id=audit_run_id,
+        pages=[
+            {"url": "https://client.example/", "title": "Homepage"},
+            {"url": "https://client.example/services", "title": "Services"},
+            {"url": "https://client.example/about", "title": "About"},
+            {"url": "https://client.example/contact", "title": "Contact"},
+            {"url": "https://client.example/locations/loveland", "title": "Loveland service area"},
+        ],
+    )
+    run_response = client.post(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendation-runs",
+        json={"audit_run_id": audit_run_id},
+    )
+    assert run_response.status_code == 201
+    run_id = run_response.json()["id"]
+
+    db_session.add_all(
+        [
+            SEORecommendation(
+                id=str(uuid4()),
+                business_id=seeded_business.id,
+                site_id=site_id,
+                recommendation_run_id=run_id,
+                audit_run_id=audit_run_id,
+                comparison_run_id=None,
+                rule_key="workspace_hint_homepage",
+                category="SEO",
+                severity="WARNING",
+                title="Strengthen homepage service clarity",
+                rationale="Homepage framing should highlight core services.",
+                priority_score=92,
+                priority_band="high",
+                effort_bucket="MEDIUM",
+                status="open",
+            ),
+            SEORecommendation(
+                id=str(uuid4()),
+                business_id=seeded_business.id,
+                site_id=site_id,
+                recommendation_run_id=run_id,
+                audit_run_id=audit_run_id,
+                comparison_run_id=None,
+                rule_key="workspace_hint_contact_about",
+                category="SEO",
+                severity="WARNING",
+                title="Add license and insurance proof to contact page",
+                rationale="Make trust and legitimacy proof visible on contact/about pages.",
+                priority_score=91,
+                priority_band="high",
+                effort_bucket="MEDIUM",
+                status="open",
+            ),
+            SEORecommendation(
+                id=str(uuid4()),
+                business_id=seeded_business.id,
+                site_id=site_id,
+                recommendation_run_id=run_id,
+                audit_run_id=audit_run_id,
+                comparison_run_id=None,
+                rule_key="workspace_hint_service_pages",
+                category="SEO",
+                severity="WARNING",
+                title="Clarify service pages for flooring and installation",
+                rationale="Service pages should better explain core offerings.",
+                priority_score=90,
+                priority_band="high",
+                effort_bucket="MEDIUM",
+                status="open",
+            ),
+            SEORecommendation(
+                id=str(uuid4()),
+                business_id=seeded_business.id,
+                site_id=site_id,
+                recommendation_run_id=run_id,
+                audit_run_id=audit_run_id,
+                comparison_run_id=None,
+                rule_key="workspace_hint_location_pages",
+                category="SEO",
+                severity="WARNING",
+                title="Improve local intent on location pages",
+                rationale="Location pages should reflect service-area expectations.",
+                priority_score=89,
+                priority_band="high",
+                effort_bucket="MEDIUM",
+                status="open",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    summary = client.get(
+        f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/workspace-summary"
+    )
+    assert summary.status_code == 200
+    payload = summary.json()
+    by_rule_key = {
+        recommendation["rule_key"]: recommendation
+        for recommendation in payload["recommendations"]["items"]
+    }
+
+    assert by_rule_key["workspace_hint_homepage"]["recommendation_target_page_hints"] == ["Homepage"]
+
+    contact_hints = by_rule_key["workspace_hint_contact_about"]["recommendation_target_page_hints"]
+    assert contact_hints
+    assert any(hint in {"/about", "/contact"} for hint in contact_hints)
+
+    assert "/services" in by_rule_key["workspace_hint_service_pages"]["recommendation_target_page_hints"]
+    assert "/locations/loveland" in by_rule_key["workspace_hint_location_pages"]["recommendation_target_page_hints"]
 
 
 def test_recommendation_workspace_summary_omits_eeat_gap_summary_when_competitor_signals_are_insufficient(

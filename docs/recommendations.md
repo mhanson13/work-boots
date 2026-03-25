@@ -318,6 +318,29 @@ Operator intent:
 - show where a recommendation most likely applies in a compact form
 - provide guidance, not a guaranteed page-level map or editing workflow
 
+## Recommendation Target Page Hints (Deterministic)
+
+Recommendation rows now include an additive bounded page-hint field:
+
+- `recommendation_target_page_hints` (max 3)
+
+Examples:
+- `Homepage`
+- `/services`
+- `/about`
+- `/contact`
+- `/locations/loveland`
+
+Derivation:
+- deterministic only, from existing persisted audit page inventory plus existing `recommendation_target_context`
+- no AI page selection
+- no new crawling jobs
+- no page-editing workflow changes
+
+Behavior:
+- hints are optional guidance, not guaranteed exact edit targets
+- when audit inventory is thin or ambiguous, hints are intentionally omitted
+
 ## Recommendation Evidence Summary (Deterministic)
 
 Recommendation rows now include additive deterministic evidence clarity metadata:

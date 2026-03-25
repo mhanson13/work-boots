@@ -108,6 +108,8 @@ _RECOMMENDATION_PROGRESS_SUMMARY_MAX_CHARS = 220
 _RECOMMENDATION_EVIDENCE_SUMMARY_MAX_CHARS = 220
 _RECOMMENDATION_ACTION_CLARITY_MAX_CHARS = 220
 _RECOMMENDATION_EXPECTED_OUTCOME_MAX_CHARS = 220
+_RECOMMENDATION_TARGET_PAGE_HINT_MAX_CHARS = 120
+_RECOMMENDATION_TARGET_PAGE_HINT_MAX_ITEMS = 3
 _SIGNAL_SUMMARY_EVIDENCE_SOURCE_ORDER = ("site", "competitors", "references", "themes")
 _RECOMMENDATION_EEAT_GAP_SUPPORTING_SIGNALS_MAX_ITEMS = 6
 _RECOMMENDATION_EEAT_GAP_SUPPORTING_SIGNAL_MAX_CHARS = 140
@@ -1359,6 +1361,7 @@ class SEORecommendationRead(BaseModel):
         max_length=_RECOMMENDATION_EXPECTED_OUTCOME_MAX_CHARS,
     )
     recommendation_target_context: SEORecommendationTargetContext | None = None
+    recommendation_target_page_hints: list[str] = Field(default_factory=list)
     decision: SEORecommendationDecision | None = None
     decision_reason: str | None = None
     assigned_principal_id: str | None = None
@@ -1441,6 +1444,15 @@ class SEORecommendationRead(BaseModel):
         if value is None:
             return None
         return _normalize_recommendation_target_context(value)
+
+    @field_validator("recommendation_target_page_hints", mode="before")
+    @classmethod
+    def normalize_recommendation_target_page_hints(cls, value: Any) -> list[str]:
+        return _compact_text_list(
+            value,
+            limit=_RECOMMENDATION_TARGET_PAGE_HINT_MAX_ITEMS,
+            max_length=_RECOMMENDATION_TARGET_PAGE_HINT_MAX_CHARS,
+        )
 
     @field_validator("decision", mode="before")
     @classmethod

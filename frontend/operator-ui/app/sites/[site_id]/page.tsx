@@ -1150,6 +1150,10 @@ function normalizeRecommendationTargetContext(item: Recommendation): Recommendat
   return null;
 }
 
+function normalizeRecommendationTargetPageHints(item: Recommendation): string[] {
+  return normalizeBoundedStringList(item.recommendation_target_page_hints, 3, 120);
+}
+
 interface CompetitorContextHealthCheckView {
   key: "location_context" | "industry_context" | "service_focus" | "target_customer_context";
   label: string;
@@ -4712,6 +4716,7 @@ export default function SiteWorkspacePage() {
                         const recommendationActionClarity = normalizeRecommendationActionClarity(item);
                         const recommendationExpectedOutcome = normalizeRecommendationExpectedOutcome(item);
                         const recommendationTargetContext = normalizeRecommendationTargetContext(item);
+                        const recommendationTargetPageHints = normalizeRecommendationTargetPageHints(item);
                         const rowId = recommendationRowId(item.id);
                         return (
                           <tr
@@ -4777,6 +4782,11 @@ export default function SiteWorkspacePage() {
                                   Where: {formatRecommendationTargetContext(recommendationTargetContext)}
                                 </span>
                               ) : null}
+                              {recommendationTargetPageHints.length > 0 ? (
+                                <span className="hint muted" data-testid="recommendation-target-page-hints">
+                                  Likely pages: {recommendationTargetPageHints.join(", ")}
+                                </span>
+                              ) : null}
                               <span className="hint muted"><code>{item.id}</code></span>
                             </td>
                             <td>{item.category}</td>
@@ -4833,6 +4843,7 @@ export default function SiteWorkspacePage() {
                               const recommendationActionClarity = normalizeRecommendationActionClarity(item);
                               const recommendationExpectedOutcome = normalizeRecommendationExpectedOutcome(item);
                               const recommendationTargetContext = normalizeRecommendationTargetContext(item);
+                              const recommendationTargetPageHints = normalizeRecommendationTargetPageHints(item);
                               const rowId = recommendationRowId(item.id);
                               return (
                                 <tr
@@ -4896,6 +4907,11 @@ export default function SiteWorkspacePage() {
                                     {recommendationTargetContext ? (
                                       <span className="hint muted" data-testid="recommendation-target-context">
                                         Where: {formatRecommendationTargetContext(recommendationTargetContext)}
+                                      </span>
+                                    ) : null}
+                                    {recommendationTargetPageHints.length > 0 ? (
+                                      <span className="hint muted" data-testid="recommendation-target-page-hints">
+                                        Likely pages: {recommendationTargetPageHints.join(", ")}
                                       </span>
                                     ) : null}
                                     <span className="hint muted"><code>{item.id}</code></span>
