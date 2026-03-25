@@ -1131,6 +1131,10 @@ function normalizeRecommendationObservedGapSummary(item: Recommendation): string
   return truncateOptionalText(item.recommendation_observed_gap_summary, 220);
 }
 
+function normalizeRecommendationEvidenceTrace(item: Recommendation): string[] {
+  return normalizeBoundedStringList(item.recommendation_evidence_trace, 5, 80);
+}
+
 function normalizeRecommendationActionClarity(item: Recommendation): string | null {
   return truncateOptionalText(item.recommendation_action_clarity, 220);
 }
@@ -4718,6 +4722,7 @@ export default function SiteWorkspacePage() {
                         const recommendationProgress = normalizeRecommendationProgress(item);
                         const recommendationEvidenceSummary = normalizeRecommendationEvidenceSummary(item);
                         const recommendationObservedGapSummary = normalizeRecommendationObservedGapSummary(item);
+                        const recommendationEvidenceTrace = normalizeRecommendationEvidenceTrace(item);
                         const renderObservedGapSummary = recommendationObservedGapSummary
                           && recommendationObservedGapSummary.toLowerCase() !== recommendationEvidenceSummary?.toLowerCase();
                         const recommendationActionClarity = normalizeRecommendationActionClarity(item);
@@ -4772,6 +4777,11 @@ export default function SiteWorkspacePage() {
                               {recommendationEvidenceSummary ? (
                                 <span className="hint muted" data-testid="recommendation-evidence-summary">
                                   Why this matters: {recommendationEvidenceSummary}
+                                </span>
+                              ) : null}
+                              {recommendationEvidenceTrace.length > 0 ? (
+                                <span className="hint muted" data-testid="recommendation-evidence-trace">
+                                  Evidence trace: {recommendationEvidenceTrace.join(" · ")}
                                 </span>
                               ) : null}
                               {renderObservedGapSummary ? (
@@ -4853,6 +4863,7 @@ export default function SiteWorkspacePage() {
                               const recommendationProgress = normalizeRecommendationProgress(item);
                               const recommendationEvidenceSummary = normalizeRecommendationEvidenceSummary(item);
                               const recommendationObservedGapSummary = normalizeRecommendationObservedGapSummary(item);
+                              const recommendationEvidenceTrace = normalizeRecommendationEvidenceTrace(item);
                               const renderObservedGapSummary = recommendationObservedGapSummary
                                 && recommendationObservedGapSummary.toLowerCase() !== recommendationEvidenceSummary?.toLowerCase();
                               const recommendationActionClarity = normalizeRecommendationActionClarity(item);
@@ -4907,6 +4918,11 @@ export default function SiteWorkspacePage() {
                                     {recommendationEvidenceSummary ? (
                                       <span className="hint muted" data-testid="recommendation-evidence-summary">
                                         Why this matters: {recommendationEvidenceSummary}
+                                      </span>
+                                    ) : null}
+                                    {recommendationEvidenceTrace.length > 0 ? (
+                                      <span className="hint muted" data-testid="recommendation-evidence-trace">
+                                        Evidence trace: {recommendationEvidenceTrace.join(" · ")}
                                       </span>
                                     ) : null}
                                     {renderObservedGapSummary ? (

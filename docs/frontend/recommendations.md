@@ -245,9 +245,11 @@ Recommendation rows may include additive deterministic operator-guidance fields:
 - `recommendation_action_clarity`
 - `recommendation_expected_outcome`
 - `recommendation_observed_gap_summary`
+- `recommendation_evidence_trace`
 
 Rendering guidance:
 - render as compact row-level lines:
+  - `Evidence trace: token · token · token`
   - `Observed gap: ...`
   - `Action: ...`
   - `Expected outcome: ...`
@@ -257,6 +259,7 @@ Rendering guidance:
 
 Fallback rules:
 - if optional action/outcome/observed-gap fields are missing/null, hide them cleanly
+- if `recommendation_evidence_trace` is missing/empty, hide it cleanly
 - if observed-gap text exactly duplicates `recommendation_evidence_summary`, suppress the duplicate line to avoid row noise
 - avoid empty placeholders
 - preserve grouped layout, start-here behavior, and apply controls

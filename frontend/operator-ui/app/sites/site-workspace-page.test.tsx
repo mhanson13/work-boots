@@ -2683,6 +2683,7 @@ describe("site workspace timeline controls", () => {
               title: "Trust-focused recommendation",
               recommendation_observed_gap_summary:
                 "No strong trust or verification signals were detected on key customer-facing pages.",
+              recommendation_evidence_trace: ["Competitor-backed", "Trust/verification gap", "Service pages"],
               recommendation_action_clarity: "Add stronger review and trust proof to key service pages.",
               recommendation_expected_outcome: "Helps visitors trust the business faster.",
               recommendation_target_context: "service_pages",
@@ -2727,6 +2728,12 @@ describe("site workspace timeline controls", () => {
       "Observed gap: No strong trust or verification signals were detected on key customer-facing pages.",
     );
 
+    const evidenceTraceLines = screen.getAllByTestId("recommendation-evidence-trace");
+    expect(evidenceTraceLines).toHaveLength(1);
+    expect(evidenceTraceLines[0]).toHaveTextContent(
+      "Evidence trace: Competitor-backed · Trust/verification gap · Service pages",
+    );
+
     expect(
       screen.queryByText("Action: Recommendation without action metadata"),
     ).not.toBeInTheDocument();
@@ -2734,6 +2741,7 @@ describe("site workspace timeline controls", () => {
       screen.queryByText("Expected outcome: Recommendation without action metadata"),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Where: Recommendation without action metadata")).not.toBeInTheDocument();
+    expect(screen.queryByText("Evidence trace: Recommendation without action metadata")).not.toBeInTheDocument();
   });
 
   it("suppresses observed gap line when it duplicates the evidence summary text", async () => {

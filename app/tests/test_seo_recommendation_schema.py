@@ -498,6 +498,79 @@ def test_recommendation_read_derives_observed_gap_summary_safe_fallback_for_spar
     )
 
 
+def test_recommendation_read_derives_evidence_trace_for_competitor_backed_trust_recommendation() -> None:
+    recommendation = SEORecommendationRead.model_validate(
+        _recommendation_payload(
+            rule_key="close_competitor_gap_missing_license_proof",
+            title="Add license and insurance proof to service pages",
+            rationale="Trust proof and contact legitimacy are weaker than nearby competitors.",
+            comparison_run_id=str(uuid4()),
+            recommendation_target_context="contact_about",
+            eeat_categories=["trustworthiness"],
+            primary_eeat_category="trustworthiness",
+            priority_reasons=["competitor_gap", "trust_gap"],
+            primary_priority_reason="competitor_gap",
+            evidence_json={"sources": ["comparison"], "finding_types": ["missing_license_proof"]},
+        )
+    )
+    trace = recommendation.recommendation_evidence_trace
+    assert "Competitor-backed" in trace
+    assert "Trust/verification gap" in trace
+    assert "Contact/About" in trace
+
+
+def test_recommendation_read_derives_evidence_trace_for_service_clarity_recommendation() -> None:
+    recommendation = SEORecommendationRead.model_validate(
+        _recommendation_payload(
+            rule_key="improve_service_page_clarity",
+            title="Clarify flooring services on core service pages",
+            rationale="Service detail and service proof are inconsistent across key pages.",
+            recommendation_target_context="service_pages",
+            eeat_categories=["expertise"],
+            primary_eeat_category="expertise",
+            priority_reasons=["expertise_gap"],
+            primary_priority_reason="expertise_gap",
+            evidence_json={"sources": ["audit"]},
+        )
+    )
+    trace = recommendation.recommendation_evidence_trace
+    assert "Service/process clarity" in trace
+    assert "Service pages" in trace
+
+
+def test_recommendation_read_derives_evidence_trace_for_location_recommendation() -> None:
+    recommendation = SEORecommendationRead.model_validate(
+        _recommendation_payload(
+            rule_key="expand_location_page_coverage",
+            title="Strengthen location page coverage",
+            rationale="Local city/service-area intent is underrepresented.",
+            recommendation_target_context="location_pages",
+            theme="authority_and_visibility",
+            theme_label="Authority & visibility",
+        )
+    )
+    trace = recommendation.recommendation_evidence_trace
+    assert "Local relevance gap" in trace
+    assert "Location pages" in trace
+
+
+def test_recommendation_read_derives_safe_evidence_trace_fallback_for_sparse_metadata() -> None:
+    recommendation = SEORecommendationRead.model_validate(
+        _recommendation_payload(
+            rule_key="generic_cleanup",
+            title="General metadata cleanup",
+            rationale="General cleanup note.",
+            theme="general_site_improvement",
+            theme_label="General site improvement",
+            eeat_categories=[],
+            priority_reasons=[],
+            evidence_json=None,
+        )
+    )
+    trace = recommendation.recommendation_evidence_trace
+    assert "General site signals" in trace
+
+
 def test_recommendation_start_here_read_normalizes_context_flags() -> None:
     start_here = SEORecommendationStartHereRead.model_validate(
         {

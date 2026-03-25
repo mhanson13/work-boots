@@ -109,6 +109,8 @@ _RECOMMENDATION_EVIDENCE_SUMMARY_MAX_CHARS = 220
 _RECOMMENDATION_OBSERVED_GAP_SUMMARY_MAX_CHARS = 220
 _RECOMMENDATION_ACTION_CLARITY_MAX_CHARS = 220
 _RECOMMENDATION_EXPECTED_OUTCOME_MAX_CHARS = 220
+_RECOMMENDATION_EVIDENCE_TRACE_MAX_CHARS = 80
+_RECOMMENDATION_EVIDENCE_TRACE_MAX_ITEMS = 5
 _RECOMMENDATION_TARGET_PAGE_HINT_MAX_CHARS = 120
 _RECOMMENDATION_TARGET_PAGE_HINT_MAX_ITEMS = 3
 _SIGNAL_SUMMARY_EVIDENCE_SOURCE_ORDER = ("site", "competitors", "references", "themes")
@@ -817,6 +819,93 @@ def _derive_recommendation_observed_gap_summary(
     return None
 
 
+def _derive_recommendation_evidence_trace(
+    *,
+    priority_reasons: list[SEORecommendationPriorityReason],
+    eeat_categories: list[SEORecommendationEEATCategory],
+    recommendation_target_context: SEORecommendationTargetContext | None,
+    recommendation_evidence_summary: str | None,
+    recommendation_observed_gap_summary: str | None,
+    evidence_json: dict[str, object] | None,
+    theme: SEORecommendationTheme | None,
+) -> list[str]:
+    evidence_sources = _extract_recommendation_evidence_sources(evidence_json)
+    evidence_summary = (recommendation_evidence_summary or "").lower()
+    observed_gap_summary = (recommendation_observed_gap_summary or "").lower()
+    trace_tokens: list[str] = []
+    seen: set[str] = set()
+
+    def add_token(value: str | None) -> None:
+        cleaned = _compact_text(value, max_length=_RECOMMENDATION_EVIDENCE_TRACE_MAX_CHARS)
+        if cleaned is None:
+            return
+        key = cleaned.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        trace_tokens.append(cleaned)
+        if len(trace_tokens) >= _RECOMMENDATION_EVIDENCE_TRACE_MAX_ITEMS:
+            return
+
+    competitor_backed = (
+        "competitor_gap" in priority_reasons
+        or "competitor" in evidence_summary
+        or "comparison" in evidence_sources
+        or "mixed" in evidence_sources
+    )
+    if competitor_backed:
+        add_token("Competitor-backed")
+    elif "audit" in evidence_sources:
+        add_token("Audit-backed")
+
+    if (
+        "trustworthiness" in eeat_categories
+        or "trust_gap" in priority_reasons
+        or any(
+            keyword in observed_gap_summary
+            for keyword in ("trust", "verification", "license", "insurance", "contact legitimacy")
+        )
+    ):
+        add_token("Trust/verification gap")
+    elif (
+        "expertise" in eeat_categories
+        or "expertise_gap" in priority_reasons
+        or any(keyword in observed_gap_summary for keyword in ("service-specific", "process", "capability"))
+    ):
+        add_token("Service/process clarity")
+    elif (
+        "experience" in eeat_categories
+        or "experience_gap" in priority_reasons
+        or any(keyword in observed_gap_summary for keyword in ("project", "testimonial", "proof"))
+    ):
+        add_token("Proof/experience gap")
+    elif (
+        "authoritativeness" in eeat_categories
+        or "authority_gap" in priority_reasons
+        or "authority" in observed_gap_summary
+    ):
+        add_token("Authority visibility gap")
+    elif recommendation_target_context == "location_pages" or "local/service-area" in observed_gap_summary:
+        add_token("Local relevance gap")
+    elif recommendation_target_context == "service_pages":
+        add_token("Service clarity gap")
+    elif theme == "general_site_improvement":
+        add_token("General site signals")
+
+    if recommendation_target_context == "homepage":
+        add_token("Homepage")
+    elif recommendation_target_context == "service_pages":
+        add_token("Service pages")
+    elif recommendation_target_context == "contact_about":
+        add_token("Contact/About")
+    elif recommendation_target_context == "location_pages":
+        add_token("Location pages")
+    elif recommendation_target_context == "sitewide":
+        add_token("Sitewide")
+
+    return trace_tokens[:_RECOMMENDATION_EVIDENCE_TRACE_MAX_ITEMS]
+
+
 def _derive_recommendation_target_context(
     *,
     rule_key: str | None,
@@ -1452,6 +1541,7 @@ class SEORecommendationRead(BaseModel):
         default=None,
         max_length=_RECOMMENDATION_OBSERVED_GAP_SUMMARY_MAX_CHARS,
     )
+    recommendation_evidence_trace: list[str] = Field(default_factory=list)
     recommendation_action_clarity: str | None = Field(
         default=None,
         max_length=_RECOMMENDATION_ACTION_CLARITY_MAX_CHARS,
@@ -1529,6 +1619,15 @@ class SEORecommendationRead(BaseModel):
     @classmethod
     def normalize_recommendation_observed_gap_summary(cls, value: Any) -> str | None:
         return _compact_text(value, max_length=_RECOMMENDATION_OBSERVED_GAP_SUMMARY_MAX_CHARS)
+
+    @field_validator("recommendation_evidence_trace", mode="before")
+    @classmethod
+    def normalize_recommendation_evidence_trace(cls, value: Any) -> list[str]:
+        return _compact_text_list(
+            value,
+            limit=_RECOMMENDATION_EVIDENCE_TRACE_MAX_ITEMS,
+            max_length=_RECOMMENDATION_EVIDENCE_TRACE_MAX_CHARS,
+        )
 
     @field_validator("recommendation_action_clarity", mode="before")
     @classmethod
@@ -1773,6 +1872,21 @@ class SEORecommendationRead(BaseModel):
             recommendation_target_context=self.recommendation_target_context,
             eeat_categories=self.eeat_categories,
             priority_reasons=self.priority_reasons,
+            theme=self.theme,
+        )
+        return self
+
+    @model_validator(mode="after")
+    def derive_recommendation_evidence_trace(self) -> "SEORecommendationRead":
+        if self.recommendation_evidence_trace:
+            return self
+        self.recommendation_evidence_trace = _derive_recommendation_evidence_trace(
+            priority_reasons=self.priority_reasons,
+            eeat_categories=self.eeat_categories,
+            recommendation_target_context=self.recommendation_target_context,
+            recommendation_evidence_summary=self.recommendation_evidence_summary,
+            recommendation_observed_gap_summary=self.recommendation_observed_gap_summary,
+            evidence_json=self.evidence_json if isinstance(self.evidence_json, dict) else None,
             theme=self.theme,
         )
         return self
