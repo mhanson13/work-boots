@@ -45,9 +45,13 @@ _INDUSTRY_FALLBACK_TEXT = "Industry not yet confidently classified from availabl
 _TARGET_CUSTOMER_CONTEXT_FALLBACK = "Customers seeking clearly substitutable services in the same market context."
 _PROMPT_INSTRUCTION_MARKERS = ("PROMPT_VERSION:", "TASK:", "RESPONSE RULES:")
 _OVERRIDE_DATA_MARKER_RENAMES = (
-    ("REQUESTED_CANDIDATE_COUNT:", "OVERRIDE_CANDIDATE_COUNT_TEMPLATE:"),
-    ("ALLOWED_COMPETITOR_TYPES:", "OVERRIDE_ALLOWED_TYPES_TEMPLATE:"),
     ("SITE_CONTEXT_JSON:", "OVERRIDE_CONTEXT_TEMPLATE:"),
+)
+_OVERRIDE_RUNTIME_CONSTRAINT_MARKERS = (
+    "REQUESTED_CANDIDATE_COUNT:",
+    "ALLOWED_COMPETITOR_TYPES:",
+    "OVERRIDE_CANDIDATE_COUNT_TEMPLATE:",
+    "OVERRIDE_ALLOWED_TYPES_TEMPLATE:",
 )
 _ALLOWED_LOCATION_CONTEXT_SOURCES = {"explicit_location", "service_area", "zip_capture", "fallback"}
 _NON_COMPETITOR_DOMAIN_HINTS = (
@@ -757,9 +761,11 @@ def _neutralize_override_data_markers(value: str) -> str:
     normalized_lines: list[str] = []
     for line in value.splitlines():
         stripped = line.lstrip()
+        upper_stripped = stripped.upper()
+        if any(upper_stripped.startswith(marker) for marker in _OVERRIDE_RUNTIME_CONSTRAINT_MARKERS):
+            continue
         prefix = line[: len(line) - len(stripped)]
         replacement_line = line
-        upper_stripped = stripped.upper()
         for marker, replacement in _OVERRIDE_DATA_MARKER_RENAMES:
             if not upper_stripped.startswith(marker):
                 continue

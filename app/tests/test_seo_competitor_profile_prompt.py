@@ -433,6 +433,7 @@ def test_prompt_builder_override_does_not_duplicate_requested_candidate_count_or
         "PROMPT_VERSION: seo-competitor-profile-v2\n"
         "TASK: Use business custom competitor instruction body.\n"
         "REQUESTED_CANDIDATE_COUNT: 9\n"
+        "ALLOWED_COMPETITOR_TYPES: direct, unknown\n"
         "SITE_CONTEXT_JSON:\n"
         "{\"custom\":true}"
     )
@@ -444,8 +445,37 @@ def test_prompt_builder_override_does_not_duplicate_requested_candidate_count_or
     )
 
     assert "PROMPT_VERSION: seo-competitor-profile-v1" not in prompt.user_prompt
+    assert "REQUESTED_CANDIDATE_COUNT: 9" not in prompt.user_prompt
+    assert "ALLOWED_COMPETITOR_TYPES: direct, unknown" not in prompt.user_prompt
+    assert "OVERRIDE_CANDIDATE_COUNT_TEMPLATE:" not in prompt.user_prompt
+    assert "OVERRIDE_ALLOWED_TYPES_TEMPLATE:" not in prompt.user_prompt
+    assert "REQUESTED_CANDIDATE_COUNT: 2" in prompt.user_prompt
+    assert "ALLOWED_COMPETITOR_TYPES: direct, indirect, local, marketplace, informational, unknown" in prompt.user_prompt
     assert prompt.user_prompt.count("REQUESTED_CANDIDATE_COUNT:") == 1
+    assert prompt.user_prompt.count("ALLOWED_COMPETITOR_TYPES:") == 1
     assert prompt.user_prompt.count("SITE_CONTEXT_JSON:") == 1
+
+
+def test_prompt_builder_override_cannot_change_runtime_candidate_constraints() -> None:
+    override_text = (
+        "OVERRIDE_CANDIDATE_COUNT_TEMPLATE: 99\n"
+        "OVERRIDE_ALLOWED_TYPES_TEMPLATE: marketplace\n"
+        "Prefer local relevance."
+    )
+    prompt = build_seo_competitor_profile_prompt(
+        site=_build_site(),
+        existing_domains=[],
+        candidate_count=3,
+        prompt_text_competitor=override_text,
+    )
+
+    assert "OVERRIDE_CANDIDATE_COUNT_TEMPLATE:" not in prompt.user_prompt
+    assert "OVERRIDE_ALLOWED_TYPES_TEMPLATE:" not in prompt.user_prompt
+    assert "REQUESTED_CANDIDATE_COUNT: 3" in prompt.user_prompt
+    assert "REQUESTED_CANDIDATE_COUNT: 99" not in prompt.user_prompt
+    assert prompt.user_prompt.count("REQUESTED_CANDIDATE_COUNT:") == 1
+    assert "ALLOWED_COMPETITOR_TYPES: direct, indirect, local, marketplace, informational, unknown" in prompt.user_prompt
+    assert prompt.user_prompt.count("ALLOWED_COMPETITOR_TYPES:") == 1
 
 
 def test_prompt_builder_is_deterministic_for_same_inputs() -> None:
