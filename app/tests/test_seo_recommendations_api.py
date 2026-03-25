@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import json
 from uuid import uuid4
 
 from fastapi import FastAPI
@@ -24,6 +25,8 @@ from app.models.seo_competitor_tuning_preview_event import SEOCompetitorTuningPr
 from app.models.seo_recommendation import SEORecommendation
 from app.models.seo_recommendation_narrative import SEORecommendationNarrative
 from app.models.seo_recommendation_run import SEORecommendationRun
+
+_PROMPT_INSTRUCTION_MARKERS = ("PROMPT_VERSION:", "TASK:", "RESPONSE RULES:")
 
 
 def _override_tenant_context(business_id: str):
@@ -96,6 +99,24 @@ def _create_site(client: TestClient, business_id: str, *, domain: str = "client.
     )
     assert create_site.status_code == 201
     return create_site.json()["id"]
+
+
+def _extract_site_context_json(user_prompt: str) -> dict[str, object]:
+    start_marker = "SITE_CONTEXT_JSON:\n"
+    end_marker = "\nRESPONSE RULES:\n"
+    start = user_prompt.find(start_marker)
+    assert start >= 0
+    start += len(start_marker)
+    end = user_prompt.find(end_marker, start)
+    assert end >= 0
+    return json.loads(user_prompt[start:end])
+
+
+def _assert_site_context_json_is_data_only(user_prompt: str) -> None:
+    context_payload = _extract_site_context_json(user_prompt)
+    serialized = json.dumps(context_payload, ensure_ascii=True, sort_keys=True).upper()
+    for marker in _PROMPT_INSTRUCTION_MARKERS:
+        assert marker not in serialized
 
 
 def _seed_completed_audit_run(
@@ -1068,6 +1089,11 @@ def test_recommendation_workspace_summary_prompt_previews_use_admin_prompt_overr
         assert competitor_preview["prompt_label"] == "resolved competitor prompt"
         assert recommendation_preview["prompt_label"] == "resolved recommendation prompt"
         assert "Prefer direct local competitors with service overlap." in competitor_preview["user_prompt"]
+        assert competitor_preview["user_prompt"].count("Prefer direct local competitors with service overlap.") == 1
+        assert "COMPETITOR_PROMPT_INSTRUCTIONS:" in competitor_preview["user_prompt"]
+        assert "ADDITIONAL_COMPETITOR_TEXT:" not in competitor_preview["user_prompt"]
+        assert "ADDITIONAL_COMPETITOR_CONTEXT:" not in competitor_preview["user_prompt"]
+        _assert_site_context_json_is_data_only(competitor_preview["user_prompt"])
         assert "Prioritize concrete next-step recommendation guidance." in recommendation_preview["user_prompt"]
     finally:
         get_settings.cache_clear()
@@ -1099,6 +1125,8 @@ def test_workspace_competitor_prompt_preview_uses_business_override_without_env_
         assert first_preview is not None
         assert first_preview["source"] == "admin_config"
         assert "Prefer in-market competitors with direct service overlap." in first_preview["user_prompt"]
+        assert first_preview["user_prompt"].count("Prefer in-market competitors with direct service overlap.") == 1
+        _assert_site_context_json_is_data_only(first_preview["user_prompt"])
 
         reloaded_business = db_session.get(Business, seeded_business.id)
         assert reloaded_business is not None
@@ -1115,6 +1143,8 @@ def test_workspace_competitor_prompt_preview_uses_business_override_without_env_
         assert refreshed_preview is not None
         assert refreshed_preview["source"] == "admin_config"
         assert "Favor local providers with clear substitutable services." in refreshed_preview["user_prompt"]
+        assert refreshed_preview["user_prompt"].count("Favor local providers with clear substitutable services.") == 1
+        _assert_site_context_json_is_data_only(refreshed_preview["user_prompt"])
         assert "Prefer in-market competitors with direct service overlap." not in refreshed_preview["user_prompt"]
 
         reloaded_business = db_session.get(Business, seeded_business.id)

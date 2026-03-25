@@ -102,7 +102,7 @@ Workspace summary responses may include an optional `competitor_prompt_preview` 
 
 ## Admin-Managed Prompt Overrides
 
-Competitor prompt supplemental text can now be managed in persisted admin settings via:
+Competitor prompt override text can now be managed in persisted admin settings via:
 
 - `ai_prompt_text_competitor` (business-scoped admin override)
 
@@ -120,6 +120,10 @@ Behavior notes:
 - Prompt edits apply to future runs and previews only.
 - Clearing the admin override returns behavior to deployment fallback when configured, otherwise built-in default behavior.
 - Whitespace-only overrides are treated as unset and fall back safely.
+- Admin override text is used as instruction text only and appears once in assembled competitor prompts.
+- Structured prompt context blocks remain data-only:
+  - `SITE_CONTEXT_JSON` includes trusted site/business data only.
+  - Prompt text is never embedded into structured context payload fields.
 - Prompt preview/debug now includes `source` attribution (`admin_config`, `env`, `default`) so operators can verify which configuration path is active.
 - Prompt fallback baselines are captured from configured deployment defaults and resolved immutably per request; runtime provider mutation does not become the fallback source of truth.
 - The same immutable-baseline guardrail is applied to both competitor and recommendation prompt resolvers to prevent cross-path drift regressions.
