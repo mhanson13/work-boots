@@ -122,6 +122,7 @@ Behavior notes:
 - Whitespace-only overrides are treated as unset and fall back safely.
 - Prompt preview/debug now includes `source` attribution (`admin_config`, `env`, `default`) so operators can verify which configuration path is active.
 - Prompt fallback baselines are captured from configured deployment defaults and resolved immutably per request; runtime provider mutation does not become the fallback source of truth.
+- The same immutable-baseline guardrail is applied to both competitor and recommendation prompt resolvers to prevent cross-path drift regressions.
 
 ## Web Search Enabled Competitor Discovery
 

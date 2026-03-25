@@ -1605,9 +1605,13 @@ class SEOCompetitorProfileGenerationService:
         return prompt_version or SEO_COMPETITOR_PROFILE_PROMPT_VERSION
 
     def _provider_prompt_text_competitor(self) -> str:
+        # Resolver fallback must use the immutable configured baseline captured in
+        # __init__, not mutable provider prompt fields that are overwritten per run.
         return self._configured_prompt_text_competitor
 
     def _provider_prompt_legacy_config_used(self) -> bool:
+        # Keep legacy fallback attribution aligned to the immutable configured
+        # baseline captured at service construction time.
         return self._configured_prompt_legacy_config_used
 
     def _resolve_competitor_prompt_settings(self, business: Business) -> ResolvedAIPromptText:

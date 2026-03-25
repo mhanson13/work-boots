@@ -576,9 +576,13 @@ class SEORecommendationNarrativeService:
         return provider_name, model_name, prompt_version
 
     def _provider_prompt_text_recommendations(self) -> str:
+        # Resolver fallback must use the immutable configured baseline captured in
+        # __init__, not mutable provider prompt fields that are overwritten per run.
         return self._configured_prompt_text_recommendations
 
     def _provider_prompt_legacy_config_used(self) -> bool:
+        # Keep legacy fallback attribution aligned to the immutable configured
+        # baseline captured at service construction time.
         return self._configured_prompt_legacy_config_used
 
     def _resolve_recommendation_prompt_settings(self, business: Business) -> ResolvedAIPromptText:
