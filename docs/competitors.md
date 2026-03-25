@@ -120,9 +120,14 @@ Behavior notes:
 - Prompt edits apply to future runs and previews only.
 - Clearing the admin override returns behavior to deployment fallback when configured, otherwise built-in default behavior.
 - Whitespace-only overrides are treated as unset and fall back safely.
+- Admin override text replaces the legacy/default competitor instruction body when present (exclusive source selection).
+- Assembled competitor prompts contain exactly one instruction body:
+  - admin override body, or
+  - default template body when no override is set.
 - Admin override text is used as instruction text only and appears once in assembled competitor prompts.
+- Minimal platform constraints may still wrap instruction bodies (JSON-only output, hostname-only domain formatting, context-as-data safety).
 - Structured prompt context blocks remain data-only:
-  - `SITE_CONTEXT_JSON` includes trusted site/business data only.
+  - `SITE_CONTEXT_JSON` is appended once and includes trusted site/business data only.
   - Prompt text is never embedded into structured context payload fields.
 - Prompt preview/debug now includes `source` attribution (`admin_config`, `env`, `default`) so operators can verify which configuration path is active.
 - Prompt fallback baselines are captured from configured deployment defaults and resolved immutably per request; runtime provider mutation does not become the fallback source of truth.

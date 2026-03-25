@@ -38,8 +38,9 @@ def _extract_site_context_json(user_prompt: str) -> dict[str, object]:
     assert start >= 0
     start += len(start_marker)
     end = user_prompt.find(end_marker, start)
-    assert end >= 0
-    return json.loads(user_prompt[start:end])
+    if end < 0:
+        end = len(user_prompt)
+    return json.loads(user_prompt[start:end].strip())
 
 
 def _assert_no_prompt_instruction_markers_in_context(context: dict[str, object]) -> None:
@@ -389,6 +390,11 @@ def test_prompt_builder_uses_competitor_override_once_as_instruction_text_only()
 
     assert "COMPETITOR_PROMPT_INSTRUCTIONS:" in prompt.user_prompt
     assert prompt.user_prompt.count(override_text) == 1
+    assert "PROMPT_VERSION: seo-competitor-profile-v1" not in prompt.user_prompt
+    assert "TASK: Propose candidate competitor profiles for operator review before any real record creation." not in prompt.user_prompt
+    assert "COMPETITOR_QUALITY_CONTRACT:" not in prompt.user_prompt
+    assert prompt.user_prompt.count("SITE_CONTEXT_JSON:") == 1
+    assert prompt.user_prompt.count("REQUESTED_CANDIDATE_COUNT:") == 1
     assert "ADDITIONAL_COMPETITOR_TEXT:" not in prompt.user_prompt
     assert '"competitor_text"' not in prompt.user_prompt
     context_json = _extract_site_context_json(prompt.user_prompt)
@@ -405,6 +411,41 @@ def test_prompt_builder_skips_empty_competitor_text() -> None:
     )
 
     assert "COMPETITOR_PROMPT_INSTRUCTIONS:" not in prompt.user_prompt
+
+
+def test_prompt_builder_uses_default_instruction_body_when_override_absent() -> None:
+    prompt = build_seo_competitor_profile_prompt(
+        site=_build_site(),
+        existing_domains=[],
+        candidate_count=2,
+        prompt_text_competitor=None,
+    )
+
+    assert "COMPETITOR_PROMPT_INSTRUCTIONS:" not in prompt.user_prompt
+    assert "PROMPT_VERSION: seo-competitor-profile-v1" in prompt.user_prompt
+    assert "TASK: Propose candidate competitor profiles for operator review before any real record creation." in prompt.user_prompt
+    assert prompt.user_prompt.count("SITE_CONTEXT_JSON:") == 1
+    assert prompt.user_prompt.count("REQUESTED_CANDIDATE_COUNT:") == 1
+
+
+def test_prompt_builder_override_does_not_duplicate_requested_candidate_count_or_site_context() -> None:
+    override_text = (
+        "PROMPT_VERSION: seo-competitor-profile-v2\n"
+        "TASK: Use business custom competitor instruction body.\n"
+        "REQUESTED_CANDIDATE_COUNT: 9\n"
+        "SITE_CONTEXT_JSON:\n"
+        "{\"custom\":true}"
+    )
+    prompt = build_seo_competitor_profile_prompt(
+        site=_build_site(),
+        existing_domains=[],
+        candidate_count=2,
+        prompt_text_competitor=override_text,
+    )
+
+    assert "PROMPT_VERSION: seo-competitor-profile-v1" not in prompt.user_prompt
+    assert prompt.user_prompt.count("REQUESTED_CANDIDATE_COUNT:") == 1
+    assert prompt.user_prompt.count("SITE_CONTEXT_JSON:") == 1
 
 
 def test_prompt_builder_is_deterministic_for_same_inputs() -> None:
@@ -432,7 +473,6 @@ def test_prompt_builder_emits_single_quality_and_response_blocks() -> None:
         site=_build_site(),
         existing_domains=["known.example"],
         candidate_count=2,
-        prompt_text_competitor="Prefer local relevance.",
     )
 
     assert prompt.user_prompt.count("COMPETITOR_QUALITY_CONTRACT:") == 1

@@ -108,8 +108,9 @@ def _extract_site_context_json(user_prompt: str) -> dict[str, object]:
     assert start >= 0
     start += len(start_marker)
     end = user_prompt.find(end_marker, start)
-    assert end >= 0
-    return json.loads(user_prompt[start:end])
+    if end < 0:
+        end = len(user_prompt)
+    return json.loads(user_prompt[start:end].strip())
 
 
 def _assert_site_context_json_is_data_only(user_prompt: str) -> None:
@@ -1091,6 +1092,13 @@ def test_recommendation_workspace_summary_prompt_previews_use_admin_prompt_overr
         assert "Prefer direct local competitors with service overlap." in competitor_preview["user_prompt"]
         assert competitor_preview["user_prompt"].count("Prefer direct local competitors with service overlap.") == 1
         assert "COMPETITOR_PROMPT_INSTRUCTIONS:" in competitor_preview["user_prompt"]
+        assert "PROMPT_VERSION: seo-competitor-profile-v1" not in competitor_preview["user_prompt"]
+        assert (
+            "TASK: Propose candidate competitor profiles for operator review before any real record creation."
+            not in competitor_preview["user_prompt"]
+        )
+        assert competitor_preview["user_prompt"].count("SITE_CONTEXT_JSON:") == 1
+        assert competitor_preview["user_prompt"].count("REQUESTED_CANDIDATE_COUNT:") == 1
         assert "ADDITIONAL_COMPETITOR_TEXT:" not in competitor_preview["user_prompt"]
         assert "ADDITIONAL_COMPETITOR_CONTEXT:" not in competitor_preview["user_prompt"]
         _assert_site_context_json_is_data_only(competitor_preview["user_prompt"])
@@ -1126,6 +1134,9 @@ def test_workspace_competitor_prompt_preview_uses_business_override_without_env_
         assert first_preview["source"] == "admin_config"
         assert "Prefer in-market competitors with direct service overlap." in first_preview["user_prompt"]
         assert first_preview["user_prompt"].count("Prefer in-market competitors with direct service overlap.") == 1
+        assert "PROMPT_VERSION: seo-competitor-profile-v1" not in first_preview["user_prompt"]
+        assert first_preview["user_prompt"].count("SITE_CONTEXT_JSON:") == 1
+        assert first_preview["user_prompt"].count("REQUESTED_CANDIDATE_COUNT:") == 1
         _assert_site_context_json_is_data_only(first_preview["user_prompt"])
 
         reloaded_business = db_session.get(Business, seeded_business.id)
@@ -1144,6 +1155,9 @@ def test_workspace_competitor_prompt_preview_uses_business_override_without_env_
         assert refreshed_preview["source"] == "admin_config"
         assert "Favor local providers with clear substitutable services." in refreshed_preview["user_prompt"]
         assert refreshed_preview["user_prompt"].count("Favor local providers with clear substitutable services.") == 1
+        assert "PROMPT_VERSION: seo-competitor-profile-v1" not in refreshed_preview["user_prompt"]
+        assert refreshed_preview["user_prompt"].count("SITE_CONTEXT_JSON:") == 1
+        assert refreshed_preview["user_prompt"].count("REQUESTED_CANDIDATE_COUNT:") == 1
         _assert_site_context_json_is_data_only(refreshed_preview["user_prompt"])
         assert "Prefer in-market competitors with direct service overlap." not in refreshed_preview["user_prompt"]
 
@@ -1162,6 +1176,9 @@ def test_workspace_competitor_prompt_preview_uses_business_override_without_env_
         assert cleared_preview is not None
         assert cleared_preview["source"] == "default"
         assert "Favor local providers with clear substitutable services." not in cleared_preview["user_prompt"]
+        assert "PROMPT_VERSION: seo-competitor-profile-v1" in cleared_preview["user_prompt"]
+        assert cleared_preview["user_prompt"].count("SITE_CONTEXT_JSON:") == 1
+        assert cleared_preview["user_prompt"].count("REQUESTED_CANDIDATE_COUNT:") == 1
     finally:
         get_settings.cache_clear()
 
