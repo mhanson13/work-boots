@@ -27,6 +27,7 @@ from app.models.seo_recommendation_narrative import SEORecommendationNarrative
 from app.models.seo_recommendation_run import SEORecommendationRun
 
 _PROMPT_INSTRUCTION_MARKERS = ("PROMPT_VERSION:", "TASK:", "RESPONSE RULES:")
+_RECOMMENDATION_CONTEXT_MARKERS = ("YOU ARE AN SEO", "TASK:", "OUTPUT STYLE", "WRITING RULES")
 
 
 def _override_tenant_context(business_id: str):
@@ -117,6 +118,21 @@ def _assert_site_context_json_is_data_only(user_prompt: str) -> None:
     context_payload = _extract_site_context_json(user_prompt)
     serialized = json.dumps(context_payload, ensure_ascii=True, sort_keys=True).upper()
     for marker in _PROMPT_INSTRUCTION_MARKERS:
+        assert marker not in serialized
+
+
+def _extract_recommendation_context_json(user_prompt: str) -> dict[str, object]:
+    start_marker = "RECOMMENDATION_CONTEXT_JSON:\n"
+    start = user_prompt.find(start_marker)
+    assert start >= 0
+    start += len(start_marker)
+    return json.loads(user_prompt[start:].strip())
+
+
+def _assert_recommendation_context_json_is_data_only(user_prompt: str) -> None:
+    context_payload = _extract_recommendation_context_json(user_prompt)
+    serialized = json.dumps(context_payload, ensure_ascii=True, sort_keys=True).upper()
+    for marker in _RECOMMENDATION_CONTEXT_MARKERS:
         assert marker not in serialized
 
 
@@ -1103,6 +1119,12 @@ def test_recommendation_workspace_summary_prompt_previews_use_admin_prompt_overr
         assert "ADDITIONAL_COMPETITOR_CONTEXT:" not in competitor_preview["user_prompt"]
         _assert_site_context_json_is_data_only(competitor_preview["user_prompt"])
         assert "Prioritize concrete next-step recommendation guidance." in recommendation_preview["user_prompt"]
+        assert recommendation_preview["user_prompt"].count("Prioritize concrete next-step recommendation guidance.") == 1
+        assert "RECOMMENDATION_PROMPT_INSTRUCTIONS:" in recommendation_preview["user_prompt"]
+        assert "TASK: Summarize deterministic recommendation artifacts for operator review." not in recommendation_preview["user_prompt"]
+        assert recommendation_preview["user_prompt"].count("RECOMMENDATION_CONTEXT_JSON:") == 1
+        assert "- location:" in recommendation_preview["user_prompt"]
+        _assert_recommendation_context_json_is_data_only(recommendation_preview["user_prompt"])
     finally:
         get_settings.cache_clear()
 
@@ -1219,6 +1241,11 @@ def test_workspace_recommendation_prompt_preview_uses_business_override_without_
         assert first_preview is not None
         assert first_preview["source"] == "admin_config"
         assert "Keep recommendation guidance concise and specific." in first_preview["user_prompt"]
+        assert first_preview["user_prompt"].count("Keep recommendation guidance concise and specific.") == 1
+        assert "RECOMMENDATION_PROMPT_INSTRUCTIONS:" in first_preview["user_prompt"]
+        assert "TASK: Summarize deterministic recommendation artifacts for operator review." not in first_preview["user_prompt"]
+        assert first_preview["user_prompt"].count("RECOMMENDATION_CONTEXT_JSON:") == 1
+        _assert_recommendation_context_json_is_data_only(first_preview["user_prompt"])
 
         reloaded_business = db_session.get(Business, seeded_business.id)
         assert reloaded_business is not None
@@ -1235,6 +1262,11 @@ def test_workspace_recommendation_prompt_preview_uses_business_override_without_
         assert refreshed_preview is not None
         assert refreshed_preview["source"] == "admin_config"
         assert "Prioritize operator action wording and clear first steps." in refreshed_preview["user_prompt"]
+        assert refreshed_preview["user_prompt"].count("Prioritize operator action wording and clear first steps.") == 1
+        assert "RECOMMENDATION_PROMPT_INSTRUCTIONS:" in refreshed_preview["user_prompt"]
+        assert "TASK: Summarize deterministic recommendation artifacts for operator review." not in refreshed_preview["user_prompt"]
+        assert refreshed_preview["user_prompt"].count("RECOMMENDATION_CONTEXT_JSON:") == 1
+        _assert_recommendation_context_json_is_data_only(refreshed_preview["user_prompt"])
         assert "Keep recommendation guidance concise and specific." not in refreshed_preview["user_prompt"]
 
         reloaded_business = db_session.get(Business, seeded_business.id)
@@ -1252,6 +1284,10 @@ def test_workspace_recommendation_prompt_preview_uses_business_override_without_
         assert cleared_preview is not None
         assert cleared_preview["source"] == "default"
         assert "Prioritize operator action wording and clear first steps." not in cleared_preview["user_prompt"]
+        assert "RECOMMENDATION_PROMPT_INSTRUCTIONS:" not in cleared_preview["user_prompt"]
+        assert "TASK: Summarize deterministic recommendation artifacts for operator review." in cleared_preview["user_prompt"]
+        assert cleared_preview["user_prompt"].count("RECOMMENDATION_CONTEXT_JSON:") == 1
+        _assert_recommendation_context_json_is_data_only(cleared_preview["user_prompt"])
     finally:
         get_settings.cache_clear()
 
