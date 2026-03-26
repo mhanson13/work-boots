@@ -129,6 +129,8 @@ Behavior notes:
 - Structured prompt context blocks remain data-only:
   - `SITE_CONTEXT_JSON` is appended once and includes trusted site/business data only.
   - Prompt text is never embedded into structured context payload fields.
+- Admin override instruction text supports the same site/context placeholders as the default competitor prompt assembly (for example `{site_display_name}`, `{site_location_context}`, `{site_industry_context}`, `{service_focus_terms}`, `{target_customer_context}`).
+- Placeholder interpolation is applied before preview/export/runtime assembly so all operator-visible and runtime prompts stay in sync.
 - Prompt preview/debug now includes `source` attribution (`admin_config`, `env`, `default`) so operators can verify which configuration path is active.
 - Prompt fallback baselines are captured from configured deployment defaults and resolved immutably per request; runtime provider mutation does not become the fallback source of truth.
 - The same immutable-baseline guardrail is applied to both competitor and recommendation prompt resolvers to prevent cross-path drift regressions.

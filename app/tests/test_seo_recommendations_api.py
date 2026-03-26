@@ -1205,6 +1205,71 @@ def test_workspace_competitor_prompt_preview_uses_business_override_without_env_
         get_settings.cache_clear()
 
 
+def test_workspace_competitor_prompt_preview_renders_business_override_placeholders(
+    db_session,
+    seeded_business,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("AI_PROMPT_TEXT_COMPETITOR", raising=False)
+    monkeypatch.delenv("AI_PROMPT_TEXT_RECOMMENDATIONS", raising=False)
+    monkeypatch.delenv("AI_PROMPT_TEXT_RECOMMENDATION", raising=False)
+    get_settings.cache_clear()
+    try:
+        client = _make_client(db_session, business_id=seeded_business.id)
+        site_id = _create_site(client, seeded_business.id)
+        seeded_business.ai_prompt_text_competitor = (
+            "Operator context template:\n"
+            "- name={site_display_name}\n"
+            "- location={site_location_context}\n"
+            "- industry={site_industry_context}\n"
+            "- location_strength={site_location_context_strength}\n"
+            "- location_source={site_location_context_source}\n"
+            "- industry_strength={site_industry_context_strength}\n"
+            "- service_focus={service_focus_terms}\n"
+            "- target_customer={target_customer_context}"
+        )
+        db_session.add(seeded_business)
+        db_session.commit()
+
+        summary = client.get(
+            f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/workspace-summary"
+        )
+        assert summary.status_code == 200
+        payload = summary.json()
+        preview = payload["competitor_prompt_preview"]
+        assert preview is not None
+        assert preview["source"] == "admin_config"
+        assert "Operator context template:" in preview["user_prompt"]
+        assert "Client Site client.example" in preview["user_prompt"]
+        assert "{site_display_name}" not in preview["user_prompt"]
+        assert "{site_location_context}" not in preview["user_prompt"]
+        assert "{site_industry_context}" not in preview["user_prompt"]
+        assert "{site_location_context_strength}" not in preview["user_prompt"]
+        assert "{site_location_context_source}" not in preview["user_prompt"]
+        assert "{site_industry_context_strength}" not in preview["user_prompt"]
+        assert "{service_focus_terms}" not in preview["user_prompt"]
+        assert "{target_customer_context}" not in preview["user_prompt"]
+        for prefix in (
+            "- name=",
+            "- location=",
+            "- industry=",
+            "- location_strength=",
+            "- location_source=",
+            "- industry_strength=",
+            "- service_focus=",
+            "- target_customer=",
+        ):
+            matching_lines = [line for line in preview["user_prompt"].splitlines() if line.startswith(prefix)]
+            assert matching_lines
+            assert "{" not in matching_lines[0]
+            assert "}" not in matching_lines[0]
+        assert preview["user_prompt"].count("SITE_CONTEXT_JSON:") == 1
+        assert preview["user_prompt"].count("REQUESTED_CANDIDATE_COUNT:") == 1
+        _assert_site_context_json_is_data_only(preview["user_prompt"])
+    finally:
+        get_settings.cache_clear()
+
+
 def test_workspace_recommendation_prompt_preview_uses_business_override_without_env_fallback(
     db_session,
     seeded_business,

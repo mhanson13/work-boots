@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import re
 
 from app.models.seo_site import SEOSite
 from app.services.seo_sites import build_location_context, build_site_business_context
@@ -66,6 +67,7 @@ _NON_COMPETITOR_DOMAIN_HINTS = (
     "yellowpages.com",
     "youtube.com",
 )
+_OVERRIDE_PLACEHOLDER_PATTERN = re.compile(r"\{([a-zA-Z0-9_]+)\}")
 
 
 @dataclass(frozen=True)
@@ -189,6 +191,10 @@ def build_seo_competitor_profile_prompt(
         context=context,
         site_domain=normalized_domain,
     )
+    override_template_values = _build_override_template_values(
+        context=context,
+        candidate_count=candidate_count,
+    )
 
     system_prompt = (
         "You generate SEO competitor profile draft candidates for human review. "
@@ -199,7 +205,10 @@ def build_seo_competitor_profile_prompt(
     effective_prompt_text_competitor = prompt_text_competitor
     if effective_prompt_text_competitor is None:
         effective_prompt_text_competitor = prompt_text_recommendation or ""
-    competitor_instructions_block = _build_prompt_text_competitor_block(effective_prompt_text_competitor)
+    competitor_instructions_block = _build_prompt_text_competitor_block(
+        effective_prompt_text_competitor,
+        template_values=override_template_values,
+    )
     default_instruction_body = _build_default_competitor_instruction_body(
         prompt_version=prompt_version,
         candidate_count=candidate_count,
@@ -312,6 +321,91 @@ def _build_default_competitor_instruction_body(
         "5. confidence_score must be a number between 0 and 1.\n"
         "6. Keep summaries concise and evidence specific."
     )
+
+
+def _build_override_template_values(
+    *,
+    context: dict[str, object],
+    candidate_count: int,
+) -> dict[str, str]:
+    service_focus_terms = context.get("service_focus_terms")
+    service_focus_terms_text = "Unspecified"
+    if isinstance(service_focus_terms, list):
+        cleaned_terms = [str(term) for term in service_focus_terms if isinstance(term, str) and term]
+        if cleaned_terms:
+            service_focus_terms_text = ", ".join(cleaned_terms)
+
+    site_service_areas = context.get("site_service_areas")
+    site_service_areas_text = ""
+    if isinstance(site_service_areas, list):
+        cleaned_areas = [str(area) for area in site_service_areas if isinstance(area, str) and area]
+        if cleaned_areas:
+            site_service_areas_text = ", ".join(cleaned_areas)
+
+    existing_domains = context.get("existing_competitor_domains")
+    existing_domains_text = ""
+    if isinstance(existing_domains, list):
+        cleaned_domains = [str(domain) for domain in existing_domains if isinstance(domain, str) and domain]
+        if cleaned_domains:
+            existing_domains_text = ", ".join(cleaned_domains)
+
+    excluded_domains = context.get("excluded_domains")
+    excluded_domains_text = ""
+    if isinstance(excluded_domains, list):
+        cleaned_excluded = [str(domain) for domain in excluded_domains if isinstance(domain, str) and domain]
+        if cleaned_excluded:
+            excluded_domains_text = ", ".join(cleaned_excluded)
+
+    non_competitor_hints = context.get("non_competitor_domain_hints")
+    non_competitor_hints_text = ""
+    if isinstance(non_competitor_hints, list):
+        cleaned_hints = [str(item) for item in non_competitor_hints if isinstance(item, str) and item]
+        if cleaned_hints:
+            non_competitor_hints_text = ", ".join(cleaned_hints)
+
+    return {
+        "site_display_name": _coerce_override_template_value(context.get("site_display_name"), fallback="Unknown business"),
+        "site_business_name": _coerce_override_template_value(context.get("site_business_name")),
+        "site_base_url": _coerce_override_template_value(context.get("site_base_url"), fallback="https://example.invalid/"),
+        "site_normalized_domain": _coerce_override_template_value(
+            context.get("site_normalized_domain"),
+            fallback="example.invalid",
+        ),
+        "site_industry": _coerce_override_template_value(context.get("site_industry")),
+        "site_primary_location": _coerce_override_template_value(context.get("site_primary_location")),
+        "site_primary_business_zip": _coerce_override_template_value(context.get("site_primary_business_zip")),
+        "site_service_areas": site_service_areas_text,
+        "site_location_context": _coerce_override_template_value(
+            context.get("site_location_context"),
+            fallback=_LOCATION_FALLBACK_TEXT,
+        ),
+        "site_location_context_strength": _coerce_override_template_value(
+            context.get("site_location_context_strength"),
+            fallback="weak",
+        ),
+        "site_location_context_source": _coerce_override_template_value(
+            context.get("site_location_context_source"),
+            fallback="fallback",
+        ),
+        "site_industry_context": _coerce_override_template_value(
+            context.get("site_industry_context"),
+            fallback=_INDUSTRY_FALLBACK_TEXT,
+        ),
+        "site_industry_context_strength": _coerce_override_template_value(
+            context.get("site_industry_context_strength"),
+            fallback="weak",
+        ),
+        "service_focus_terms": service_focus_terms_text,
+        "target_customer_context": _coerce_override_template_value(
+            context.get("target_customer_context"),
+            fallback=_TARGET_CUSTOMER_CONTEXT_FALLBACK,
+        ),
+        "existing_competitor_domains": existing_domains_text,
+        "excluded_domains": excluded_domains_text,
+        "non_competitor_domain_hints": non_competitor_hints_text,
+        "requested_candidate_count": str(max(1, int(candidate_count))),
+        "allowed_competitor_types": ", ".join(_ALLOWED_COMPETITOR_TYPES),
+    }
 
 
 def _build_override_competitor_user_prompt(
@@ -744,10 +838,18 @@ def _extract_site_content_signals(site: SEOSite) -> list[str]:
     return cleaned
 
 
-def _build_prompt_text_competitor_block(raw_text: str) -> str:
+def _build_prompt_text_competitor_block(
+    raw_text: str,
+    *,
+    template_values: dict[str, str],
+) -> str:
     normalized = _normalize_prompt_text_competitor(raw_text)
     if not normalized:
         return ""
+    normalized = _render_override_placeholders(
+        normalized,
+        template_values=template_values,
+    )
     normalized = _neutralize_override_data_markers(normalized)
     return (
         "COMPETITOR_PROMPT_INSTRUCTIONS:\n"
@@ -755,6 +857,35 @@ def _build_prompt_text_competitor_block(raw_text: str) -> str:
         "Platform constraints and structured context data remain separate.\n"
         f"{normalized}"
     )
+
+
+def _render_override_placeholders(
+    value: str,
+    *,
+    template_values: dict[str, str],
+) -> str:
+    if not value or not template_values:
+        return value
+
+    def _replace(match: re.Match[str]) -> str:
+        key = match.group(1)
+        replacement = template_values.get(key)
+        if replacement is None:
+            return match.group(0)
+        return replacement
+
+    return _OVERRIDE_PLACEHOLDER_PATTERN.sub(_replace, value)
+
+
+def _coerce_override_template_value(value: object, *, fallback: str = "") -> str:
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return fallback
+    coerced = str(value)
+    if not coerced:
+        return fallback
+    return coerced
 
 
 def _neutralize_override_data_markers(value: str) -> str:

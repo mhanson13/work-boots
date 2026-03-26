@@ -402,6 +402,61 @@ def test_prompt_builder_uses_competitor_override_once_as_instruction_text_only()
     _assert_no_prompt_instruction_markers_in_context(context_json)
 
 
+def test_prompt_builder_renders_override_placeholders_with_site_context_values() -> None:
+    override_text = (
+        "Business: {site_display_name}\n"
+        "Location: {site_location_context}\n"
+        "Industry: {site_industry_context}\n"
+        "Location Strength: {site_location_context_strength}\n"
+        "Location Source: {site_location_context_source}\n"
+        "Industry Strength: {site_industry_context_strength}\n"
+        "Services: {service_focus_terms}\n"
+        "Customer: {target_customer_context}\n"
+    )
+    prompt = build_seo_competitor_profile_prompt(
+        site=_build_site(),
+        existing_domains=[],
+        candidate_count=2,
+        prompt_text_competitor=override_text,
+    )
+
+    context = prompt.trusted_site_context
+    expected_service_focus_terms = context.get("service_focus_terms")
+    assert f"Business: {context['site_display_name']}" in prompt.user_prompt
+    assert f"Location: {context['site_location_context']}" in prompt.user_prompt
+    assert f"Industry: {context['site_industry_context']}" in prompt.user_prompt
+    assert f"Location Strength: {context['site_location_context_strength']}" in prompt.user_prompt
+    assert f"Location Source: {context['site_location_context_source']}" in prompt.user_prompt
+    assert f"Industry Strength: {context['site_industry_context_strength']}" in prompt.user_prompt
+    if isinstance(expected_service_focus_terms, list) and expected_service_focus_terms:
+        assert f"Services: {', '.join(expected_service_focus_terms)}" in prompt.user_prompt
+    else:
+        assert "Services: Unspecified" in prompt.user_prompt
+    assert f"Customer: {context['target_customer_context']}" in prompt.user_prompt
+    assert "{site_display_name}" not in prompt.user_prompt
+    assert "{site_location_context}" not in prompt.user_prompt
+    assert "{site_industry_context}" not in prompt.user_prompt
+    assert "{site_location_context_strength}" not in prompt.user_prompt
+    assert "{site_location_context_source}" not in prompt.user_prompt
+    assert "{site_industry_context_strength}" not in prompt.user_prompt
+    assert "{service_focus_terms}" not in prompt.user_prompt
+    assert "{target_customer_context}" not in prompt.user_prompt
+
+
+def test_prompt_builder_override_placeholder_missing_optional_values_degrades_safely() -> None:
+    prompt = build_seo_competitor_profile_prompt(
+        site=_build_site(),
+        existing_domains=[],
+        candidate_count=2,
+        prompt_text_competitor="Business Name: {site_business_name}\nBusiness Zip: {site_primary_business_zip}",
+    )
+
+    assert "{site_business_name}" not in prompt.user_prompt
+    assert "{site_primary_business_zip}" not in prompt.user_prompt
+    assert "Business Name: None" not in prompt.user_prompt
+    assert "Business Zip: None" not in prompt.user_prompt
+
+
 def test_prompt_builder_skips_empty_competitor_text() -> None:
     prompt = build_seo_competitor_profile_prompt(
         site=_build_site(),
@@ -426,6 +481,11 @@ def test_prompt_builder_uses_default_instruction_body_when_override_absent() -> 
     assert "TASK: Propose candidate competitor profiles for operator review before any real record creation." in prompt.user_prompt
     assert prompt.user_prompt.count("SITE_CONTEXT_JSON:") == 1
     assert prompt.user_prompt.count("REQUESTED_CANDIDATE_COUNT:") == 1
+    assert "{site_display_name}" not in prompt.user_prompt
+    assert "{site_location_context}" not in prompt.user_prompt
+    assert "{site_industry_context}" not in prompt.user_prompt
+    assert "{service_focus_terms}" not in prompt.user_prompt
+    assert "{target_customer_context}" not in prompt.user_prompt
 
 
 def test_prompt_builder_override_does_not_duplicate_requested_candidate_count_or_site_context() -> None:

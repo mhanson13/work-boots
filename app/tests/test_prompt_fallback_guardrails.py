@@ -108,7 +108,11 @@ def test_competitor_prompt_preview_matches_runtime_prompt_assembly(
         is_primary=True,
     )
     db_session.add(site)
-    seeded_business.ai_prompt_text_competitor = "Prefer direct local competitors with clear overlap."
+    seeded_business.ai_prompt_text_competitor = (
+        "Prefer direct local competitors for {site_display_name}.\n"
+        "Location: {site_location_context}\n"
+        "Services: {service_focus_terms}"
+    )
     db_session.add(seeded_business)
     db_session.commit()
 
@@ -142,6 +146,9 @@ def test_competitor_prompt_preview_matches_runtime_prompt_assembly(
 
     assert preview.system_prompt == runtime_prompt.system_prompt
     assert preview.user_prompt == runtime_prompt.user_prompt
+    assert "{site_display_name}" not in preview.user_prompt
+    assert "{site_location_context}" not in preview.user_prompt
+    assert "{service_focus_terms}" not in preview.user_prompt
 
 
 def test_recommendation_prompt_preview_matches_runtime_prompt_assembly(
