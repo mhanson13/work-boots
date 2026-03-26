@@ -1551,7 +1551,8 @@ function PromptPreviewPanel({
     <div className="panel panel-compact stack-tight" data-testid={testId}>
       <span className="hint muted">Prompt inspection (debug)</span>
       <span className="hint muted">
-        Read-only preview of the final {promptPreviewTypeLabel(preview.promptType).toLowerCase()} prompt sent to AI.
+        Read-only preview of the current assembled {promptPreviewTypeLabel(preview.promptType).toLowerCase()} prompt.
+        This is separate from historical last-run metadata.
       </span>
       <span className="hint muted">
         Source: {promptPreviewSourceLabel(preview.source)} | Model: {preview.model || "n/a"} | Prompt:{" "}

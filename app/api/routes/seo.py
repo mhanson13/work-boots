@@ -1999,13 +1999,11 @@ def get_seo_recommendation_workspace_summary(
         site_id,
     )
     competitor_candidate_count = latest_competitor_runs[0].requested_candidate_count if latest_competitor_runs else 5
-    competitor_prompt_version = latest_competitor_runs[0].prompt_version if latest_competitor_runs else None
     try:
         competitor_prompt_preview_data = generation_service.build_prompt_preview(
             business_id=scoped_business_id,
             site_id=site_id,
             candidate_count=competitor_candidate_count,
-            prompt_version=competitor_prompt_version,
         )
     except Exception:  # noqa: BLE001
         logger.warning(

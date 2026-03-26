@@ -1344,6 +1344,59 @@ def test_workspace_competitor_prompt_preview_preserves_full_override_body_withou
         get_settings.cache_clear()
 
 
+def test_workspace_competitor_prompt_preview_uses_single_resolved_prompt_source_and_consistent_version_metadata(
+    db_session,
+    seeded_business,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("AI_PROMPT_TEXT_COMPETITOR", raising=False)
+    monkeypatch.delenv("AI_PROMPT_TEXT_RECOMMENDATIONS", raising=False)
+    monkeypatch.delenv("AI_PROMPT_TEXT_RECOMMENDATION", raising=False)
+    get_settings.cache_clear()
+    try:
+        client = _make_client(db_session, business_id=seeded_business.id)
+        site_id = _create_site(client, seeded_business.id)
+        seeded_business.ai_prompt_text_competitor = (
+            "PROMPT_VERSION: seo-competitor-profile-v2\n"
+            "TASK: Keep preview rendering deterministic and single-sourced.\n"
+            "PLATFORM_CONSTRAINTS:\n"
+            "1. Return JSON only.\n"
+            "OUTPUT FORMAT:\n"
+            '{"candidates":[{"domain":"hostname","competitor_type":"direct","confidence_score":0.0}]}\n'
+        )
+        db_session.add(seeded_business)
+        db_session.commit()
+
+        summary = client.get(
+            f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/workspace-summary"
+        )
+        assert summary.status_code == 200
+        payload = summary.json()
+
+        assert "prompt_text_competitor" not in payload
+        assert "resolved_prompt" not in payload
+        assert "stored_prompt" not in payload
+
+        preview = payload["competitor_prompt_preview"]
+        assert preview is not None
+        assert preview["prompt_type"] == "competitor"
+        assert preview["source"] == "admin_config"
+        assert preview["prompt_label"] == "resolved competitor prompt"
+        assert preview["prompt_version"] == "seo-competitor-profile-v2"
+
+        user_prompt = preview["user_prompt"]
+        assert "PROMPT_VERSION: seo-competitor-profile-v2" in user_prompt
+        assert "PROMPT_VERSION: seo-competitor-profile-v1" not in user_prompt
+        assert user_prompt.count("PROMPT_VERSION: seo-competitor-profile-v2") == 1
+        assert user_prompt.count("TASK: Keep preview rendering deterministic and single-sourced.") == 1
+        assert "OUTPUT FORMAT:" in user_prompt
+        assert user_prompt.count("REQUESTED_CANDIDATE_COUNT:") == 1
+        assert user_prompt.count("SITE_CONTEXT_JSON:") == 1
+        _assert_site_context_json_is_data_only(user_prompt)
+    finally:
+        get_settings.cache_clear()
+
+
 def test_workspace_recommendation_prompt_preview_uses_business_override_without_env_fallback(
     db_session,
     seeded_business,

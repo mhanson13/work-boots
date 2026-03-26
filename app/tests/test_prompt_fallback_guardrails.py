@@ -232,6 +232,54 @@ def test_competitor_prompt_preview_parity_preserves_full_long_override_without_c
     assert "3. If ev\nPLATFORM_CONSTRAINTS:" not in preview.user_prompt
 
 
+def test_competitor_prompt_preview_version_reflects_rendered_prompt_marker_not_requested_preview_version(
+    db_session,
+    seeded_business,
+) -> None:
+    site = SEOSite(
+        id="site-preview-version-marker",
+        business_id=seeded_business.id,
+        display_name="Preview Version Marker Site",
+        base_url="https://preview-version-marker.example/",
+        normalized_domain="preview-version-marker.example",
+        industry="Roofing",
+        primary_location="Denver, CO",
+        service_areas_json=["Denver"],
+        is_active=True,
+        is_primary=True,
+    )
+    db_session.add(site)
+    seeded_business.ai_prompt_text_competitor = (
+        "PROMPT_VERSION: seo-competitor-profile-v2\n"
+        "TASK: Ensure preview metadata version aligns with rendered prompt marker.\n"
+        "OUTPUT FORMAT:\n"
+        '{"candidates":[{"domain":"hostname","competitor_type":"direct","confidence_score":0.0}]}\n'
+    )
+    db_session.add(seeded_business)
+    db_session.commit()
+
+    provider = _MutablePromptProvider()
+    service = SEOCompetitorProfileGenerationService(
+        session=db_session,
+        business_repository=BusinessRepository(db_session),
+        seo_site_repository=SEOSiteRepository(db_session),
+        seo_competitor_repository=SEOCompetitorRepository(db_session),
+        seo_competitor_profile_generation_repository=SEOCompetitorProfileGenerationRepository(db_session),
+        provider=provider,
+    )
+    preview = service.build_prompt_preview(
+        business_id=seeded_business.id,
+        site_id=site.id,
+        candidate_count=4,
+        prompt_version="seo-competitor-profile-v1",
+    )
+
+    assert preview is not None
+    assert preview.prompt_version == "seo-competitor-profile-v2"
+    assert "PROMPT_VERSION: seo-competitor-profile-v2" in preview.user_prompt
+    assert "PROMPT_VERSION: seo-competitor-profile-v1" not in preview.user_prompt
+
+
 def test_recommendation_prompt_preview_matches_runtime_prompt_assembly(
     db_session,
     seeded_business,

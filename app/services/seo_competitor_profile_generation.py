@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import inspect
 import json
 import logging
+import re
 import time
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -125,6 +126,7 @@ _MAX_SITE_CONTENT_SIGNAL_LENGTH = 200
 _MAX_PROVIDER_ATTEMPTS_DEBUG_ITEMS = 2
 _TIMEOUT_RETRY_BACKOFF_SECONDS = 0.2
 _DEGRADED_RETRY_MAX_CANDIDATE_COUNT = 3
+_PROMPT_VERSION_MARKER_PATTERN = re.compile(r"(?mi)^\s*PROMPT_VERSION:\s*([^\r\n]+)\s*$")
 
 FAILURE_CATEGORY_TIMEOUT = "timeout"
 FAILURE_CATEGORY_PROVIDER_AUTH = "provider_auth"
@@ -881,16 +883,28 @@ class SEOCompetitorProfileGenerationService:
             prompt_version=resolved_prompt_version,
             prompt_text_competitor=resolved_prompt.prompt_text,
         )
+        preview_prompt_version = (
+            self._extract_prompt_version_from_user_prompt(prompt.user_prompt)
+            or prompt.prompt_version
+        )
         return SEOCompetitorPromptPreview(
             system_prompt=prompt.system_prompt,
             user_prompt=prompt.user_prompt,
             model_name=self._clean_optional(self._default_model_name()),
-            prompt_version=prompt.prompt_version,
+            prompt_version=preview_prompt_version,
             prompt_label=SEO_COMPETITOR_PROFILE_PROMPT_LABEL,
             prompt_source=resolved_prompt.prompt_source,
             trusted_site_context=prompt.trusted_site_context,
             prompt_metrics=prompt.prompt_telemetry,
         )
+
+    def _extract_prompt_version_from_user_prompt(self, user_prompt: str) -> str | None:
+        if not user_prompt:
+            return None
+        match = _PROMPT_VERSION_MARKER_PATTERN.search(user_prompt)
+        if not match:
+            return None
+        return self._clean_optional(match.group(1))
 
     def get_observability_summary(
         self,
