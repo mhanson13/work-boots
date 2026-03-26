@@ -150,3 +150,37 @@ Sample Logs Explorer queries:
 - `jsonPayload.event="competitor_provider_request_error" AND jsonPayload.failure_kind="malformed_output"`
 - `jsonPayload.event="competitor_provider_request_error" AND jsonPayload.endpoint_path="/responses"`
 - `jsonPayload.event="competitor_provider_request_error" AND jsonPayload.run_id="<run_id>"`
+
+## In-App GCP Logs Query (Admin Tab)
+
+The admin tab now includes a `GCP Logs Query` tool that proxies Cloud Logging `entries.list` through the backend.
+
+Auth and runtime model:
+
+- app user must be an admin principal (non-admins are denied)
+- backend authenticates to GCP with Application Default Credentials from the runtime attached service account
+- no user OAuth scopes and no browser-side GCP credentials are required
+
+Scope and paging limits:
+
+- query scope is fixed to the configured project: `projects/<configured-project>`
+- order is fixed to `timestamp desc`
+- page size is bounded to `1..100` (UI options: 10, 25, 50, 100)
+- pagination uses Cloud Logging `nextPageToken` via the `Next Page` action
+
+Returned rows are sanitized and compact:
+
+- `timestamp`, `severity`, `log_name`, `resource_type`, `insert_id`
+- bounded `labels` / `resource_labels`
+- bounded payload summaries (`textPayload`, `jsonPayload`, `protoPayload`)
+
+Sample filters (copy into the admin query box):
+
+- `jsonPayload.event="competitor_provider_request_start"`
+- `jsonPayload.event="competitor_provider_request_complete"`
+- `jsonPayload.event="competitor_provider_request_error"`
+- `jsonPayload.event="competitor_provider_request_error" AND jsonPayload.failure_kind="malformed_output"`
+- `jsonPayload.failure_kind="malformed_output" AND jsonPayload.malformed_output_reason:*`
+- `jsonPayload.event="competitor_provider_request_error" AND jsonPayload.endpoint_path="/responses"`
+- `jsonPayload.event="competitor_provider_request_start" AND jsonPayload.run_id="<run_id>"`
+- `jsonPayload.event="competitor_provider_request_complete" AND jsonPayload.run_id="<run_id>"`

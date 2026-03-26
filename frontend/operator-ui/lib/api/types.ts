@@ -113,6 +113,33 @@ export interface BusinessSettingsUpdateRequest {
   timezone?: string | null;
 }
 
+export interface GCPLogsQueryRequest {
+  filter: string;
+  page_size?: number;
+  page_token?: string;
+}
+
+export interface GCPLogEntry {
+  timestamp: string | null;
+  severity: string | null;
+  log_name: string | null;
+  resource_type: string | null;
+  labels: Record<string, string> | null;
+  resource_labels: Record<string, string> | null;
+  insert_id: string | null;
+  text_payload_summary: string | null;
+  json_payload_summary: string | null;
+  proto_payload_summary: string | null;
+}
+
+export interface GCPLogsQueryResponse {
+  entries: GCPLogEntry[];
+  next_page_token: string | null;
+  page_size: number;
+  order_by: string;
+  resource_scope: string[];
+}
+
 export interface SEOSite {
   id: string;
   business_id: string;

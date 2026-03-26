@@ -50,3 +50,23 @@ Control semantics:
 - Degraded retry timeout applies to reduced-context timeout recovery attempts.
 - Allowed range: `10-90` seconds.
 - Blank value keeps deployment/provider default timeout behavior.
+
+## Admin GCP Logs Query Controls
+
+Admin tab includes a compact `GCP Logs Query` panel for Cloud Logging troubleshooting without direct GCP console access.
+
+Controls:
+
+- multiline Logs Explorer filter input
+- bounded page size selector (`10`, `25`, `50`, `100`)
+- `Run Query` action
+- `Next Page` action when backend returns `next_page_token`
+- sample filter list with `Use` buttons
+
+Result display:
+
+- compact table rows with timestamp, severity, log name, resource, insert id, and payload summary
+- scope/order line showing effective backend settings (`projects/<configured-project>`, `timestamp desc`)
+- explicit loading, empty, invalid-query, permission, and timeout states
+
+Backend behavior remains admin-only and uses runtime ADC via attached service account.

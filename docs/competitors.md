@@ -193,6 +193,8 @@ Competitor provider request lifecycle logs are also emitted as structured events
 - `competitor_provider_request_complete`
 - `competitor_provider_request_error`
 
+Admins can query these events directly from the in-app admin panel (`GCP Logs Query`) without granting end users direct GCP project access. The tool uses backend proxying with runtime ADC and fixed project scope.
+
 These structured events include bounded correlation/runtime fields such as:
 
 - `run_id`

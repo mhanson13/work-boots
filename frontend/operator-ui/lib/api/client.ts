@@ -3,6 +3,8 @@ import type {
   AuthExchangeResponse,
   BusinessSettings,
   BusinessSettingsUpdateRequest,
+  GCPLogsQueryRequest,
+  GCPLogsQueryResponse,
   SEOAuditRun,
   SEOAuditRunCreateRequest,
   SEOAuditRunSummary,
@@ -199,6 +201,18 @@ export async function updateBusinessSettings(
 ): Promise<BusinessSettings> {
   return apiRequest<BusinessSettings>(`/api/businesses/${businessId}/settings`, {
     method: "PATCH",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function queryGcpLogs(
+  token: string,
+  businessId: string,
+  payload: GCPLogsQueryRequest,
+): Promise<GCPLogsQueryResponse> {
+  return apiRequest<GCPLogsQueryResponse>(`/api/businesses/${businessId}/gcp/logs/query`, {
+    method: "POST",
     token,
     body: JSON.stringify(payload),
   });

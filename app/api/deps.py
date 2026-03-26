@@ -39,6 +39,7 @@ from app.integrations import (
     SMSProvider,
     TwilioSMSProvider,
 )
+from app.integrations.google_cloud_logging import GoogleCloudLoggingClient
 from app.jobs.lead_reminders import LeadReminderJob
 from app.jobs.seo_competitor_profile_generation_retention import SEOCompetitorProfileGenerationRetentionJob
 from app.jobs.seo_automation import SEOAutomationJob
@@ -61,6 +62,7 @@ from app.repositories.seo_recommendation_narrative_repository import SEORecommen
 from app.repositories.seo_recommendation_repository import SEORecommendationRepository
 from app.repositories.seo_site_repository import SEOSiteRepository
 from app.services.business_settings import BusinessSettingsService
+from app.services.gcp_logs_query import GCPLogsQueryService
 from app.services.api_credentials import APICredentialService
 from app.services.auth_identity import AuthIdentityService
 from app.services.auth_audit import AuthAuditService
@@ -343,6 +345,21 @@ def get_business_settings_service(
         session=db,
         business_repository=business_repository,
         seo_competitor_profile_generation_repository=seo_competitor_profile_generation_repository,
+    )
+
+
+def get_google_cloud_logging_client() -> GoogleCloudLoggingClient:
+    settings = get_settings()
+    return GoogleCloudLoggingClient(timeout_seconds=settings.gcp_logging_api_timeout_seconds)
+
+
+def get_gcp_logs_query_service(
+    client: GoogleCloudLoggingClient = Depends(get_google_cloud_logging_client),
+) -> GCPLogsQueryService:
+    settings = get_settings()
+    return GCPLogsQueryService(
+        client=client,
+        project_id=settings.gcp_logging_project_id,
     )
 
 

@@ -5,6 +5,7 @@ import UsersCompatibilityPage from "./page";
 import { ApiRequestError } from "../../lib/api/client";
 import type {
   BusinessSettings,
+  GCPLogsQueryResponse,
   PrincipalIdentityListResponse,
   PrincipalListResponse,
   SEOSite,
@@ -45,6 +46,7 @@ const mockDeactivatePrincipalIdentity = jest.fn<Promise<unknown>, unknown[]>();
 const mockActivatePrincipalIdentity = jest.fn<Promise<unknown>, unknown[]>();
 const mockUpdateAdminSite = jest.fn<Promise<SEOSite>, unknown[]>();
 const mockDeleteAdminSite = jest.fn<Promise<void>, unknown[]>();
+const mockQueryGcpLogs = jest.fn<Promise<GCPLogsQueryResponse>, unknown[]>();
 const INVALID_CRAWL_BELOW_MIN = CRAWL_PAGE_LIMIT_MIN - 1;
 const INVALID_CRAWL_ABOVE_MAX = CRAWL_PAGE_LIMIT_MAX + 1;
 const INVALID_PERSISTED_CRAWL_VALUE = CRAWL_PAGE_LIMIT_MAX + 50;
@@ -82,6 +84,7 @@ jest.mock("../../lib/api/client", () => {
     activatePrincipalIdentity: (...args: unknown[]) => mockActivatePrincipalIdentity(...args),
     updateAdminSite: (...args: unknown[]) => mockUpdateAdminSite(...args),
     deleteAdminSite: (...args: unknown[]) => mockDeleteAdminSite(...args),
+    queryGcpLogs: (...args: unknown[]) => mockQueryGcpLogs(...args),
   };
 });
 
@@ -154,6 +157,13 @@ beforeEach(() => {
     },
   });
   mockFetchBusinessSettings.mockResolvedValue(buildBusinessSettings());
+  mockQueryGcpLogs.mockResolvedValue({
+    entries: [],
+    next_page_token: null,
+    page_size: 25,
+    order_by: "timestamp desc",
+    resource_scope: ["projects/test-project"],
+  });
 });
 
 function principalsResponse(isOperatorActive: boolean): PrincipalListResponse {
@@ -1197,5 +1207,114 @@ describe("admin page compatibility route", () => {
     await waitFor(() => expect(mockDeleteAdminSite).toHaveBeenCalledWith("token-1", "biz-1", "site-1"));
     await waitFor(() => expect(screen.getByText("No sites found for this business.")).toBeInTheDocument());
     promptSpy.mockRestore();
+  });
+
+  it("renders the admin GCP logs query section with sample filters", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    expect(screen.getByRole("heading", { name: "GCP Logs Query" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Logs Explorer Filter")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run Query" })).toBeInTheDocument();
+    expect(screen.getByText('jsonPayload.event="competitor_provider_request_start"')).toBeInTheDocument();
+    expect(
+      screen.getByText('jsonPayload.event="competitor_provider_request_error" AND jsonPayload.endpoint_path="/responses"'),
+    ).toBeInTheDocument();
+  });
+
+  it("submits GCP logs query and paginates to next page", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockQueryGcpLogs
+      .mockResolvedValueOnce({
+        entries: [
+          {
+            timestamp: "2026-03-26T15:01:02Z",
+            severity: "INFO",
+            log_name: "projects/test-project/logs/stdout",
+            resource_type: "cloud_run_revision",
+            labels: { event: "competitor_provider_request_start" },
+            resource_labels: { service_name: "api" },
+            insert_id: "entry-1",
+            text_payload_summary: "request started",
+            json_payload_summary: null,
+            proto_payload_summary: null,
+          },
+        ],
+        next_page_token: "next-token-1",
+        page_size: 25,
+        order_by: "timestamp desc",
+        resource_scope: ["projects/test-project"],
+      })
+      .mockResolvedValueOnce({
+        entries: [
+          {
+            timestamp: "2026-03-26T15:02:02Z",
+            severity: "WARNING",
+            log_name: "projects/test-project/logs/stdout",
+            resource_type: "cloud_run_revision",
+            labels: { event: "competitor_provider_request_complete" },
+            resource_labels: { service_name: "api" },
+            insert_id: "entry-2",
+            text_payload_summary: "request completed",
+            json_payload_summary: null,
+            proto_payload_summary: null,
+          },
+        ],
+        next_page_token: null,
+        page_size: 25,
+        order_by: "timestamp desc",
+        resource_scope: ["projects/test-project"],
+      });
+
+    const user = userEvent.setup();
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    await user.type(screen.getByLabelText("Logs Explorer Filter"), 'jsonPayload.event="competitor_provider_request_start"');
+    await user.click(screen.getByRole("button", { name: "Run Query" }));
+
+    await waitFor(() =>
+      expect(mockQueryGcpLogs).toHaveBeenNthCalledWith(1, "token-1", "biz-1", {
+        filter: 'jsonPayload.event="competitor_provider_request_start"',
+        page_size: 25,
+        page_token: undefined,
+      }),
+    );
+    expect(screen.getByText("Retrieved 1 log entries.")).toBeInTheDocument();
+    expect(screen.getByText("request started")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next Page" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "Next Page" }));
+
+    await waitFor(() =>
+      expect(mockQueryGcpLogs).toHaveBeenNthCalledWith(2, "token-1", "biz-1", {
+        filter: 'jsonPayload.event="competitor_provider_request_start"',
+        page_size: 25,
+        page_token: "next-token-1",
+      }),
+    );
+    expect(screen.getByText("Loaded next page with 1 log entries.")).toBeInTheDocument();
+    expect(screen.getByText("request completed")).toBeInTheDocument();
+  });
+
+  it("shows a clear validation error when logs query is invalid", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockQueryGcpLogs.mockRejectedValueOnce(
+      new ApiRequestError("Invalid Cloud Logging filter or page size.", { status: 422, detail: null }),
+    );
+
+    const user = userEvent.setup();
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    await user.type(screen.getByLabelText("Logs Explorer Filter"), "severity>=ERROR");
+    await user.click(screen.getByRole("button", { name: "Run Query" }));
+
+    await screen.findByText("Invalid Cloud Logging filter or page size.");
   });
 });

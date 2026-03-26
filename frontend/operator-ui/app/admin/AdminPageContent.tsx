@@ -19,10 +19,11 @@ import {
   fetchBusinessSettings,
   fetchPrincipalIdentities,
   fetchPrincipals,
+  queryGcpLogs,
   updateAdminSite,
   updateBusinessSettings,
 } from "../../lib/api/client";
-import type { BusinessSettings, Principal, PrincipalIdentity, PrincipalRole, SEOSite } from "../../lib/api/types";
+import type { BusinessSettings, GCPLogEntry, Principal, PrincipalIdentity, PrincipalRole, SEOSite } from "../../lib/api/types";
 import {
   COMPETITOR_BIG_BOX_PENALTY_MAX,
   COMPETITOR_BIG_BOX_PENALTY_MIN,
@@ -61,6 +62,20 @@ interface SettingsHealthSummary {
   competitorTimeouts: SettingsSectionHealth;
   notifications: SettingsSectionHealth;
 }
+
+const GCP_LOGS_PAGE_SIZE_DEFAULT = 25;
+const GCP_LOGS_PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
+
+const GCP_LOGS_SAMPLE_FILTERS = [
+  'jsonPayload.event="competitor_provider_request_start"',
+  'jsonPayload.event="competitor_provider_request_complete"',
+  'jsonPayload.event="competitor_provider_request_error"',
+  'jsonPayload.event="competitor_provider_request_error" AND jsonPayload.failure_kind="malformed_output"',
+  'jsonPayload.failure_kind="malformed_output" AND jsonPayload.malformed_output_reason:*',
+  'jsonPayload.event="competitor_provider_request_error" AND jsonPayload.endpoint_path="/responses"',
+  'jsonPayload.event="competitor_provider_request_start" AND jsonPayload.run_id="<run_id>"',
+  'jsonPayload.event="competitor_provider_request_complete" AND jsonPayload.run_id="<run_id>"',
+] as const;
 
 function parseBoundedInteger(input: string, bounds: { min: number; max: number }): number | null {
   const normalized = input.trim();
@@ -471,6 +486,30 @@ function safeAdminSiteDeleteErrorMessage(error: unknown): string {
   return "Failed to permanently delete site.";
 }
 
+function safeGcpLogsQueryErrorMessage(error: unknown): string {
+  if (error instanceof ApiRequestError) {
+    if (error.status === 401) {
+      return "Session expired. Sign in again.";
+    }
+    if (error.status === 403) {
+      return "Only admin principals can query Cloud Logging.";
+    }
+    if (error.status === 422) {
+      return "Invalid Cloud Logging filter or page size.";
+    }
+    if (error.status === 504) {
+      return "Cloud Logging query timed out. Narrow the filter and try again.";
+    }
+    if (error.status === 502) {
+      return "Cloud Logging API query failed. Verify runtime service-account permissions and retry.";
+    }
+    if (error.status === 503) {
+      return "Cloud Logging query is not configured in this environment.";
+    }
+  }
+  return "Cloud Logging query failed.";
+}
+
 function normalizePromptOverrideInput(value: string): string | null {
   const normalized = value.trim();
   if (!normalized) {
@@ -481,6 +520,15 @@ function normalizePromptOverrideInput(value: string): string | null {
 
 function formatIdentityLabel(identity: PrincipalIdentity): string {
   return identity.email || `${identity.provider}:${identity.provider_subject}`;
+}
+
+function formatLabelSummary(labels: Record<string, string> | null): string {
+  if (!labels || Object.keys(labels).length === 0) {
+    return "";
+  }
+  return Object.entries(labels)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(", ");
 }
 
 export default function AdminPage() {
@@ -541,6 +589,16 @@ export default function AdminPage() {
   const [siteManagementError, setSiteManagementError] = useState<string | null>(null);
   const [updatingSiteId, setUpdatingSiteId] = useState<string | null>(null);
   const [deletingSiteId, setDeletingSiteId] = useState<string | null>(null);
+  const [gcpLogsFilterInput, setGcpLogsFilterInput] = useState("");
+  const [gcpLogsPageSize, setGcpLogsPageSize] = useState<number>(GCP_LOGS_PAGE_SIZE_DEFAULT);
+  const [gcpLogsEntries, setGcpLogsEntries] = useState<GCPLogEntry[]>([]);
+  const [gcpLogsNextPageToken, setGcpLogsNextPageToken] = useState<string | null>(null);
+  const [gcpLogsOrderBy, setGcpLogsOrderBy] = useState<string>("timestamp desc");
+  const [gcpLogsResourceScope, setGcpLogsResourceScope] = useState<string[]>([]);
+  const [gcpLogsLoading, setGcpLogsLoading] = useState(false);
+  const [gcpLogsError, setGcpLogsError] = useState<string | null>(null);
+  const [gcpLogsMessage, setGcpLogsMessage] = useState<string | null>(null);
+  const [gcpLogsHasExecuted, setGcpLogsHasExecuted] = useState(false);
 
   const isAdmin = principal?.role === "admin";
 
@@ -1102,6 +1160,59 @@ export default function AdminPage() {
     } finally {
       setDeletingSiteId(null);
     }
+  };
+
+  const runGcpLogsQuery = async (pageToken: string | null = null) => {
+    const normalizedFilter = gcpLogsFilterInput.trim();
+    if (!normalizedFilter) {
+      setGcpLogsError("Cloud Logging filter is required.");
+      setGcpLogsMessage(null);
+      return;
+    }
+
+    setGcpLogsLoading(true);
+    setGcpLogsError(null);
+    setGcpLogsMessage(null);
+    try {
+      const response = await queryGcpLogs(context.token, context.businessId, {
+        filter: normalizedFilter,
+        page_size: gcpLogsPageSize,
+        page_token: pageToken || undefined,
+      });
+      setGcpLogsEntries(response.entries);
+      setGcpLogsNextPageToken(response.next_page_token || null);
+      setGcpLogsOrderBy(response.order_by);
+      setGcpLogsResourceScope(response.resource_scope);
+      setGcpLogsHasExecuted(true);
+      if (response.entries.length === 0) {
+        setGcpLogsMessage("No logs matched this filter.");
+      } else if (pageToken) {
+        setGcpLogsMessage(`Loaded next page with ${response.entries.length} log entries.`);
+      } else {
+        setGcpLogsMessage(`Retrieved ${response.entries.length} log entries.`);
+      }
+    } catch (err) {
+      setGcpLogsError(safeGcpLogsQueryErrorMessage(err));
+      setGcpLogsHasExecuted(true);
+      if (!pageToken) {
+        setGcpLogsEntries([]);
+        setGcpLogsNextPageToken(null);
+      }
+    } finally {
+      setGcpLogsLoading(false);
+    }
+  };
+
+  const handleSubmitGcpLogsQuery = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await runGcpLogsQuery();
+  };
+
+  const handleLoadNextGcpLogsPage = async () => {
+    if (!gcpLogsNextPageToken || gcpLogsLoading) {
+      return;
+    }
+    await runGcpLogsQuery(gcpLogsNextPageToken);
   };
 
   const handleToggleUserActive = async (user: Principal) => {
@@ -1720,6 +1831,123 @@ export default function AdminPage() {
               {context.sites.length === 0 ? (
                 <tr>
                   <td colSpan={6}>No sites found for this business.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+
+      <SectionCard>
+        <h2>GCP Logs Query</h2>
+        <p className="hint muted">
+          Admin-only Cloud Logging proxy query using runtime attached service-account credentials (ADC).
+        </p>
+
+        <FormContainer onSubmit={(event) => void handleSubmitGcpLogsQuery(event)} noValidate>
+          <label htmlFor="gcp-logs-filter">Logs Explorer Filter</label>
+          <textarea
+            id="gcp-logs-filter"
+            rows={6}
+            value={gcpLogsFilterInput}
+            onChange={(event) => setGcpLogsFilterInput(event.target.value)}
+            placeholder='jsonPayload.event="competitor_provider_request_error"'
+            disabled={gcpLogsLoading}
+            required
+          />
+
+          <label htmlFor="gcp-logs-page-size">Page Size</label>
+          <select
+            id="gcp-logs-page-size"
+            value={String(gcpLogsPageSize)}
+            onChange={(event) => setGcpLogsPageSize(Number(event.target.value))}
+            disabled={gcpLogsLoading}
+          >
+            {GCP_LOGS_PAGE_SIZE_OPTIONS.map((pageSizeOption) => (
+              <option key={pageSizeOption} value={String(pageSizeOption)}>
+                {pageSizeOption}
+              </option>
+            ))}
+          </select>
+
+          <div className="form-actions">
+            <button className="button button-primary" type="submit" disabled={gcpLogsLoading}>
+              {gcpLogsLoading ? "Querying..." : "Run Query"}
+            </button>
+            <button
+              className="button button-secondary"
+              type="button"
+              onClick={() => void handleLoadNextGcpLogsPage()}
+              disabled={gcpLogsLoading || !gcpLogsNextPageToken}
+            >
+              Next Page
+            </button>
+          </div>
+
+          <p className="hint muted">
+            Scope: <code>{gcpLogsResourceScope.length > 0 ? gcpLogsResourceScope.join(", ") : "configured project"}</code>
+            {" | "}
+            Order: <code>{gcpLogsOrderBy}</code>
+          </p>
+
+          {gcpLogsMessage ? <p className="hint">{gcpLogsMessage}</p> : null}
+          {gcpLogsError ? <p className="hint error">{gcpLogsError}</p> : null}
+          {gcpLogsHasExecuted && !gcpLogsLoading && gcpLogsEntries.length === 0 && !gcpLogsError ? (
+            <p className="hint muted">No entries returned for the current filter and page.</p>
+          ) : null}
+        </FormContainer>
+
+        <h3>Sample Filters</h3>
+        <ul className="compact-list">
+          {GCP_LOGS_SAMPLE_FILTERS.map((sample) => (
+            <li key={sample}>
+              <code>{sample}</code>{" "}
+              <button
+                type="button"
+                className="button button-tertiary button-inline"
+                onClick={() => setGcpLogsFilterInput(sample)}
+                disabled={gcpLogsLoading}
+              >
+                Use
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Severity</th>
+                <th>Log Name</th>
+                <th>Resource</th>
+                <th>Insert ID</th>
+                <th>Payload Summary</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gcpLogsEntries.map((entry, index) => (
+                <tr
+                  key={`${entry.insert_id || "no-insert-id"}:${entry.timestamp || "no-timestamp"}:${index}`}
+                >
+                  <td className="table-cell-wrap">{entry.timestamp || "n/a"}</td>
+                  <td>{entry.severity || "default"}</td>
+                  <td className="table-cell-wrap">{entry.log_name || "n/a"}</td>
+                  <td className="table-cell-wrap">
+                    <div>{entry.resource_type || "n/a"}</div>
+                    {entry.resource_labels ? <div className="hint muted">{formatLabelSummary(entry.resource_labels)}</div> : null}
+                    {entry.labels ? <div className="hint muted">{formatLabelSummary(entry.labels)}</div> : null}
+                  </td>
+                  <td className="table-cell-wrap">{entry.insert_id || "n/a"}</td>
+                  <td className="table-cell-wrap">
+                    {entry.text_payload_summary || entry.json_payload_summary || entry.proto_payload_summary || "n/a"}
+                  </td>
+                </tr>
+              ))}
+              {!gcpLogsLoading && gcpLogsEntries.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>Run a query to view log entries.</td>
                 </tr>
               ) : null}
             </tbody>

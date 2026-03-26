@@ -7,6 +7,7 @@ from app.api.deps import (
     get_principal_identity_service,
     get_auth_audit_service,
     get_business_settings_service,
+    get_gcp_logs_query_service,
     get_principal_service,
     require_admin_rate_limit,
     require_credential_manager_principal,
@@ -22,6 +23,7 @@ from app.schemas.api_credential import (
     APICredentialRead,
     APICredentialRotateResponse,
 )
+from app.schemas.admin_logs import GCPLogsQueryRequest, GCPLogsQueryResponse
 from app.schemas.auth_audit import AuthAuditEventListResponse, AuthAuditEventRead
 from app.schemas.business import BusinessSettingsRead, BusinessSettingsUpdateRequest
 from app.schemas.principal import (
@@ -45,6 +47,14 @@ from app.services.business_settings import (
     BusinessSettingsNotFoundError,
     BusinessSettingsService,
     BusinessSettingsValidationError,
+)
+from app.services.gcp_logs_query import (
+    GCPLogsQueryConfigurationError,
+    GCPLogsQueryPermissionError,
+    GCPLogsQueryProviderError,
+    GCPLogsQueryService,
+    GCPLogsQueryTimeoutError,
+    GCPLogsQueryValidationError,
 )
 from app.services.principals import PrincipalNotFoundError, PrincipalService, PrincipalValidationError
 from app.services.principal_identities import (
@@ -93,6 +103,44 @@ def patch_business_settings(
     except BusinessSettingsValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
     return BusinessSettingsRead.model_validate(business)
+
+
+@router.post("/{business_id}/gcp/logs/query", response_model=GCPLogsQueryResponse)
+def query_gcp_logs(
+    business_id: str,
+    payload: GCPLogsQueryRequest,
+    _: Principal = Depends(require_credential_manager_principal),
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    gcp_logs_query_service: GCPLogsQueryService = Depends(get_gcp_logs_query_service),
+) -> GCPLogsQueryResponse:
+    resolve_tenant_business_id(
+        tenant_context=tenant_context,
+        requested_business_id=business_id,
+    )
+    try:
+        return gcp_logs_query_service.query_logs(payload=payload)
+    except GCPLogsQueryValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    except GCPLogsQueryConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Cloud Logging query is not configured for this runtime.",
+        ) from exc
+    except GCPLogsQueryPermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Cloud Logging permission denied for runtime service account.",
+        ) from exc
+    except GCPLogsQueryTimeoutError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Cloud Logging query timed out.",
+        ) from exc
+    except GCPLogsQueryProviderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Cloud Logging query failed.",
+        ) from exc
 
 
 @router.get("/{business_id}/credentials", response_model=APICredentialListResponse)
