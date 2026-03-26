@@ -12,7 +12,7 @@ from app.api.deps import (
 from app.api.routes.businesses import router as businesses_router
 from app.models.principal import Principal, PrincipalRole
 from app.schemas.admin_logs import GCPLogEntryRead, GCPLogsQueryRequest, GCPLogsQueryResponse
-from app.services.gcp_logs_query import GCPLogsQueryProviderError
+from app.services.gcp_logs_query import GCPLogsQueryConfigurationError, GCPLogsQueryProviderError
 
 
 class _StubGCPLogsQueryService:
@@ -232,3 +232,26 @@ def test_gcp_logs_query_handles_provider_error_with_sanitized_message(db_session
 
     assert response.status_code == 502
     assert response.json()["detail"] == "Cloud Logging query failed."
+
+
+def test_gcp_logs_query_surfaces_actionable_missing_project_configuration_error(db_session, seeded_business) -> None:
+    stub_service = _StubGCPLogsQueryService()
+    stub_service.error = GCPLogsQueryConfigurationError(
+        "Cloud Logging query is not configured: missing GCP project id. "
+        "Set GCP_LOGGING_PROJECT_ID (recommended) or GOOGLE_CLOUD_PROJECT/GCLOUD_PROJECT."
+    )
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        gcp_logs_service=stub_service,
+    )
+
+    response = client.post(
+        f"/api/businesses/{seeded_business.id}/gcp/logs/query",
+        json={"filter": 'jsonPayload.event="competitor_provider_request_start"'},
+    )
+
+    assert response.status_code == 503
+    detail = response.json()["detail"]
+    assert "GCP_LOGGING_PROJECT_ID" in detail
+    assert "GOOGLE_CLOUD_PROJECT" in detail

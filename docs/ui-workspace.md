@@ -70,3 +70,9 @@ Result display:
 - explicit loading, empty, invalid-query, permission, and timeout states
 
 Backend behavior remains admin-only and uses runtime ADC via attached service account.
+
+Configuration prerequisites:
+
+- backend project scope env var: `GCP_LOGGING_PROJECT_ID` (fallback: `GOOGLE_CLOUD_PROJECT` / `GCLOUD_PROJECT`)
+- value should be a valid project id (for example `my-prod-project-123`)
+- runtime service account must have Cloud Logging read permission on that project

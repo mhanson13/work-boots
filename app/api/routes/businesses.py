@@ -124,7 +124,7 @@ def query_gcp_logs(
     except GCPLogsQueryConfigurationError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Cloud Logging query is not configured for this runtime.",
+            detail=str(exc),
         ) from exc
     except GCPLogsQueryPermissionError as exc:
         raise HTTPException(

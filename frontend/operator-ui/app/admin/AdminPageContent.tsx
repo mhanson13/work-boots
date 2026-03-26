@@ -504,7 +504,7 @@ function safeGcpLogsQueryErrorMessage(error: unknown): string {
       return "Cloud Logging API query failed. Verify runtime service-account permissions and retry.";
     }
     if (error.status === 503) {
-      return "Cloud Logging query is not configured in this environment.";
+      return error.message || "Cloud Logging query is not configured in this environment.";
     }
   }
   return "Cloud Logging query failed.";

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.integrations.google_cloud_logging import GoogleCloudLoggingAPIError
+from app.integrations.google_cloud_logging import GoogleCloudLoggingADCError, GoogleCloudLoggingAPIError
 from app.schemas.admin_logs import GCPLogsQueryRequest
 from app.services.gcp_logs_query import (
     GCPLogsQueryConfigurationError,
@@ -88,7 +88,25 @@ def test_gcp_logs_query_service_requires_configured_project() -> None:
     try:
         service.query_logs(payload=GCPLogsQueryRequest(filter="severity>=ERROR"))
     except GCPLogsQueryConfigurationError as exc:
-        assert "project" in str(exc)
+        message = str(exc)
+        assert "GCP_LOGGING_PROJECT_ID" in message
+        assert "GOOGLE_CLOUD_PROJECT" in message
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected GCPLogsQueryConfigurationError")
+
+
+def test_gcp_logs_query_service_surfaces_adc_unavailable_as_configuration_error() -> None:
+    service = GCPLogsQueryService(
+        client=_FakeCloudLoggingClient(error=GoogleCloudLoggingADCError("adc unavailable")),
+        project_id="test-project",
+    )
+
+    try:
+        service.query_logs(payload=GCPLogsQueryRequest(filter="severity>=ERROR"))
+    except GCPLogsQueryConfigurationError as exc:
+        message = str(exc).lower()
+        assert "application default credentials" in message
+        assert "service account" in message
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("Expected GCPLogsQueryConfigurationError")
 

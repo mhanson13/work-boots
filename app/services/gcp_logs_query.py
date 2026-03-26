@@ -22,6 +22,14 @@ _MAX_TIMESTAMP_CHARS = 64
 _MAX_INSERT_ID_CHARS = 128
 _MAX_PAYLOAD_SUMMARY_CHARS = 900
 _MAX_PAGE_TOKEN_CHARS = 2048
+_PROJECT_CONFIG_ERROR_MESSAGE = (
+    "Cloud Logging query is not configured: missing GCP project id. "
+    "Set GCP_LOGGING_PROJECT_ID (recommended) or GOOGLE_CLOUD_PROJECT/GCLOUD_PROJECT."
+)
+_ADC_CONFIG_ERROR_MESSAGE = (
+    "Cloud Logging query is not configured: runtime Application Default Credentials are unavailable. "
+    "Verify the deployed service account is attached and has Cloud Logging read access."
+)
 
 
 class GCPLogsQueryValidationError(ValueError):
@@ -60,9 +68,7 @@ class GCPLogsQueryService:
 
     def query_logs(self, *, payload: GCPLogsQueryRequest) -> GCPLogsQueryResponse:
         if not self.project_id:
-            raise GCPLogsQueryConfigurationError(
-                "Cloud Logging project is not configured. Set GCP_LOGGING_PROJECT_ID or GOOGLE_CLOUD_PROJECT."
-            )
+            raise GCPLogsQueryConfigurationError(_PROJECT_CONFIG_ERROR_MESSAGE)
         effective_page_size = int(payload.page_size or self.default_page_size)
         if effective_page_size <= 0:
             raise GCPLogsQueryValidationError("page_size must be greater than zero.")
@@ -76,9 +82,7 @@ class GCPLogsQueryService:
                 order_by=self.order_by,
             )
         except GoogleCloudLoggingADCError as exc:
-            raise GCPLogsQueryConfigurationError(
-                "Cloud Logging query is unavailable because runtime credentials could not be resolved."
-            ) from exc
+            raise GCPLogsQueryConfigurationError(_ADC_CONFIG_ERROR_MESSAGE) from exc
         except GoogleCloudLoggingAPIError as exc:
             if exc.is_invalid_request:
                 raise GCPLogsQueryValidationError("Cloud Logging filter or pagination parameters are invalid.") from exc

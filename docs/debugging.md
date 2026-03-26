@@ -161,12 +161,24 @@ Auth and runtime model:
 - backend authenticates to GCP with Application Default Credentials from the runtime attached service account
 - no user OAuth scopes and no browser-side GCP credentials are required
 
+Required backend project configuration:
+
+- `GCP_LOGGING_PROJECT_ID` (recommended explicit setting)
+- fallback: `GOOGLE_CLOUD_PROJECT` or `GCLOUD_PROJECT`
+- value format: GCP project id string, for example `my-prod-project-123`
+
+If project configuration is missing, the API returns a 503 with an actionable message naming the expected env vars.
+
 Scope and paging limits:
 
 - query scope is fixed to the configured project: `projects/<configured-project>`
 - order is fixed to `timestamp desc`
 - page size is bounded to `1..100` (UI options: 10, 25, 50, 100)
 - pagination uses Cloud Logging `nextPageToken` via the `Next Page` action
+
+Runtime IAM requirement:
+
+- deployed runtime service account must have Cloud Logging read permission on the configured project (for example `logging.logEntries.list`, commonly provided by Logs Viewer or equivalent custom role)
 
 Returned rows are sanitized and compact:
 
