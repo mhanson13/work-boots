@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 AIPromptType = Literal["competitor", "recommendation"]
 AIPromptSource = Literal["admin_config", "env", "default"]
 
-_PROMPT_TEXT_MAX_CHARS = 20000
+_PROMPT_TEXT_MAX_CHARS = 50000
 _PROMPT_MODEL_MAX_CHARS = 128
 _PROMPT_VERSION_MAX_CHARS = 64
 _PROMPT_LABEL_MAX_CHARS = 96

@@ -1270,6 +1270,80 @@ def test_workspace_competitor_prompt_preview_renders_business_override_placehold
         get_settings.cache_clear()
 
 
+def test_workspace_competitor_prompt_preview_preserves_full_override_body_without_cutoff(
+    db_session,
+    seeded_business,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("AI_PROMPT_TEXT_COMPETITOR", raising=False)
+    monkeypatch.delenv("AI_PROMPT_TEXT_RECOMMENDATIONS", raising=False)
+    monkeypatch.delenv("AI_PROMPT_TEXT_RECOMMENDATION", raising=False)
+    get_settings.cache_clear()
+    try:
+        client = _make_client(db_session, business_id=seeded_business.id)
+        site_id = _create_site(client, seeded_business.id)
+        seeded_business.ai_prompt_text_competitor = (
+            "PROMPT_VERSION: seo-competitor-profile-v2\n"
+            "TASK: Generate operator-reviewed competitor candidates with strict substitution quality.\n"
+            + ("Context detail sentence to preserve full override rendering fidelity. " * 60)
+            + "\n"
+            "COMPETITOR_QUALITY_CONTRACT:\n"
+            "1. Include only direct substitutes for the same customer intent.\n"
+            "2. Exclude directories, lead brokers, and social platforms.\n"
+            "3. If evidence is weak or ambiguous, return fewer candidates rather than speculative matches.\n"
+            "4. Prioritize explicit local-market overlap.\n"
+            "5. Prefer same-trade providers over adjacent categories.\n"
+            "6. Validate domain ownership and active service relevance.\n"
+            "7. Avoid broad national aggregators unless directly substitutable.\n"
+            "8. Avoid informational publishers as primary competitors.\n"
+            "9. Keep confidence aligned to concrete overlap evidence.\n"
+            "10. Penalize weakly supported inferences.\n"
+            "11. Keep candidate rationale concise and auditable.\n"
+            "12. Return fewer candidates when confidence is uncertain.\n"
+            "WEB-SEARCH QUALITY RULES:\n"
+            "1. Prefer first-party business websites over aggregators.\n"
+            "2. Use search snippets as supporting evidence only.\n"
+            "OUTPUT FORMAT:\n"
+            '{"candidates":[{"domain":"hostname","competitor_type":"direct","confidence_score":0.0}]}\n'
+        )
+        db_session.add(seeded_business)
+        db_session.commit()
+
+        summary = client.get(
+            f"/api/businesses/{seeded_business.id}/seo/sites/{site_id}/recommendations/workspace-summary"
+        )
+        assert summary.status_code == 200
+        payload = summary.json()
+        preview = payload["competitor_prompt_preview"]
+        assert preview is not None
+        assert preview["source"] == "admin_config"
+        assert preview["truncated"] is False
+        assert "COMPETITOR_QUALITY_CONTRACT:" in preview["user_prompt"]
+        assert "1. Include only direct substitutes for the same customer intent." in preview["user_prompt"]
+        assert "2. Exclude directories, lead brokers, and social platforms." in preview["user_prompt"]
+        assert (
+            "3. If evidence is weak or ambiguous, return fewer candidates rather than speculative matches."
+            in preview["user_prompt"]
+        )
+        assert "4. Prioritize explicit local-market overlap." in preview["user_prompt"]
+        assert "5. Prefer same-trade providers over adjacent categories." in preview["user_prompt"]
+        assert "6. Validate domain ownership and active service relevance." in preview["user_prompt"]
+        assert "7. Avoid broad national aggregators unless directly substitutable." in preview["user_prompt"]
+        assert "8. Avoid informational publishers as primary competitors." in preview["user_prompt"]
+        assert "9. Keep confidence aligned to concrete overlap evidence." in preview["user_prompt"]
+        assert "10. Penalize weakly supported inferences." in preview["user_prompt"]
+        assert "11. Keep candidate rationale concise and auditable." in preview["user_prompt"]
+        assert "12. Return fewer candidates when confidence is uncertain." in preview["user_prompt"]
+        assert "WEB-SEARCH QUALITY RULES:" in preview["user_prompt"]
+        assert "OUTPUT FORMAT:" in preview["user_prompt"]
+        assert "3. If ev\nPLATFORM_CONSTRAINTS:" not in preview["user_prompt"]
+        assert preview["user_prompt"].count("SITE_CONTEXT_JSON:") == 1
+        assert preview["user_prompt"].count("REQUESTED_CANDIDATE_COUNT:") == 1
+        _assert_site_context_json_is_data_only(preview["user_prompt"])
+    finally:
+        get_settings.cache_clear()
+
+
 def test_workspace_recommendation_prompt_preview_uses_business_override_without_env_fallback(
     db_session,
     seeded_business,

@@ -3720,6 +3720,67 @@ describe("site workspace timeline controls", () => {
     expect(screen.queryByTestId("recommendation-prompt-preview")).not.toBeInTheDocument();
   });
 
+  it("renders full competitor prompt preview text and copies export without early cutoff", async () => {
+    seedRichWorkspaceData();
+    const user = userEvent.setup();
+    const longOverridePrompt = [
+      "PROMPT_VERSION: seo-competitor-profile-v2",
+      "TASK: Preserve full prompt preview/export content.",
+      "COMPETITOR_QUALITY_CONTRACT:",
+      "1. Include only substitutable providers.",
+      "2. Exclude directories and social profiles.",
+      "3. If evidence is weak or ambiguous, return fewer candidates rather than speculative matches.",
+      "4. Prioritize local overlap evidence.",
+      "5. Keep trade relevance strict.",
+      "6. Keep confidence tied to explicit evidence.",
+      "7. Avoid adjacent non-substitute businesses.",
+      "8. Prefer first-party business domains.",
+      "9. Keep rationale concise.",
+      "10. Avoid speculative geography.",
+      "11. Penalize ambiguous service overlap.",
+      "12. Return fewer candidates when confidence is uncertain.",
+      "WEB-SEARCH QUALITY RULES:",
+      "1. Prefer first-party business websites.",
+      "2. Use snippets as supporting evidence only.",
+      "OUTPUT FORMAT:",
+      '{"candidates":[{"domain":"hostname","competitor_type":"direct","confidence_score":0.0}]}',
+      "LONG_CONTEXT_BLOCK:",
+      "Long-form override detail sentence.".repeat(80),
+    ].join("\n");
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    mockFetchRecommendationWorkspaceSummary.mockResolvedValue(
+      buildRecommendationWorkspaceSummary({
+        competitor_prompt_preview: buildAIPromptPreview({
+          prompt_type: "competitor",
+          system_prompt: "COMPETITOR_SYSTEM",
+          user_prompt: longOverridePrompt,
+          source: "admin_config",
+          truncated: false,
+        }),
+        recommendation_prompt_preview: null,
+      }),
+    );
+
+    render(<SiteWorkspacePage />);
+
+    const competitorPanel = await screen.findByTestId("competitor-prompt-preview");
+    await user.click(within(competitorPanel).getByText("View AI prompt"));
+    expect(within(competitorPanel).getByText(/WEB-SEARCH QUALITY RULES:/)).toBeInTheDocument();
+    expect(within(competitorPanel).getByText(/OUTPUT FORMAT:/)).toBeInTheDocument();
+    expect(within(competitorPanel).getByText(/12\. Return fewer candidates when confidence is uncertain\./)).toBeInTheDocument();
+
+    await user.click(within(competitorPanel).getByRole("button", { name: "Copy Prompt" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText.mock.calls[0][0]).toContain("Prompt Type: Competitor Analysis");
+    expect(writeText.mock.calls[0][0]).toContain("Truncated: no");
+    expect(writeText.mock.calls[0][0]).toContain("WEB-SEARCH QUALITY RULES:");
+    expect(writeText.mock.calls[0][0]).toContain("OUTPUT FORMAT:");
+  });
+
   it("supports prompt copy and download actions with safe export text", async () => {
     seedRichWorkspaceData();
     const user = userEvent.setup();

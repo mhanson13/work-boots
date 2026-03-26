@@ -151,6 +151,87 @@ def test_competitor_prompt_preview_matches_runtime_prompt_assembly(
     assert "{service_focus_terms}" not in preview.user_prompt
 
 
+def test_competitor_prompt_preview_parity_preserves_full_long_override_without_cutoff(
+    db_session,
+    seeded_business,
+) -> None:
+    site = SEOSite(
+        id="site-preview-long-override",
+        business_id=seeded_business.id,
+        display_name="Preview Long Override Site",
+        base_url="https://preview-long-override.example/",
+        normalized_domain="preview-long-override.example",
+        industry="Roofing",
+        primary_location="Denver, CO",
+        service_areas_json=["Denver", "Aurora"],
+        is_active=True,
+        is_primary=True,
+    )
+    db_session.add(site)
+    seeded_business.ai_prompt_text_competitor = (
+        "PROMPT_VERSION: seo-competitor-profile-v2\n"
+        "TASK: Preserve the complete override body in preview and runtime assembly.\n"
+        + ("Long-form competitor guidance sentence. " * 60)
+        + "\n"
+        "COMPETITOR_QUALITY_CONTRACT:\n"
+        "1. Include only substitutable providers.\n"
+        "2. Exclude directories and social profiles.\n"
+        "3. If evidence is weak or ambiguous, return fewer candidates rather than speculative matches.\n"
+        "4. Prioritize local overlap evidence.\n"
+        "5. Keep trade relevance strict.\n"
+        "6. Keep confidence tied to explicit evidence.\n"
+        "7. Avoid adjacent non-substitute businesses.\n"
+        "8. Prefer first-party business domains.\n"
+        "9. Keep rationale concise.\n"
+        "10. Avoid speculative geography.\n"
+        "11. Penalize ambiguous service overlap.\n"
+        "12. Return fewer candidates if confidence is uncertain.\n"
+        "WEB-SEARCH QUALITY RULES:\n"
+        "1. Prefer first-party business websites.\n"
+        "2. Use snippets as supporting evidence only.\n"
+        "OUTPUT FORMAT:\n"
+        '{"candidates":[{"domain":"hostname","competitor_type":"direct","confidence_score":0.0}]}\n'
+    )
+    db_session.add(seeded_business)
+    db_session.commit()
+
+    provider = _MutablePromptProvider()
+    service = SEOCompetitorProfileGenerationService(
+        session=db_session,
+        business_repository=BusinessRepository(db_session),
+        seo_site_repository=SEOSiteRepository(db_session),
+        seo_competitor_repository=SEOCompetitorRepository(db_session),
+        seo_competitor_profile_generation_repository=SEOCompetitorProfileGenerationRepository(db_session),
+        provider=provider,
+    )
+    preview = service.build_prompt_preview(
+        business_id=seeded_business.id,
+        site_id=site.id,
+        candidate_count=4,
+        prompt_version="seo-competitor-profile-v1",
+    )
+    assert preview is not None
+
+    reloaded_site = db_session.get(SEOSite, site.id)
+    assert reloaded_site is not None
+    resolved_prompt = service._resolve_competitor_prompt_settings(seeded_business)
+    runtime_prompt = build_seo_competitor_profile_prompt(
+        site=reloaded_site,
+        existing_domains=[],
+        candidate_count=4,
+        prompt_version="seo-competitor-profile-v1",
+        prompt_text_competitor=resolved_prompt.prompt_text,
+    )
+
+    assert preview.system_prompt == runtime_prompt.system_prompt
+    assert preview.user_prompt == runtime_prompt.user_prompt
+    assert "COMPETITOR_QUALITY_CONTRACT:" in preview.user_prompt
+    assert "12. Return fewer candidates if confidence is uncertain." in preview.user_prompt
+    assert "WEB-SEARCH QUALITY RULES:" in preview.user_prompt
+    assert "OUTPUT FORMAT:" in preview.user_prompt
+    assert "3. If ev\nPLATFORM_CONSTRAINTS:" not in preview.user_prompt
+
+
 def test_recommendation_prompt_preview_matches_runtime_prompt_assembly(
     db_session,
     seeded_business,

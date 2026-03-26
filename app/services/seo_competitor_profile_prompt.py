@@ -22,6 +22,7 @@ _MAX_SERVICE_AREAS = 25
 _MAX_SERVICE_FOCUS_TERM_LENGTH = 32
 _MAX_SERVICE_FOCUS_TERMS = 8
 _MAX_TARGET_CUSTOMER_CONTEXT_LENGTH = 220
+_MAX_PROMPT_TEXT_COMPETITOR_LENGTH = 20000
 _MAX_NON_COMPETITOR_HINTS = 12
 _MAX_EXISTING_COMPETITOR_DOMAINS = 40
 _MAX_EXISTING_COMPETITOR_DOMAINS_TOTAL_CHARS = 900
@@ -917,6 +918,6 @@ def _normalize_prompt_text_competitor(raw_text: str) -> str:
     normalized = "".join(filtered).strip()
     if not normalized:
         return ""
-    if len(normalized) > 2000:
-        return normalized[:2000]
+    if len(normalized) > _MAX_PROMPT_TEXT_COMPETITOR_LENGTH:
+        return normalized[:_MAX_PROMPT_TEXT_COMPETITOR_LENGTH]
     return normalized
