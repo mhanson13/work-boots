@@ -206,7 +206,8 @@ Auth and runtime model:
 
 Required backend project configuration:
 
-- `GCP_LOGGING_PROJECT_ID` (recommended explicit setting)
+- `GCP_PROJECT_ID` (preferred existing project-id setting)
+- optional logs-specific override: `GCP_LOGGING_PROJECT_ID`
 - fallback: `GOOGLE_CLOUD_PROJECT` or `GCLOUD_PROJECT`
 - value format: GCP project id string, for example `my-prod-project-123`
 

@@ -89,6 +89,7 @@ def test_gcp_logs_query_service_requires_configured_project() -> None:
         service.query_logs(payload=GCPLogsQueryRequest(filter="severity>=ERROR"))
     except GCPLogsQueryConfigurationError as exc:
         message = str(exc)
+        assert "GCP_PROJECT_ID" in message
         assert "GCP_LOGGING_PROJECT_ID" in message
         assert "GOOGLE_CLOUD_PROJECT" in message
     else:  # pragma: no cover - defensive assertion

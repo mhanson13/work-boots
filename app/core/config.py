@@ -286,7 +286,12 @@ def get_settings() -> Settings:
         ),
         google_business_profile_api_timeout_seconds=int(os.getenv("GOOGLE_BUSINESS_PROFILE_API_TIMEOUT_SECONDS", "10")),
         gcp_logging_project_id=(
-            (os.getenv("GCP_LOGGING_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCLOUD_PROJECT"))
+            (
+                os.getenv("GCP_LOGGING_PROJECT_ID")
+                or os.getenv("GCP_PROJECT_ID")
+                or os.getenv("GOOGLE_CLOUD_PROJECT")
+                or os.getenv("GCLOUD_PROJECT")
+            )
             or None
         ),
         gcp_logging_api_timeout_seconds=_env_int("GCP_LOGGING_API_TIMEOUT_SECONDS", 10, min_value=1),
