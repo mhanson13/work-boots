@@ -97,6 +97,42 @@ Frontend contract note:
 - Verify token usability and scope enforcement before provider-call paths.
 - Keep tests deterministic (fixed fixtures, explicit error mapping expectations).
 
+## AI Provider Execution Modes
+Competitor profile generation now routes provider calls by explicit execution mode and call capability, not by hardcoded endpoint selection in service logic.
+
+- `fast_path`
+  - provider call type: `non_tool`
+  - web search: disabled
+  - context mode: reduced (`reduced_context_mode=true`)
+  - attempt number: `0`
+  - intent: low-latency first pass
+- `full`
+  - provider call type: `tool_enabled`
+  - web search: enabled
+  - context mode: full
+  - attempt number: `1`
+  - intent: highest-quality search-backed discovery
+- `degraded`
+  - provider call type: `non_tool`
+  - web search: disabled (hard guard)
+  - context mode: reduced (`reduced_context_mode=true`)
+  - attempt number: `2`
+  - intent: timeout recovery path after full-attempt timeout
+
+Runtime guardrails:
+- Fast and degraded modes must use `non_tool` provider calls.
+- Full mode is the only mode allowed to use `tool_enabled`.
+- Structured provider telemetry includes:
+  - `execution_mode`
+  - `provider_call_type`
+  - `web_search_enabled`
+  - `attempt_number`
+  - `duration_ms`
+
+Latency tradeoff:
+- Non-tool calls are generally faster and more deterministic.
+- Tool-enabled calls are higher-latency but improve real-time competitor discovery quality.
+
 ## Admin Site Maintenance
 - Admin-only site maintenance endpoints are exposed under business-scoped SEO routes:
   - `PATCH /api/businesses/{business_id}/seo/admin/sites/{site_id}`

@@ -324,6 +324,9 @@ class _TimeoutThenSuccessCompetitorProfileProvider:
         self.run_ids: list[str | None] = []
         self.attempt_numbers: list[int | None] = []
         self.degraded_modes: list[bool] = []
+        self.execution_modes: list[str | None] = []
+        self.provider_call_types: list[str | None] = []
+        self.web_search_enabled_flags: list[bool | None] = []
 
     def generate_competitor_profiles(
         self,
@@ -335,6 +338,9 @@ class _TimeoutThenSuccessCompetitorProfileProvider:
         run_id: str | None = None,
         attempt_number: int | None = None,
         degraded_mode: bool = False,
+        execution_mode: str | None = None,
+        provider_call_type: str | None = None,
+        web_search_enabled: bool | None = None,
     ) -> SEOCompetitorProfileGenerationOutput:
         del site, existing_domains
         self.requested_candidate_counts.append(candidate_count)
@@ -342,7 +348,12 @@ class _TimeoutThenSuccessCompetitorProfileProvider:
         self.run_ids.append(run_id)
         self.attempt_numbers.append(attempt_number)
         self.degraded_modes.append(bool(degraded_mode))
-        if len(self.requested_candidate_counts) == 1:
+        self.execution_modes.append(execution_mode)
+        self.provider_call_types.append(provider_call_type)
+        self.web_search_enabled_flags.append(web_search_enabled)
+        if len(self.requested_candidate_counts) <= 2:
+            endpoint_path = "/responses" if provider_call_type == "tool_enabled" else "/chat/completions"
+            web_search_value = "true" if bool(web_search_enabled) else "false"
             raise SEOCompetitorProfileProviderError(
                 code="timeout",
                 safe_message="provider timeout",
@@ -350,9 +361,18 @@ class _TimeoutThenSuccessCompetitorProfileProvider:
                 model_name=self.model_name,
                 prompt_version=self.prompt_version,
                 raw_output=(
-                    "{\"failure_kind\":\"timeout\",\"endpoint_path\":\"/responses\","
+                    "{\"failure_kind\":\"timeout\",\"endpoint_path\":\""
+                    f"{endpoint_path}"
+                    "\","
                     "\"request_debug\":{\"request_duration_ms\":30500,\"timeout_seconds\":30,"
-                    "\"web_search_enabled\":true,\"prompt_size_risk\":\"normal\"}}"
+                    "\"web_search_enabled\":"
+                    f"{web_search_value}"
+                    ",\"prompt_size_risk\":\"normal\","
+                    "\"execution_mode\":\""
+                    f"{execution_mode or ''}"
+                    "\",\"provider_call_type\":\""
+                    f"{provider_call_type or ''}"
+                    "\"}}"
                 ),
             )
         return SEOCompetitorProfileGenerationOutput(
@@ -371,6 +391,9 @@ class _TimeoutThenSuccessCompetitorProfileProvider:
             model_name=self.model_name,
             prompt_version=self.prompt_version,
             raw_response="{\"candidates\":[{\"name\":\"Recovered Competitor\"}]}",
+            provider_call_type=provider_call_type,
+            endpoint_path="/chat/completions",
+            web_search_enabled=False,
         )
 
 
@@ -383,6 +406,8 @@ class _TimeoutConfiguredThenSuccessCompetitorProfileProvider:
     def __init__(self) -> None:
         self.timeout_seconds_by_attempt: list[int] = []
         self.degraded_modes: list[bool] = []
+        self.execution_modes: list[str | None] = []
+        self.provider_call_types: list[str | None] = []
 
     def generate_competitor_profiles(
         self,
@@ -394,13 +419,20 @@ class _TimeoutConfiguredThenSuccessCompetitorProfileProvider:
         run_id: str | None = None,
         attempt_number: int | None = None,
         degraded_mode: bool = False,
+        execution_mode: str | None = None,
+        provider_call_type: str | None = None,
+        web_search_enabled: bool | None = None,
         timeout_seconds: int | None = None,
     ) -> SEOCompetitorProfileGenerationOutput:
         del site, existing_domains, candidate_count, reduced_context_mode, run_id, attempt_number
         effective_timeout_seconds = int(timeout_seconds) if timeout_seconds is not None else int(self.timeout_seconds)
         self.timeout_seconds_by_attempt.append(effective_timeout_seconds)
         self.degraded_modes.append(bool(degraded_mode))
-        if len(self.timeout_seconds_by_attempt) == 1:
+        self.execution_modes.append(execution_mode)
+        self.provider_call_types.append(provider_call_type)
+        if len(self.timeout_seconds_by_attempt) <= 2:
+            endpoint_path = "/responses" if provider_call_type == "tool_enabled" else "/chat/completions"
+            web_search_value = "true" if bool(web_search_enabled) else "false"
             raise SEOCompetitorProfileProviderError(
                 code="timeout",
                 safe_message="provider timeout",
@@ -408,10 +440,19 @@ class _TimeoutConfiguredThenSuccessCompetitorProfileProvider:
                 model_name=self.model_name,
                 prompt_version=self.prompt_version,
                 raw_output=(
-                    "{\"failure_kind\":\"timeout\",\"endpoint_path\":\"/responses\","
+                    "{\"failure_kind\":\"timeout\",\"endpoint_path\":\""
+                    f"{endpoint_path}"
+                    "\","
                     "\"request_debug\":{\"request_duration_ms\":1500,"
                     f"\"timeout_seconds\":{effective_timeout_seconds},"
-                    "\"web_search_enabled\":true,\"prompt_size_risk\":\"normal\"}}"
+                    "\"web_search_enabled\":"
+                    f"{web_search_value}"
+                    ",\"prompt_size_risk\":\"normal\","
+                    "\"execution_mode\":\""
+                    f"{execution_mode or ''}"
+                    "\",\"provider_call_type\":\""
+                    f"{provider_call_type or ''}"
+                    "\"}}"
                 ),
             )
         return SEOCompetitorProfileGenerationOutput(
@@ -430,6 +471,9 @@ class _TimeoutConfiguredThenSuccessCompetitorProfileProvider:
             model_name=self.model_name,
             prompt_version=self.prompt_version,
             raw_response='{"candidates":[{"name":"Recovered Timeout Candidate"}]}',
+            provider_call_type=provider_call_type,
+            endpoint_path="/chat/completions",
+            web_search_enabled=False,
         )
 
 
@@ -485,8 +529,15 @@ class _ProviderEndpointMetadataSuccessProvider:
         existing_domains,  # noqa: ANN001
         candidate_count: int,
         reduced_context_mode: bool = False,
+        provider_call_type: str | None = None,
+        web_search_enabled: bool | None = None,
     ) -> SEOCompetitorProfileGenerationOutput:
         del site, existing_domains, reduced_context_mode
+        normalized_call_type = provider_call_type or "non_tool"
+        endpoint_path = "/responses" if normalized_call_type == "tool_enabled" else "/chat/completions"
+        normalized_web_search_enabled = bool(web_search_enabled) if web_search_enabled is not None else (
+            normalized_call_type == "tool_enabled"
+        )
         return SEOCompetitorProfileGenerationOutput(
             candidates=[
                 SEOCompetitorProfileDraftCandidateOutput(
@@ -503,8 +554,9 @@ class _ProviderEndpointMetadataSuccessProvider:
             model_name=self.model_name,
             prompt_version=self.prompt_version,
             raw_response='{"candidates":[{"name":"Metadata Competitor"}]}',
-            endpoint_path="/responses",
-            web_search_enabled=True,
+            provider_call_type=normalized_call_type,
+            endpoint_path=endpoint_path,
+            web_search_enabled=normalized_web_search_enabled,
             request_duration_ms=187,
         )
 
@@ -521,8 +573,15 @@ class _ProviderEndpointMetadataSearchUnavailableLowResultProvider:
         existing_domains,  # noqa: ANN001
         candidate_count: int,
         reduced_context_mode: bool = False,
+        provider_call_type: str | None = None,
+        web_search_enabled: bool | None = None,
     ) -> SEOCompetitorProfileGenerationOutput:
         del site, existing_domains, reduced_context_mode
+        normalized_call_type = provider_call_type or "non_tool"
+        endpoint_path = "/responses" if normalized_call_type == "tool_enabled" else "/chat/completions"
+        normalized_web_search_enabled = bool(web_search_enabled) if web_search_enabled is not None else (
+            normalized_call_type == "tool_enabled"
+        )
         return SEOCompetitorProfileGenerationOutput(
             candidates=[
                 SEOCompetitorProfileDraftCandidateOutput(
@@ -557,8 +616,9 @@ class _ProviderEndpointMetadataSearchUnavailableLowResultProvider:
             model_name=self.model_name,
             prompt_version=self.prompt_version,
             raw_response='{"candidates":[{"name":"Valid Local Candidate"},{"name":"Missing Name"},{"name":"Malformed"}]}',
-            endpoint_path="/chat/completions",
-            web_search_enabled=False,
+            provider_call_type=normalized_call_type,
+            endpoint_path=endpoint_path,
+            web_search_enabled=normalized_web_search_enabled,
             request_duration_ms=432,
         )
 
@@ -575,8 +635,13 @@ class _MalformedOutputReasonDebugProvider:
         existing_domains,  # noqa: ANN001
         candidate_count: int,
         reduced_context_mode: bool = False,
+        execution_mode: str | None = None,
+        provider_call_type: str | None = None,
+        web_search_enabled: bool | None = None,
     ) -> SEOCompetitorProfileGenerationOutput:
         del site, existing_domains, candidate_count, reduced_context_mode
+        endpoint_path = "/responses" if provider_call_type == "tool_enabled" else "/chat/completions"
+        web_search_value = "true" if bool(web_search_enabled) else "false"
         raise SEOCompetitorProfileProviderError(
             code="invalid_output",
             safe_message="Competitor profile generation returned malformed output.",
@@ -584,9 +649,18 @@ class _MalformedOutputReasonDebugProvider:
             model_name=self.model_name,
             prompt_version=self.prompt_version,
             raw_output=(
-                '{"endpoint_path":"/responses","failure_kind":"malformed_output",'
+                '{"endpoint_path":"'
+                f"{endpoint_path}"
+                '","failure_kind":"malformed_output",'
                 '"malformed_output_reason":"missing_candidates_array",'
-                '"request_debug":{"request_duration_ms":321,"timeout_seconds":30,"web_search_enabled":true}}'
+                '"request_debug":{"request_duration_ms":321,"timeout_seconds":30,'
+                '"web_search_enabled":'
+                f"{web_search_value}"
+                ',"execution_mode":"'
+                f"{execution_mode or ''}"
+                '","provider_call_type":"'
+                f"{provider_call_type or ''}"
+                '"}}'
             ),
         )
 
@@ -599,6 +673,8 @@ class _ProviderRequestFailureObservingProvider:
     def __init__(self) -> None:
         self.requested_candidate_counts: list[int] = []
         self.reduced_context_modes: list[bool] = []
+        self.execution_modes: list[str | None] = []
+        self.provider_call_types: list[str | None] = []
 
     def generate_competitor_profiles(
         self,
@@ -607,10 +683,17 @@ class _ProviderRequestFailureObservingProvider:
         existing_domains,  # noqa: ANN001
         candidate_count: int,
         reduced_context_mode: bool = False,
+        execution_mode: str | None = None,
+        provider_call_type: str | None = None,
+        web_search_enabled: bool | None = None,
     ) -> SEOCompetitorProfileGenerationOutput:
         del site, existing_domains
         self.requested_candidate_counts.append(candidate_count)
         self.reduced_context_modes.append(bool(reduced_context_mode))
+        self.execution_modes.append(execution_mode)
+        self.provider_call_types.append(provider_call_type)
+        endpoint_path = "/responses" if provider_call_type == "tool_enabled" else "/chat/completions"
+        web_search_value = "true" if bool(web_search_enabled) else "false"
         raise SEOCompetitorProfileProviderError(
             code="provider_request",
             safe_message="provider request failed",
@@ -618,9 +701,18 @@ class _ProviderRequestFailureObservingProvider:
             model_name=self.model_name,
             prompt_version=self.prompt_version,
             raw_output=(
-                "{\"failure_kind\":\"provider_request\",\"endpoint_path\":\"/responses\","
+                "{\"failure_kind\":\"provider_request\",\"endpoint_path\":\""
+                f"{endpoint_path}"
+                "\","
                 "\"request_debug\":{\"request_duration_ms\":2200,\"timeout_seconds\":30,"
-                "\"web_search_enabled\":true,\"prompt_size_risk\":\"normal\"}}"
+                "\"web_search_enabled\":"
+                f"{web_search_value}"
+                ",\"prompt_size_risk\":\"normal\","
+                "\"execution_mode\":\""
+                f"{execution_mode or ''}"
+                "\",\"provider_call_type\":\""
+                f"{provider_call_type or ''}"
+                "\"}}"
             ),
         )
 
@@ -1472,17 +1564,27 @@ def test_timeout_provider_failure_marks_run_failed_safely(db_session, seeded_bus
     assert payload["run"]["provider_name"] == "openai"
     assert payload["run"]["model_name"] == "gpt-4.1-mini"
     assert payload["run"]["failure_category"] == "timeout"
-    assert payload["provider_attempt_count"] == 2
+    assert payload["provider_attempt_count"] == 3
     assert payload["provider_degraded_retry_used"] is True
-    assert len(payload["provider_attempts"]) == 2
-    assert payload["provider_attempts"][0]["attempt_number"] == 1
+    assert len(payload["provider_attempts"]) == 3
+    assert payload["provider_attempts"][0]["attempt_number"] == 0
+    assert payload["provider_attempts"][0]["execution_mode"] == "fast_path"
+    assert payload["provider_attempts"][0]["provider_call_type"] == "non_tool"
     assert payload["provider_attempts"][0]["degraded_mode"] is False
     assert payload["provider_attempts"][0]["failure_kind"] == "timeout"
-    assert payload["provider_attempts"][1]["attempt_number"] == 2
-    assert payload["provider_attempts"][1]["degraded_mode"] is True
+    assert payload["provider_attempts"][1]["attempt_number"] == 1
+    assert payload["provider_attempts"][1]["execution_mode"] == "full"
+    assert payload["provider_attempts"][1]["provider_call_type"] == "tool_enabled"
+    assert payload["provider_attempts"][1]["degraded_mode"] is False
     assert payload["provider_attempts"][1]["failure_kind"] == "timeout"
+    assert payload["provider_attempts"][2]["attempt_number"] == 2
+    assert payload["provider_attempts"][2]["execution_mode"] == "degraded"
+    assert payload["provider_attempts"][2]["provider_call_type"] == "non_tool"
+    assert payload["provider_attempts"][2]["degraded_mode"] is True
+    assert payload["provider_attempts"][2]["failure_kind"] == "timeout"
     assert payload["provider_attempts"][0]["requested_candidate_count"] == 4
-    assert payload["provider_attempts"][1]["requested_candidate_count"] == 3
+    assert payload["provider_attempts"][1]["requested_candidate_count"] == 4
+    assert payload["provider_attempts"][2]["requested_candidate_count"] == 3
     persisted_run = (
         db_session.query(SEOCompetitorProfileGenerationRun)
         .filter(SEOCompetitorProfileGenerationRun.business_id == seeded_business.id)
@@ -1526,7 +1628,9 @@ def test_provider_auth_failure_marks_run_failed_safely(db_session, seeded_busine
     assert payload["provider_attempt_count"] == 1
     assert payload["provider_degraded_retry_used"] is False
     assert len(payload["provider_attempts"]) == 1
-    assert payload["provider_attempts"][0]["attempt_number"] == 1
+    assert payload["provider_attempts"][0]["attempt_number"] == 0
+    assert payload["provider_attempts"][0]["execution_mode"] == "fast_path"
+    assert payload["provider_attempts"][0]["provider_call_type"] == "non_tool"
     assert payload["provider_attempts"][0]["degraded_mode"] is False
     assert payload["provider_attempts"][0]["failure_kind"] in {"unknown", None}
 
@@ -1560,25 +1664,38 @@ def test_timeout_retry_recovers_with_degraded_second_attempt(db_session, seeded_
     assert payload["run"]["status"] == "completed"
     assert payload["run"]["generated_draft_count"] == 1
     assert payload["total_drafts"] == 1
-    assert payload["provider_attempt_count"] == 2
+    assert payload["provider_attempt_count"] == 3
     assert payload["provider_degraded_retry_used"] is True
-    assert len(payload["provider_attempts"]) == 2
-    assert payload["provider_attempts"][0]["attempt_number"] == 1
+    assert len(payload["provider_attempts"]) == 3
+    assert payload["provider_attempts"][0]["attempt_number"] == 0
+    assert payload["provider_attempts"][0]["execution_mode"] == "fast_path"
+    assert payload["provider_attempts"][0]["provider_call_type"] == "non_tool"
     assert payload["provider_attempts"][0]["degraded_mode"] is False
-    assert payload["provider_attempts"][0]["reduced_context_mode"] is False
+    assert payload["provider_attempts"][0]["reduced_context_mode"] is True
     assert payload["provider_attempts"][0]["failure_kind"] == "timeout"
-    assert payload["provider_attempts"][1]["attempt_number"] == 2
-    assert payload["provider_attempts"][1]["degraded_mode"] is True
-    assert payload["provider_attempts"][1]["reduced_context_mode"] is True
-    assert payload["provider_attempts"][1]["outcome"] == "success"
-    assert payload["provider_attempts"][1]["requested_candidate_count"] == 6
-    assert payload["provider_attempts"][0]["prompt_total_chars"] > payload["provider_attempts"][1]["prompt_total_chars"]
-    assert payload["provider_attempts"][0]["context_json_chars"] > payload["provider_attempts"][1]["context_json_chars"]
-    assert provider.requested_candidate_counts == [7, 6]
-    assert provider.reduced_context_modes == [False, True]
-    assert provider.run_ids == [run_id, run_id]
-    assert provider.attempt_numbers == [1, 2]
-    assert provider.degraded_modes == [False, True]
+    assert payload["provider_attempts"][1]["attempt_number"] == 1
+    assert payload["provider_attempts"][1]["execution_mode"] == "full"
+    assert payload["provider_attempts"][1]["provider_call_type"] == "tool_enabled"
+    assert payload["provider_attempts"][1]["degraded_mode"] is False
+    assert payload["provider_attempts"][1]["reduced_context_mode"] is False
+    assert payload["provider_attempts"][1]["failure_kind"] == "timeout"
+    assert payload["provider_attempts"][2]["attempt_number"] == 2
+    assert payload["provider_attempts"][2]["execution_mode"] == "degraded"
+    assert payload["provider_attempts"][2]["provider_call_type"] == "non_tool"
+    assert payload["provider_attempts"][2]["degraded_mode"] is True
+    assert payload["provider_attempts"][2]["reduced_context_mode"] is True
+    assert payload["provider_attempts"][2]["outcome"] == "success"
+    assert payload["provider_attempts"][2]["requested_candidate_count"] == 6
+    assert payload["provider_attempts"][1]["prompt_total_chars"] > payload["provider_attempts"][2]["prompt_total_chars"]
+    assert payload["provider_attempts"][1]["context_json_chars"] > payload["provider_attempts"][2]["context_json_chars"]
+    assert provider.requested_candidate_counts == [7, 7, 6]
+    assert provider.reduced_context_modes == [True, False, True]
+    assert provider.run_ids == [run_id, run_id, run_id]
+    assert provider.attempt_numbers == [0, 1, 2]
+    assert provider.degraded_modes == [False, False, True]
+    assert provider.execution_modes == ["fast_path", "full", "degraded"]
+    assert provider.provider_call_types == ["non_tool", "tool_enabled", "non_tool"]
+    assert provider.web_search_enabled_flags == [False, True, False]
 
 
 def test_timeout_retry_uses_business_scoped_primary_and_degraded_timeouts(db_session, seeded_business) -> None:
@@ -1613,11 +1730,14 @@ def test_timeout_retry_uses_business_scoped_primary_and_degraded_timeouts(db_ses
     assert detail.status_code == 200
     payload = detail.json()
     assert payload["run"]["status"] == "completed"
-    assert provider.timeout_seconds_by_attempt == [41, 19]
-    assert provider.degraded_modes == [False, True]
-    assert payload["provider_attempt_count"] == 2
+    assert provider.timeout_seconds_by_attempt == [41, 41, 19]
+    assert provider.degraded_modes == [False, False, True]
+    assert provider.execution_modes == ["fast_path", "full", "degraded"]
+    assert provider.provider_call_types == ["non_tool", "tool_enabled", "non_tool"]
+    assert payload["provider_attempt_count"] == 3
     assert payload["provider_attempts"][0]["timeout_seconds"] == 41
-    assert payload["provider_attempts"][1]["timeout_seconds"] == 19
+    assert payload["provider_attempts"][1]["timeout_seconds"] == 41
+    assert payload["provider_attempts"][2]["timeout_seconds"] == 19
 
 
 def test_timeout_defaults_fall_back_to_provider_default_when_business_settings_absent(db_session, seeded_business) -> None:
@@ -1714,11 +1834,13 @@ def test_success_attempt_debug_captures_endpoint_and_web_search_metadata(db_sess
     assert payload["provider_attempt_count"] == 1
     assert len(payload["provider_attempts"]) == 1
     attempt = payload["provider_attempts"][0]
-    assert attempt["attempt_number"] == 1
+    assert attempt["attempt_number"] == 0
+    assert attempt["execution_mode"] == "fast_path"
+    assert attempt["provider_call_type"] == "non_tool"
     assert attempt["degraded_mode"] is False
     assert attempt["outcome"] == "success"
-    assert attempt["endpoint_path"] == "/responses"
-    assert attempt["web_search_enabled"] is True
+    assert attempt["endpoint_path"] == "/chat/completions"
+    assert attempt["web_search_enabled"] is False
     assert attempt["request_duration_ms"] == 187
 
 
@@ -1795,13 +1917,23 @@ def test_run_detail_exposes_malformed_output_reason_in_provider_attempt_debug(db
     payload = detail.json()
     assert payload["run"]["status"] == "failed"
     assert payload["run"]["failure_category"] == "malformed_output"
-    assert payload["provider_attempt_count"] == 1
-    assert len(payload["provider_attempts"]) == 1
-    attempt = payload["provider_attempts"][0]
-    assert attempt["failure_kind"] == "malformed_output"
-    assert attempt["malformed_output_reason"] == "missing_candidates_array"
-    assert attempt["endpoint_path"] == "/responses"
-    assert attempt["web_search_enabled"] is True
+    assert payload["provider_attempt_count"] == 2
+    assert len(payload["provider_attempts"]) == 2
+    first_attempt = payload["provider_attempts"][0]
+    assert first_attempt["attempt_number"] == 0
+    assert first_attempt["execution_mode"] == "fast_path"
+    assert first_attempt["provider_call_type"] == "non_tool"
+    assert first_attempt["failure_kind"] == "malformed_output"
+    assert first_attempt["malformed_output_reason"] == "missing_candidates_array"
+    assert first_attempt["endpoint_path"] == "/chat/completions"
+    assert first_attempt["web_search_enabled"] is False
+    second_attempt = payload["provider_attempts"][1]
+    assert second_attempt["attempt_number"] == 1
+    assert second_attempt["execution_mode"] == "full"
+    assert second_attempt["provider_call_type"] == "tool_enabled"
+    assert second_attempt["failure_kind"] == "malformed_output"
+    assert second_attempt["endpoint_path"] == "/responses"
+    assert second_attempt["web_search_enabled"] is True
 
 
 def test_non_timeout_provider_failure_does_not_retry(db_session, seeded_business) -> None:
@@ -1832,15 +1964,25 @@ def test_non_timeout_provider_failure_does_not_retry(db_session, seeded_business
     payload = detail.json()
     assert payload["run"]["status"] == "failed"
     assert payload["run"]["failure_category"] == "provider_request"
-    assert payload["provider_attempt_count"] == 1
+    assert payload["provider_attempt_count"] == 2
     assert payload["provider_degraded_retry_used"] is False
-    assert len(payload["provider_attempts"]) == 1
-    assert payload["provider_attempts"][0]["attempt_number"] == 1
+    assert len(payload["provider_attempts"]) == 2
+    assert payload["provider_attempts"][0]["attempt_number"] == 0
+    assert payload["provider_attempts"][0]["execution_mode"] == "fast_path"
+    assert payload["provider_attempts"][0]["provider_call_type"] == "non_tool"
     assert payload["provider_attempts"][0]["degraded_mode"] is False
-    assert payload["provider_attempts"][0]["reduced_context_mode"] is False
+    assert payload["provider_attempts"][0]["reduced_context_mode"] is True
     assert payload["provider_attempts"][0]["failure_kind"] == "provider_request"
-    assert provider.requested_candidate_counts == [7]
-    assert provider.reduced_context_modes == [False]
+    assert payload["provider_attempts"][1]["attempt_number"] == 1
+    assert payload["provider_attempts"][1]["execution_mode"] == "full"
+    assert payload["provider_attempts"][1]["provider_call_type"] == "tool_enabled"
+    assert payload["provider_attempts"][1]["degraded_mode"] is False
+    assert payload["provider_attempts"][1]["reduced_context_mode"] is False
+    assert payload["provider_attempts"][1]["failure_kind"] == "provider_request"
+    assert provider.requested_candidate_counts == [7, 7]
+    assert provider.reduced_context_modes == [True, False]
+    assert provider.execution_modes == ["fast_path", "full"]
+    assert provider.provider_call_types == ["non_tool", "tool_enabled"]
 
 
 def test_list_runs_reconciles_stale_queued_and_running_runs(db_session, seeded_business) -> None:

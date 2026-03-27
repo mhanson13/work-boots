@@ -390,7 +390,9 @@ class SEOCompetitorProfileCandidatePipelineSummaryRead(BaseModel):
 class SEOCompetitorProfileProviderAttemptRead(BaseModel):
     model_config = ConfigDict(extra="forbid", from_attributes=True)
 
-    attempt_number: int = Field(ge=1)
+    attempt_number: int = Field(ge=0)
+    execution_mode: str = Field(default="full", min_length=1, max_length=32)
+    provider_call_type: str | None = Field(default=None, max_length=32)
     degraded_mode: bool = False
     reduced_context_mode: bool = False
     requested_candidate_count: int = Field(ge=1)
@@ -414,10 +416,28 @@ class SEOCompetitorProfileProviderAttemptRead(BaseModel):
             return "success"
         return cleaned[:64]
 
-    @field_validator("failure_kind", "malformed_output_reason", "prompt_size_risk", "endpoint_path", mode="before")
+    @field_validator("execution_mode", mode="before")
+    @classmethod
+    def normalize_execution_mode(cls, value: Any) -> str:
+        cleaned = _strip_or_none(str(value) if value is not None else None)
+        if cleaned is None:
+            return "full"
+        return cleaned[:32]
+
+    @field_validator(
+        "provider_call_type",
+        "failure_kind",
+        "malformed_output_reason",
+        "prompt_size_risk",
+        "endpoint_path",
+        mode="before",
+    )
     @classmethod
     def normalize_optional_compact_strings(cls, value: Any) -> str | None:
-        return _strip_or_none(str(value) if value is not None else None)
+        cleaned = _strip_or_none(str(value) if value is not None else None)
+        if cleaned is None:
+            return None
+        return cleaned
 
 
 class SEOCompetitorProfileTuningRejectedCandidateRead(BaseModel):

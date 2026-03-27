@@ -51,6 +51,20 @@ _MALFORMED_OUTPUT_ALLOWED_REASONS = {
     _MALFORMED_OUTPUT_REASON_PARTIAL_JSON,
     _MALFORMED_OUTPUT_REASON_INVALID_FIELD_TYPES,
 }
+_PROVIDER_CALL_TYPE_TOOL_ENABLED = "tool_enabled"
+_PROVIDER_CALL_TYPE_NON_TOOL = "non_tool"
+_PROVIDER_CALL_TYPES = {
+    _PROVIDER_CALL_TYPE_TOOL_ENABLED,
+    _PROVIDER_CALL_TYPE_NON_TOOL,
+}
+_EXECUTION_MODE_FAST_PATH = "fast_path"
+_EXECUTION_MODE_FULL = "full"
+_EXECUTION_MODE_DEGRADED = "degraded"
+_EXECUTION_MODES = {
+    _EXECUTION_MODE_FAST_PATH,
+    _EXECUTION_MODE_FULL,
+    _EXECUTION_MODE_DEGRADED,
+}
 logger = logging.getLogger(__name__)
 
 
@@ -166,6 +180,9 @@ class OpenAISEOCompetitorProfileGenerationProvider:
         run_id: str | None = None,
         attempt_number: int | None = None,
         degraded_mode: bool = False,
+        execution_mode: str | None = None,
+        provider_call_type: str | None = None,
+        web_search_enabled: bool | None = None,
         timeout_seconds: int | None = None,
     ) -> SEOCompetitorProfileGenerationOutput:
         effective_timeout_seconds = self._resolve_timeout_seconds(timeout_seconds)
@@ -178,8 +195,18 @@ class OpenAISEOCompetitorProfileGenerationProvider:
             prompt_version=self.prompt_version,
             prompt_text_competitor=self.prompt_text_competitor,
         )
-        responses_request_debug = self._build_request_debug_metadata(
-            endpoint_path="/responses",
+        normalized_execution_mode = self._normalize_execution_mode(
+            execution_mode=execution_mode,
+            degraded_mode=degraded_mode,
+            reduced_context_mode=reduced_context_mode,
+        )
+        normalized_provider_call_type = self._normalize_provider_call_type(
+            provider_call_type=provider_call_type,
+            web_search_enabled=web_search_enabled,
+        )
+        request_debug = self._build_request_debug_metadata(
+            provider_call_type=normalized_provider_call_type,
+            execution_mode=normalized_execution_mode,
             candidate_count=candidate_count,
             prompt_metrics=prompt.prompt_telemetry,
             run_id=run_id,
@@ -187,165 +214,154 @@ class OpenAISEOCompetitorProfileGenerationProvider:
             degraded_mode=degraded_mode,
             timeout_seconds=effective_timeout_seconds,
         )
-        self._log_prompt_telemetry(responses_request_debug)
-        responses_payload = self._build_responses_request_payload(
-            system_prompt=prompt.system_prompt,
-            user_prompt=prompt.user_prompt,
-            candidate_count=candidate_count,
+        self._log_prompt_telemetry(request_debug)
+        allow_legacy_responses_fallback = (
+            provider_call_type is None
+            and web_search_enabled is None
+            and normalized_provider_call_type == _PROVIDER_CALL_TYPE_TOOL_ENABLED
         )
-        chat_request_debug = self._build_request_debug_metadata(
-            endpoint_path="/chat/completions",
-            candidate_count=candidate_count,
-            prompt_metrics=prompt.prompt_telemetry,
-            run_id=run_id,
-            attempt_number=attempt_number,
-            degraded_mode=degraded_mode,
-            timeout_seconds=effective_timeout_seconds,
-        )
-        chat_payload = self._build_chat_completions_request_payload(
-            system_prompt=prompt.system_prompt,
-            user_prompt=prompt.user_prompt,
-            candidate_count=candidate_count,
-        )
+
         try:
-            response_json: dict[str, object] | None = None
-            assistant_content: str | None = None
-            responses_response = self._request_completion(
-                responses_payload,
-                endpoint_path="/responses",
-                request_debug=responses_request_debug,
-                timeout_seconds=effective_timeout_seconds,
-            )
-            response_json = self._parse_json_object(
-                responses_response.body_text,
-                code=_PROVIDER_ERROR_PARSING,
-                safe_message="Competitor profile generation response could not be parsed.",
-            )
-            assistant_content = self._extract_assistant_content_from_responses(response_json)
-            candidate_parse_result = self._parse_or_normalize_candidates(
-                assistant_content=assistant_content,
+            return self._execute_provider_call(
+                prompt=prompt,
                 candidate_count=candidate_count,
-                endpoint_path="/responses",
-                request_debug=responses_request_debug,
-                request_duration_ms=responses_response.request_duration_ms,
-            )
-            candidates = candidate_parse_result.candidates
-            if not candidates:
-                raise self._provider_error(
-                    code=_PROVIDER_ERROR_INVALID_OUTPUT,
-                    safe_message="Competitor profile generation returned malformed output.",
-                    raw_output=self._build_request_failure_debug_payload(
-                        endpoint_path="/responses",
-                        failure_kind="malformed_output",
-                        request_debug=responses_request_debug,
-                        provider_error_body=assistant_content,
-                        request_duration_ms=responses_response.request_duration_ms,
-                        malformed_output_reason=_MALFORMED_OUTPUT_REASON_MISSING_CANDIDATES_ARRAY,
-                    ),
-                )
-            model_name = _clean_optional_value(response_json.get("model")) or self.model_name
-            self._log_provider_request_complete(
-                endpoint_path="/responses",
-                request_debug=responses_request_debug,
-                request_duration_ms=responses_response.request_duration_ms,
-                parsed_candidate_count=candidate_parse_result.parsed_candidate_count,
-                salvaged_candidate_count=candidate_parse_result.salvaged_candidate_count,
-            )
-            return SEOCompetitorProfileGenerationOutput(
-                candidates=candidates,
-                provider_name=self.provider_name,
-                model_name=model_name,
-                prompt_version=prompt.prompt_version,
-                raw_response=assistant_content,
-                endpoint_path="/responses",
-                web_search_enabled=True,
-                request_duration_ms=responses_response.request_duration_ms,
+                provider_call_type=normalized_provider_call_type,
+                request_debug=request_debug,
+                timeout_seconds=effective_timeout_seconds,
             )
         except SEOCompetitorProfileProviderError as exc:
             if self._should_log_structured_error(exc):
                 self._log_provider_request_error_from_provider_error(
                     provider_error=exc,
-                    endpoint_path="/responses",
-                    request_debug=responses_request_debug,
+                    endpoint_path=self._endpoint_path_for_provider_call_type(normalized_provider_call_type),
+                    request_debug=request_debug,
                 )
-            if not self._should_fallback_to_chat_completions(exc):
+            if not allow_legacy_responses_fallback or not self._should_fallback_to_chat_completions(exc):
                 raise
+            fallback_call_type = _PROVIDER_CALL_TYPE_NON_TOOL
+            fallback_request_debug = self._build_request_debug_metadata(
+                provider_call_type=fallback_call_type,
+                execution_mode=normalized_execution_mode,
+                candidate_count=candidate_count,
+                prompt_metrics=prompt.prompt_telemetry,
+                run_id=run_id,
+                attempt_number=attempt_number,
+                degraded_mode=degraded_mode,
+                timeout_seconds=effective_timeout_seconds,
+            )
             logger.warning(
                 (
                     "SEO competitor provider responses path reported unsupported web search; "
                     "falling back to chat completions "
-                    "provider_name=%s model_name=%s endpoint=%s error_code=%s safe_message=%s "
+                    "provider_name=%s model_name=%s provider_call_type=%s execution_mode=%s endpoint=%s "
+                    "error_code=%s safe_message=%s "
                     "prompt_total_chars=%s context_json_chars=%s prompt_size_risk=%s"
                 ),
                 self.provider_name,
                 self.model_name,
-                responses_request_debug.get("endpoint_path"),
+                request_debug.get("provider_call_type"),
+                request_debug.get("execution_mode"),
+                request_debug.get("endpoint_path"),
                 exc.code,
                 _compact_log_message(exc.safe_message),
-                responses_request_debug.get("prompt_total_chars"),
-                responses_request_debug.get("context_json_chars"),
-                responses_request_debug.get("prompt_size_risk"),
+                request_debug.get("prompt_total_chars"),
+                request_debug.get("context_json_chars"),
+                request_debug.get("prompt_size_risk"),
             )
             try:
-                chat_response = self._request_completion(
-                    chat_payload,
-                    endpoint_path="/chat/completions",
-                    request_debug=chat_request_debug,
-                    timeout_seconds=effective_timeout_seconds,
-                )
-                response_json = self._parse_json_object(
-                    chat_response.body_text,
-                    code=_PROVIDER_ERROR_PARSING,
-                    safe_message="Competitor profile generation response could not be parsed.",
-                )
-                assistant_content = self._extract_assistant_content(response_json)
-                candidate_parse_result = self._parse_or_normalize_candidates(
-                    assistant_content=assistant_content,
+                return self._execute_provider_call(
+                    prompt=prompt,
                     candidate_count=candidate_count,
-                    endpoint_path="/chat/completions",
-                    request_debug=chat_request_debug,
-                    request_duration_ms=chat_response.request_duration_ms,
-                )
-                candidates = candidate_parse_result.candidates
-                if not candidates:
-                    raise self._provider_error(
-                        code=_PROVIDER_ERROR_INVALID_OUTPUT,
-                        safe_message="Competitor profile generation returned malformed output.",
-                        raw_output=self._build_request_failure_debug_payload(
-                            endpoint_path="/chat/completions",
-                            failure_kind="malformed_output",
-                            request_debug=chat_request_debug,
-                            provider_error_body=assistant_content,
-                            request_duration_ms=chat_response.request_duration_ms,
-                            malformed_output_reason=_MALFORMED_OUTPUT_REASON_MISSING_CANDIDATES_ARRAY,
-                        ),
-                    )
-                model_name = _clean_optional_value(response_json.get("model")) or self.model_name
-                self._log_provider_request_complete(
-                    endpoint_path="/chat/completions",
-                    request_debug=chat_request_debug,
-                    request_duration_ms=chat_response.request_duration_ms,
-                    parsed_candidate_count=candidate_parse_result.parsed_candidate_count,
-                    salvaged_candidate_count=candidate_parse_result.salvaged_candidate_count,
-                )
-                return SEOCompetitorProfileGenerationOutput(
-                    candidates=candidates,
-                    provider_name=self.provider_name,
-                    model_name=model_name,
-                    prompt_version=prompt.prompt_version,
-                    raw_response=assistant_content,
-                    endpoint_path="/chat/completions",
-                    web_search_enabled=False,
-                    request_duration_ms=chat_response.request_duration_ms,
+                    provider_call_type=fallback_call_type,
+                    request_debug=fallback_request_debug,
+                    timeout_seconds=effective_timeout_seconds,
                 )
             except SEOCompetitorProfileProviderError as chat_exc:
                 if self._should_log_structured_error(chat_exc):
                     self._log_provider_request_error_from_provider_error(
                         provider_error=chat_exc,
-                        endpoint_path="/chat/completions",
-                        request_debug=chat_request_debug,
+                        endpoint_path=self._endpoint_path_for_provider_call_type(fallback_call_type),
+                        request_debug=fallback_request_debug,
                     )
                 raise
+
+    def _execute_provider_call(
+        self,
+        *,
+        prompt,
+        candidate_count: int,
+        provider_call_type: str,
+        request_debug: dict[str, object] | None,
+        timeout_seconds: int,
+    ) -> SEOCompetitorProfileGenerationOutput:
+        endpoint_path = self._endpoint_path_for_provider_call_type(provider_call_type)
+        if provider_call_type == _PROVIDER_CALL_TYPE_TOOL_ENABLED:
+            payload = self._build_responses_request_payload(
+                system_prompt=prompt.system_prompt,
+                user_prompt=prompt.user_prompt,
+                candidate_count=candidate_count,
+            )
+            extract_assistant_content = self._extract_assistant_content_from_responses
+        else:
+            payload = self._build_chat_completions_request_payload(
+                system_prompt=prompt.system_prompt,
+                user_prompt=prompt.user_prompt,
+                candidate_count=candidate_count,
+            )
+            extract_assistant_content = self._extract_assistant_content
+
+        response = self._request_completion(
+            payload,
+            endpoint_path=endpoint_path,
+            request_debug=request_debug,
+            timeout_seconds=timeout_seconds,
+        )
+        response_json = self._parse_json_object(
+            response.body_text,
+            code=_PROVIDER_ERROR_PARSING,
+            safe_message="Competitor profile generation response could not be parsed.",
+        )
+        assistant_content = extract_assistant_content(response_json)
+        candidate_parse_result = self._parse_or_normalize_candidates(
+            assistant_content=assistant_content,
+            candidate_count=candidate_count,
+            endpoint_path=endpoint_path,
+            request_debug=request_debug,
+            request_duration_ms=response.request_duration_ms,
+        )
+        candidates = candidate_parse_result.candidates
+        if not candidates:
+            raise self._provider_error(
+                code=_PROVIDER_ERROR_INVALID_OUTPUT,
+                safe_message="Competitor profile generation returned malformed output.",
+                raw_output=self._build_request_failure_debug_payload(
+                    endpoint_path=endpoint_path,
+                    failure_kind="malformed_output",
+                    request_debug=request_debug,
+                    provider_error_body=assistant_content,
+                    request_duration_ms=response.request_duration_ms,
+                    malformed_output_reason=_MALFORMED_OUTPUT_REASON_MISSING_CANDIDATES_ARRAY,
+                ),
+            )
+        model_name = _clean_optional_value(response_json.get("model")) or self.model_name
+        self._log_provider_request_complete(
+            endpoint_path=endpoint_path,
+            request_debug=request_debug,
+            request_duration_ms=response.request_duration_ms,
+            parsed_candidate_count=candidate_parse_result.parsed_candidate_count,
+            salvaged_candidate_count=candidate_parse_result.salvaged_candidate_count,
+        )
+        return SEOCompetitorProfileGenerationOutput(
+            candidates=candidates,
+            provider_name=self.provider_name,
+            model_name=model_name,
+            prompt_version=prompt.prompt_version,
+            raw_response=assistant_content,
+            provider_call_type=provider_call_type,
+            endpoint_path=endpoint_path,
+            web_search_enabled=self._web_search_enabled_for_provider_call_type(provider_call_type),
+            request_duration_ms=response.request_duration_ms,
+        )
 
     def _parse_or_normalize_candidates(
         self,
@@ -782,9 +798,11 @@ class OpenAISEOCompetitorProfileGenerationProvider:
                 "run_id": _clean_optional_value(debug.get("run_id")),
                 "attempt_number": _coerce_optional_bounded_int(
                     debug.get("attempt_number"),
-                    minimum=1,
+                    minimum=0,
                     maximum=1000,
                 ),
+                "execution_mode": _clean_optional_value(debug.get("execution_mode")),
+                "provider_call_type": _clean_optional_value(debug.get("provider_call_type")),
                 "endpoint_path": endpoint_path,
                 "model": self.model_name,
                 "web_search_enabled": debug.get("web_search_enabled"),
@@ -817,9 +835,11 @@ class OpenAISEOCompetitorProfileGenerationProvider:
             "run_id": _clean_optional_value(debug.get("run_id")),
             "attempt_number": _coerce_optional_bounded_int(
                 debug.get("attempt_number"),
-                minimum=1,
+                minimum=0,
                 maximum=1000,
             ),
+            "execution_mode": _clean_optional_value(debug.get("execution_mode")),
+            "provider_call_type": _clean_optional_value(debug.get("provider_call_type")),
             "endpoint_path": endpoint_path,
             "duration_ms": _coerce_optional_bounded_int(
                 request_duration_ms,
@@ -862,9 +882,11 @@ class OpenAISEOCompetitorProfileGenerationProvider:
             "run_id": _clean_optional_value(debug.get("run_id")),
             "attempt_number": _coerce_optional_bounded_int(
                 debug.get("attempt_number"),
-                minimum=1,
+                minimum=0,
                 maximum=1000,
             ),
+            "execution_mode": _clean_optional_value(debug.get("execution_mode")),
+            "provider_call_type": _clean_optional_value(debug.get("provider_call_type")),
             "endpoint_path": endpoint_path,
             "duration_ms": _coerce_optional_bounded_int(
                 request_duration_ms,
@@ -1162,6 +1184,7 @@ class OpenAISEOCompetitorProfileGenerationProvider:
             return False
 
         endpoint_path: str | None = None
+        provider_call_type: str | None = None
         provider_error_message: str | None = None
         try:
             parsed = json.loads(raw_output)
@@ -1170,8 +1193,14 @@ class OpenAISEOCompetitorProfileGenerationProvider:
         if isinstance(parsed, dict):
             endpoint_path = _clean_optional_value(parsed.get("endpoint_path"))
             provider_error_message = _clean_optional_value(parsed.get("provider_error_message"))
+            request_debug = parsed.get("request_debug")
+            if isinstance(request_debug, dict):
+                provider_call_type = _clean_optional_value(request_debug.get("provider_call_type"))
 
-        if endpoint_path and endpoint_path != "/responses":
+        if provider_call_type in _PROVIDER_CALL_TYPES:
+            if provider_call_type != _PROVIDER_CALL_TYPE_TOOL_ENABLED:
+                return False
+        elif endpoint_path and endpoint_path != "/responses":
             return False
 
         comparison_text = (provider_error_message or "").lower()
@@ -1241,6 +1270,49 @@ class OpenAISEOCompetitorProfileGenerationProvider:
     def _model_supports_temperature(self) -> bool:
         return not self.model_name.strip().lower().startswith("gpt-5-mini")
 
+    def _normalize_provider_call_type(
+        self,
+        *,
+        provider_call_type: str | None,
+        web_search_enabled: bool | None,
+    ) -> str:
+        normalized = _clean_optional_value(provider_call_type)
+        if normalized in _PROVIDER_CALL_TYPES:
+            return normalized
+        if isinstance(web_search_enabled, bool):
+            return (
+                _PROVIDER_CALL_TYPE_TOOL_ENABLED
+                if web_search_enabled
+                else _PROVIDER_CALL_TYPE_NON_TOOL
+            )
+        return _PROVIDER_CALL_TYPE_TOOL_ENABLED
+
+    def _normalize_execution_mode(
+        self,
+        *,
+        execution_mode: str | None,
+        degraded_mode: bool,
+        reduced_context_mode: bool,
+    ) -> str:
+        normalized = _clean_optional_value(execution_mode)
+        if normalized in _EXECUTION_MODES:
+            return normalized
+        if degraded_mode:
+            return _EXECUTION_MODE_DEGRADED
+        if reduced_context_mode:
+            return _EXECUTION_MODE_FAST_PATH
+        return _EXECUTION_MODE_FULL
+
+    @staticmethod
+    def _endpoint_path_for_provider_call_type(provider_call_type: str) -> str:
+        if provider_call_type == _PROVIDER_CALL_TYPE_NON_TOOL:
+            return "/chat/completions"
+        return "/responses"
+
+    @staticmethod
+    def _web_search_enabled_for_provider_call_type(provider_call_type: str) -> bool:
+        return provider_call_type == _PROVIDER_CALL_TYPE_TOOL_ENABLED
+
     def _resolve_timeout_seconds(self, timeout_seconds: int | None) -> int:
         if timeout_seconds is None:
             return self.timeout_seconds
@@ -1275,11 +1347,14 @@ class OpenAISEOCompetitorProfileGenerationProvider:
         logger.log(
             level,
             (
-                "SEO competitor prompt assembly telemetry provider_name=%s model_name=%s endpoint=%s "
+                "SEO competitor prompt assembly telemetry provider_name=%s model_name=%s "
+                "provider_call_type=%s execution_mode=%s endpoint=%s "
                 "prompt_total_chars=%s context_json_chars=%s prompt_size_risk=%s"
             ),
             self.provider_name,
             self.model_name,
+            request_debug.get("provider_call_type"),
+            request_debug.get("execution_mode"),
             request_debug.get("endpoint_path"),
             prompt_total_chars,
             context_json_chars,
@@ -1289,7 +1364,8 @@ class OpenAISEOCompetitorProfileGenerationProvider:
     def _build_request_debug_metadata(
         self,
         *,
-        endpoint_path: str,
+        provider_call_type: str,
+        execution_mode: str,
         candidate_count: int,
         prompt_metrics: dict[str, int] | None,
         run_id: str | None,
@@ -1323,17 +1399,28 @@ class OpenAISEOCompetitorProfileGenerationProvider:
             prompt_size_risk = "elevated"
         else:
             prompt_size_risk = "normal"
-        normalized_endpoint = endpoint_path.strip() or "/chat/completions"
+        normalized_provider_call_type = self._normalize_provider_call_type(
+            provider_call_type=provider_call_type,
+            web_search_enabled=None,
+        )
+        normalized_execution_mode = self._normalize_execution_mode(
+            execution_mode=execution_mode,
+            degraded_mode=degraded_mode,
+            reduced_context_mode=reduced_context_mode,
+        )
+        normalized_endpoint = self._endpoint_path_for_provider_call_type(normalized_provider_call_type)
         normalized_run_id = _clean_optional_value(run_id)
         normalized_attempt_number = _coerce_optional_bounded_int(
             attempt_number,
-            minimum=1,
+            minimum=0,
             maximum=1000,
         )
         return {
             "run_id": normalized_run_id,
             "attempt_number": normalized_attempt_number,
             "degraded_mode": bool(degraded_mode),
+            "execution_mode": normalized_execution_mode,
+            "provider_call_type": normalized_provider_call_type,
             "endpoint_path": normalized_endpoint,
             "candidate_count": max(1, int(candidate_count)),
             "prompt_total_chars": prompt_total_chars,
@@ -1342,7 +1429,7 @@ class OpenAISEOCompetitorProfileGenerationProvider:
             "reduced_context_mode": reduced_context_mode,
             "prompt_size_risk": prompt_size_risk,
             "timeout_seconds": timeout_seconds,
-            "web_search_enabled": normalized_endpoint == "/responses",
+            "web_search_enabled": self._web_search_enabled_for_provider_call_type(normalized_provider_call_type),
         }
 
     def _build_request_failure_debug_payload(
@@ -1367,6 +1454,8 @@ class OpenAISEOCompetitorProfileGenerationProvider:
             payload["request_debug"] = {
                 "run_id": request_debug.get("run_id"),
                 "attempt_number": request_debug.get("attempt_number"),
+                "execution_mode": request_debug.get("execution_mode"),
+                "provider_call_type": request_debug.get("provider_call_type"),
                 "degraded_mode": request_debug.get("degraded_mode"),
                 "candidate_count": request_debug.get("candidate_count"),
                 "prompt_total_chars": request_debug.get("prompt_total_chars"),
