@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from app.integrations.google_cloud_logging import GoogleCloudLoggingADCError, GoogleCloudLoggingAPIError
 from app.schemas.admin_logs import GCPLogsQueryRequest
 from app.services.gcp_logs_query import (
@@ -67,6 +69,7 @@ def test_gcp_logs_query_service_sanitizes_and_bounds_log_entries() -> None:
     assert response.page_size == 25
     assert response.order_by == "timestamp desc"
     assert response.resource_scope == ["projects/test-project"]
+    assert "severity>=ERROR" in response.effective_filter
     assert response.next_page_token == "next-token"
     assert len(response.entries) == 1
     entry = response.entries[0]
@@ -81,6 +84,75 @@ def test_gcp_logs_query_service_sanitizes_and_bounds_log_entries() -> None:
     assert len(entry.resource_labels) == 12
     assert fake_client.calls[0]["project_id"] == "test-project"
     assert fake_client.calls[0]["order_by"] == "timestamp desc"
+    assert isinstance(fake_client.calls[0]["filter_text"], str)
+    assert "timestamp >=" in str(fake_client.calls[0]["filter_text"])
+
+
+def test_gcp_logs_query_service_applies_visible_default_24h_time_window(monkeypatch) -> None:
+    fixed_now = datetime(2026, 3, 27, 12, 0, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr("app.services.gcp_logs_query.utc_now", lambda: fixed_now)
+    fake_client = _FakeCloudLoggingClient(payload={"entries": []})
+    service = GCPLogsQueryService(client=fake_client, project_id="test-project")
+
+    response = service.query_logs(payload=GCPLogsQueryRequest(filter='severity="ERROR"'))
+
+    expected_start = "2026-03-26T12:00:00Z"
+    assert response.default_time_range_applied is True
+    assert f'timestamp >= "{expected_start}"' in response.effective_filter
+    assert fake_client.calls[0]["filter_text"] == response.effective_filter
+
+
+def test_gcp_logs_query_service_respects_explicit_time_range_without_default(monkeypatch) -> None:
+    fixed_now = datetime(2026, 3, 27, 12, 0, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr("app.services.gcp_logs_query.utc_now", lambda: fixed_now)
+    fake_client = _FakeCloudLoggingClient(payload={"entries": []})
+    service = GCPLogsQueryService(client=fake_client, project_id="test-project")
+
+    response = service.query_logs(
+        payload=GCPLogsQueryRequest(
+            filter='severity="ERROR"',
+            start_time="2026-03-20T00:00:00Z",
+            end_time="2026-03-27T00:00:00Z",
+        )
+    )
+
+    assert response.default_time_range_applied is False
+    assert 'timestamp >= "2026-03-20T00:00:00Z"' in response.effective_filter
+    assert 'timestamp <= "2026-03-27T00:00:00Z"' in response.effective_filter
+    assert fake_client.calls[0]["filter_text"] == response.effective_filter
+
+
+def test_gcp_logs_query_service_rejects_invalid_time_range_order() -> None:
+    service = GCPLogsQueryService(client=_FakeCloudLoggingClient(), project_id="test-project")
+
+    try:
+        service.query_logs(
+            payload=GCPLogsQueryRequest(
+                filter='severity="ERROR"',
+                start_time="2026-03-27T00:00:00Z",
+                end_time="2026-03-20T00:00:00Z",
+            )
+        )
+    except GCPLogsQueryValidationError as exc:
+        assert "earlier than or equal to end_time" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected GCPLogsQueryValidationError")
+
+
+def test_gcp_logs_query_service_rejects_invalid_iso_timestamp() -> None:
+    service = GCPLogsQueryService(client=_FakeCloudLoggingClient(), project_id="test-project")
+
+    try:
+        service.query_logs(
+            payload=GCPLogsQueryRequest(
+                filter='severity="ERROR"',
+                start_time="not-a-timestamp",
+            )
+        )
+    except GCPLogsQueryValidationError as exc:
+        assert "start_time must be a valid ISO-8601 timestamp" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected GCPLogsQueryValidationError")
 
 
 def test_gcp_logs_query_service_requires_configured_project() -> None:

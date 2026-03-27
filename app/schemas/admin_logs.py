@@ -7,6 +7,8 @@ class GCPLogsQueryRequest(BaseModel):
     filter: str = Field(..., min_length=1, max_length=5000)
     page_size: int | None = Field(default=None, ge=1, le=100)
     page_token: str | None = Field(default=None, max_length=2048)
+    start_time: str | None = Field(default=None, max_length=64)
+    end_time: str | None = Field(default=None, max_length=64)
 
     @field_validator("filter", mode="before")
     @classmethod
@@ -19,6 +21,16 @@ class GCPLogsQueryRequest(BaseModel):
     @field_validator("page_token", mode="before")
     @classmethod
     def normalize_page_token(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        if not normalized:
+            return None
+        return normalized
+
+    @field_validator("start_time", "end_time", mode="before")
+    @classmethod
+    def normalize_optional_time_fields(cls, value: str | None) -> str | None:
         if value is None:
             return None
         normalized = str(value).strip()
@@ -46,6 +58,8 @@ class GCPLogsQueryResponse(BaseModel):
     page_size: int
     order_by: str
     resource_scope: list[str]
+    effective_filter: str
+    default_time_range_applied: bool = False
 
 
 class ADCRuntimeCheckResponse(BaseModel):

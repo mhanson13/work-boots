@@ -27,6 +27,8 @@ class _StubGCPLogsQueryService:
             page_size=25,
             order_by="timestamp desc",
             resource_scope=["projects/test-project"],
+            effective_filter='(severity>=ERROR) AND timestamp >= "2026-03-26T00:00:00Z"',
+            default_time_range_applied=True,
         )
         self.calls: list[GCPLogsQueryRequest] = []
         self.error: Exception | None = None
@@ -163,6 +165,8 @@ def test_gcp_logs_query_returns_sanitized_results(db_session, seeded_business) -
             page_size=25,
             order_by="timestamp desc",
             resource_scope=["projects/test-project"],
+            effective_filter='(jsonPayload.event="competitor_provider_request_start") AND timestamp >= "2026-03-26T00:00:00Z"',
+            default_time_range_applied=True,
         )
     )
     client = _make_client(
@@ -184,6 +188,8 @@ def test_gcp_logs_query_returns_sanitized_results(db_session, seeded_business) -
     assert payload["page_size"] == 25
     assert payload["order_by"] == "timestamp desc"
     assert payload["resource_scope"] == ["projects/test-project"]
+    assert "effective_filter" in payload
+    assert payload["default_time_range_applied"] is True
     assert payload["next_page_token"] == "token-2"
     assert payload["entries"][0]["severity"] == "INFO"
     assert stub_service.calls[0].filter == 'jsonPayload.event="competitor_provider_request_start"'
@@ -198,6 +204,8 @@ def test_gcp_logs_query_round_trips_pagination_token(db_session, seeded_business
             page_size=10,
             order_by="timestamp desc",
             resource_scope=["projects/test-project"],
+            effective_filter='(jsonPayload.event="competitor_provider_request_complete") AND timestamp >= "2026-03-26T00:00:00Z"',
+            default_time_range_applied=True,
         )
     )
     client = _make_client(
@@ -218,6 +226,28 @@ def test_gcp_logs_query_round_trips_pagination_token(db_session, seeded_business
     assert response.status_code == 200
     assert stub_service.calls[0].page_token == "token-1"
     assert response.json()["next_page_token"] == "next-token"
+
+
+def test_gcp_logs_query_round_trips_optional_time_range_fields(db_session, seeded_business) -> None:
+    stub_service = _StubGCPLogsQueryService()
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        gcp_logs_service=stub_service,
+    )
+
+    response = client.post(
+        f"/api/businesses/{seeded_business.id}/gcp/logs/query",
+        json={
+            "filter": 'jsonPayload.event="competitor_provider_request_complete"',
+            "start_time": "2026-03-20T00:00:00Z",
+            "end_time": "2026-03-27T00:00:00Z",
+        },
+    )
+
+    assert response.status_code == 200
+    assert stub_service.calls[0].start_time == "2026-03-20T00:00:00Z"
+    assert stub_service.calls[0].end_time == "2026-03-27T00:00:00Z"
 
 
 def test_gcp_logs_query_handles_provider_error_with_sanitized_message(db_session, seeded_business) -> None:

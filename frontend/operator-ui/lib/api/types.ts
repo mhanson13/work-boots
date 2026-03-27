@@ -117,6 +117,8 @@ export interface GCPLogsQueryRequest {
   filter: string;
   page_size?: number;
   page_token?: string;
+  start_time?: string;
+  end_time?: string;
 }
 
 export interface GCPLogEntry {
@@ -138,6 +140,8 @@ export interface GCPLogsQueryResponse {
   page_size: number;
   order_by: string;
   resource_scope: string[];
+  effective_filter: string;
+  default_time_range_applied: boolean;
 }
 
 export interface SEOSite {

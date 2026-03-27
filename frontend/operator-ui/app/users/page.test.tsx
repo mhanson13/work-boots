@@ -163,6 +163,8 @@ beforeEach(() => {
     page_size: 25,
     order_by: "timestamp desc",
     resource_scope: ["projects/test-project"],
+    effective_filter: '(jsonPayload.event="competitor_provider_request_start") AND timestamp >= "2026-03-26T00:00:00Z"',
+    default_time_range_applied: true,
   });
 });
 
@@ -1248,6 +1250,8 @@ describe("admin page compatibility route", () => {
         page_size: 25,
         order_by: "timestamp desc",
         resource_scope: ["projects/test-project"],
+        effective_filter: '(jsonPayload.event="competitor_provider_request_start") AND timestamp >= "2026-03-26T00:00:00Z"',
+        default_time_range_applied: true,
       })
       .mockResolvedValueOnce({
         entries: [
@@ -1268,6 +1272,8 @@ describe("admin page compatibility route", () => {
         page_size: 25,
         order_by: "timestamp desc",
         resource_scope: ["projects/test-project"],
+        effective_filter: '(jsonPayload.event="competitor_provider_request_start") AND timestamp >= "2026-03-26T00:00:00Z"',
+        default_time_range_applied: true,
       });
 
     const user = userEvent.setup();
@@ -1284,9 +1290,10 @@ describe("admin page compatibility route", () => {
         page_token: undefined,
       }),
     );
-    expect(screen.getByText("Retrieved 1 log entries.")).toBeInTheDocument();
+    expect(screen.getByText("Retrieved 1 log entries. Defaulting to last 24 hours.")).toBeInTheDocument();
     expect(screen.getByText("request started")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next Page" })).toBeEnabled();
+    expect(screen.getByText(/Effective Filter:/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Next Page" }));
 
@@ -1301,11 +1308,46 @@ describe("admin page compatibility route", () => {
     expect(screen.getByText("request completed")).toBeInTheDocument();
   });
 
+  it("submits optional start/end time range when provided", async () => {
+    mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
+    mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
+    mockQueryGcpLogs.mockResolvedValueOnce({
+      entries: [],
+      next_page_token: null,
+      page_size: 25,
+      order_by: "timestamp desc",
+      resource_scope: ["projects/test-project"],
+      effective_filter:
+        '(jsonPayload.event="competitor_provider_request_error") AND timestamp >= "2026-03-20T00:00:00Z" AND timestamp <= "2026-03-21T00:00:00Z"',
+      default_time_range_applied: false,
+    });
+
+    const user = userEvent.setup();
+    render(<UsersCompatibilityPage />);
+
+    await screen.findByText("operator-1");
+    await user.type(screen.getByLabelText("Logs Explorer Filter"), 'jsonPayload.event="competitor_provider_request_error"');
+    await user.type(screen.getByLabelText("Start Time (UTC, optional)"), "2026-03-20T00:00:00Z");
+    await user.type(screen.getByLabelText("End Time (UTC, optional)"), "2026-03-21T00:00:00Z");
+    await user.click(screen.getByRole("button", { name: "Run Query" }));
+
+    await waitFor(() =>
+      expect(mockQueryGcpLogs).toHaveBeenCalledWith("token-1", "biz-1", {
+        filter: 'jsonPayload.event="competitor_provider_request_error"',
+        page_size: 25,
+        page_token: undefined,
+        start_time: "2026-03-20T00:00:00Z",
+        end_time: "2026-03-21T00:00:00Z",
+      }),
+    );
+    expect(screen.getByText("No logs matched this filter.")).toBeInTheDocument();
+  });
+
   it("shows a clear validation error when logs query is invalid", async () => {
     mockFetchPrincipals.mockResolvedValueOnce(principalsResponse(true));
     mockFetchPrincipalIdentities.mockResolvedValueOnce(identitiesResponse());
     mockQueryGcpLogs.mockRejectedValueOnce(
-      new ApiRequestError("Invalid Cloud Logging filter or page size.", { status: 422, detail: null }),
+      new ApiRequestError("Invalid Cloud Logging filter, page size, or time range.", { status: 422, detail: null }),
     );
 
     const user = userEvent.setup();
@@ -1315,6 +1357,6 @@ describe("admin page compatibility route", () => {
     await user.type(screen.getByLabelText("Logs Explorer Filter"), "severity>=ERROR");
     await user.click(screen.getByRole("button", { name: "Run Query" }));
 
-    await screen.findByText("Invalid Cloud Logging filter or page size.");
+    await screen.findByText("Invalid Cloud Logging filter, page size, or time range.");
   });
 });

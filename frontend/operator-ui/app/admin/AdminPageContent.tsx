@@ -65,6 +65,7 @@ interface SettingsHealthSummary {
 
 const GCP_LOGS_PAGE_SIZE_DEFAULT = 25;
 const GCP_LOGS_PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
+const GCP_LOGS_DEFAULT_TIME_WINDOW_LABEL = "last 24 hours";
 
 const GCP_LOGS_SAMPLE_FILTERS = [
   'jsonPayload.event="competitor_provider_request_start"',
@@ -495,7 +496,7 @@ function safeGcpLogsQueryErrorMessage(error: unknown): string {
       return "Only admin principals can query Cloud Logging.";
     }
     if (error.status === 422) {
-      return "Invalid Cloud Logging filter or page size.";
+      return "Invalid Cloud Logging filter, page size, or time range.";
     }
     if (error.status === 504) {
       return "Cloud Logging query timed out. Narrow the filter and try again.";
@@ -529,6 +530,14 @@ function formatLabelSummary(labels: Record<string, string> | null): string {
   return Object.entries(labels)
     .map(([key, value]) => `${key}=${value}`)
     .join(", ");
+}
+
+function normalizeOptionalIsoTimeInput(value: string): string | undefined {
+  const normalized = value.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  return normalized;
 }
 
 export default function AdminPage() {
@@ -591,10 +600,14 @@ export default function AdminPage() {
   const [deletingSiteId, setDeletingSiteId] = useState<string | null>(null);
   const [gcpLogsFilterInput, setGcpLogsFilterInput] = useState("");
   const [gcpLogsPageSize, setGcpLogsPageSize] = useState<number>(GCP_LOGS_PAGE_SIZE_DEFAULT);
+  const [gcpLogsStartTimeInput, setGcpLogsStartTimeInput] = useState("");
+  const [gcpLogsEndTimeInput, setGcpLogsEndTimeInput] = useState("");
   const [gcpLogsEntries, setGcpLogsEntries] = useState<GCPLogEntry[]>([]);
   const [gcpLogsNextPageToken, setGcpLogsNextPageToken] = useState<string | null>(null);
   const [gcpLogsOrderBy, setGcpLogsOrderBy] = useState<string>("timestamp desc");
   const [gcpLogsResourceScope, setGcpLogsResourceScope] = useState<string[]>([]);
+  const [gcpLogsEffectiveFilter, setGcpLogsEffectiveFilter] = useState<string>("");
+  const [gcpLogsDefaultTimeRangeApplied, setGcpLogsDefaultTimeRangeApplied] = useState<boolean>(false);
   const [gcpLogsLoading, setGcpLogsLoading] = useState(false);
   const [gcpLogsError, setGcpLogsError] = useState<string | null>(null);
   const [gcpLogsMessage, setGcpLogsMessage] = useState<string | null>(null);
@@ -1174,22 +1187,47 @@ export default function AdminPage() {
     setGcpLogsError(null);
     setGcpLogsMessage(null);
     try {
-      const response = await queryGcpLogs(context.token, context.businessId, {
+      const normalizedStartTime = normalizeOptionalIsoTimeInput(gcpLogsStartTimeInput);
+      const normalizedEndTime = normalizeOptionalIsoTimeInput(gcpLogsEndTimeInput);
+      const requestPayload: {
+        filter: string;
+        page_size: number;
+        page_token?: string;
+        start_time?: string;
+        end_time?: string;
+      } = {
         filter: normalizedFilter,
         page_size: gcpLogsPageSize,
         page_token: pageToken || undefined,
-      });
+      };
+      if (normalizedStartTime) {
+        requestPayload.start_time = normalizedStartTime;
+      }
+      if (normalizedEndTime) {
+        requestPayload.end_time = normalizedEndTime;
+      }
+      const response = await queryGcpLogs(context.token, context.businessId, requestPayload);
       setGcpLogsEntries(response.entries);
       setGcpLogsNextPageToken(response.next_page_token || null);
       setGcpLogsOrderBy(response.order_by);
       setGcpLogsResourceScope(response.resource_scope);
+      setGcpLogsEffectiveFilter(response.effective_filter || "");
+      setGcpLogsDefaultTimeRangeApplied(Boolean(response.default_time_range_applied));
       setGcpLogsHasExecuted(true);
       if (response.entries.length === 0) {
-        setGcpLogsMessage("No logs matched this filter.");
+        setGcpLogsMessage(
+          response.default_time_range_applied
+            ? `No logs matched this filter. Defaulting to ${GCP_LOGS_DEFAULT_TIME_WINDOW_LABEL}.`
+            : "No logs matched this filter.",
+        );
       } else if (pageToken) {
         setGcpLogsMessage(`Loaded next page with ${response.entries.length} log entries.`);
       } else {
-        setGcpLogsMessage(`Retrieved ${response.entries.length} log entries.`);
+        setGcpLogsMessage(
+          response.default_time_range_applied
+            ? `Retrieved ${response.entries.length} log entries. Defaulting to ${GCP_LOGS_DEFAULT_TIME_WINDOW_LABEL}.`
+            : `Retrieved ${response.entries.length} log entries.`,
+        );
       }
     } catch (err) {
       setGcpLogsError(safeGcpLogsQueryErrorMessage(err));
@@ -1197,6 +1235,8 @@ export default function AdminPage() {
       if (!pageToken) {
         setGcpLogsEntries([]);
         setGcpLogsNextPageToken(null);
+        setGcpLogsEffectiveFilter("");
+        setGcpLogsDefaultTimeRangeApplied(false);
       }
     } finally {
       setGcpLogsLoading(false);
@@ -1870,6 +1910,30 @@ export default function AdminPage() {
             ))}
           </select>
 
+          <label htmlFor="gcp-logs-start-time">Start Time (UTC, optional)</label>
+          <input
+            id="gcp-logs-start-time"
+            type="text"
+            value={gcpLogsStartTimeInput}
+            onChange={(event) => setGcpLogsStartTimeInput(event.target.value)}
+            placeholder="2026-03-26T00:00:00Z"
+            disabled={gcpLogsLoading}
+          />
+
+          <label htmlFor="gcp-logs-end-time">End Time (UTC, optional)</label>
+          <input
+            id="gcp-logs-end-time"
+            type="text"
+            value={gcpLogsEndTimeInput}
+            onChange={(event) => setGcpLogsEndTimeInput(event.target.value)}
+            placeholder="2026-03-27T00:00:00Z"
+            disabled={gcpLogsLoading}
+          />
+
+          {!gcpLogsStartTimeInput.trim() && !gcpLogsEndTimeInput.trim() ? (
+            <p className="hint muted">Defaulting to {GCP_LOGS_DEFAULT_TIME_WINDOW_LABEL} when Start/End are blank.</p>
+          ) : null}
+
           <div className="form-actions">
             <button className="button button-primary" type="submit" disabled={gcpLogsLoading}>
               {gcpLogsLoading ? "Querying..." : "Run Query"}
@@ -1889,6 +1953,12 @@ export default function AdminPage() {
             {" | "}
             Order: <code>{gcpLogsOrderBy}</code>
           </p>
+          {gcpLogsHasExecuted && gcpLogsEffectiveFilter ? (
+            <p className="hint muted">
+              Effective Filter: <code>{gcpLogsEffectiveFilter}</code>
+              {gcpLogsDefaultTimeRangeApplied ? " (default last 24h applied)" : ""}
+            </p>
+          ) : null}
 
           {gcpLogsMessage ? <p className="hint">{gcpLogsMessage}</p> : null}
           {gcpLogsError ? <p className="hint error">{gcpLogsError}</p> : null}
