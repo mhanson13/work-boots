@@ -73,6 +73,9 @@ def test_admin_runtime_adc_check_endpoint_returns_status_payload(db_session, see
         adc_available=True,
         project_id="mbsrn-prod",
         error=None,
+        phase=None,
+        cause_class=None,
+        credentials_class="Credentials",
     )
     monkeypatch.setattr(
         admin_runtime_routes,
@@ -91,12 +94,15 @@ def test_admin_runtime_adc_check_endpoint_returns_status_payload(db_session, see
         "adc_available": True,
         "project_id": "mbsrn-prod",
         "error": None,
+        "phase": None,
+        "cause_class": None,
+        "credentials_class": "Credentials",
     }
 
 
 def test_resolve_adc_runtime_status_returns_false_when_adc_unavailable(monkeypatch) -> None:
     def _failing_auth_loader():
-        raise RuntimeError("metadata server unavailable")
+        raise ImportError("google.auth transport missing")
 
     monkeypatch.setattr(admin_runtime_routes, "_load_google_auth", _failing_auth_loader)
 
@@ -104,8 +110,11 @@ def test_resolve_adc_runtime_status_returns_false_when_adc_unavailable(monkeypat
 
     assert response.adc_available is False
     assert response.project_id is None
+    assert response.phase == "dependency_missing"
+    assert response.cause_class == "ImportError"
+    assert response.credentials_class is None
     assert response.error is not None
-    assert "metadata server unavailable" in response.error
+    assert "google.auth transport missing" in response.error
 
 
 def test_resolve_adc_runtime_status_returns_true_when_token_refresh_succeeds(monkeypatch) -> None:
@@ -136,3 +145,39 @@ def test_resolve_adc_runtime_status_returns_true_when_token_refresh_succeeds(mon
     assert response.adc_available is True
     assert response.project_id == "mbsrn-prod"
     assert response.error is None
+    assert response.phase is None
+    assert response.cause_class is None
+    assert response.credentials_class == "_FakeCredentials"
+
+
+def test_resolve_adc_runtime_status_returns_refresh_phase_on_refresh_failure(monkeypatch) -> None:
+    class _FakeCredentials:
+        def __init__(self) -> None:
+            self.token = ""
+            self.valid = False
+
+        def refresh(self, _request) -> None:
+            raise RuntimeError("metadata token exchange failed")
+
+    class _FakeAuthRequest:
+        pass
+
+    def _fake_google_auth_default(*, scopes):
+        assert scopes == [admin_runtime_routes._CLOUD_LOGGING_READ_SCOPE]
+        return _FakeCredentials(), "mbsrn-prod"
+
+    monkeypatch.setattr(
+        admin_runtime_routes,
+        "_load_google_auth",
+        lambda: (_fake_google_auth_default, _FakeAuthRequest),
+    )
+
+    response = admin_runtime_routes._resolve_adc_runtime_status()
+
+    assert response.adc_available is False
+    assert response.project_id == "mbsrn-prod"
+    assert response.phase == "token_refresh_failure"
+    assert response.cause_class == "RuntimeError"
+    assert response.credentials_class == "_FakeCredentials"
+    assert response.error is not None
+    assert "metadata token exchange failed" in response.error

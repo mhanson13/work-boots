@@ -234,6 +234,13 @@ Runtime log signals for precise diagnosis:
 - `gcp_logs_query_failed`:
   - includes `classification`, `error_class`, `runtime_pod`, and API status metadata when applicable.
 
+Useful Logs Explorer filters for this path:
+
+- `textPayload:"gcp_logs_adc_resolved"`
+- `textPayload:"gcp_logs_adc_authorization_failed"`
+- `textPayload:"gcp_logs_query_failed classification=adc_unavailable"`
+- `textPayload:"gcp_logs_query_failed classification=permission_denied"`
+
 Interpretation shortcut:
 
 - metadata token endpoint success from inside the pod proves platform metadata/identity path is available.
@@ -258,6 +265,9 @@ Runtime ADC diagnostic endpoint:
 - returns:
   - `adc_available` (`true`/`false`)
   - `project_id` (detected by ADC when available)
+  - `phase` (`dependency_missing | adc_resolution_failure | token_refresh_failure | token_missing | adc_authorization_failure`)
+  - `cause_class` (root exception class, for example `ImportError`, `DefaultCredentialsError`, `RefreshError`)
+  - `credentials_class` (resolved credentials type when available)
   - `error` (bounded message on failure)
 - endpoint never returns token material
 

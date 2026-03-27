@@ -52,3 +52,6 @@ class ADCRuntimeCheckResponse(BaseModel):
     adc_available: bool
     project_id: str | None = None
     error: str | None = None
+    phase: str | None = None
+    cause_class: str | None = None
+    credentials_class: str | None = None
