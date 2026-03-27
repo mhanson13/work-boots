@@ -12,7 +12,11 @@ from app.api.deps import (
 from app.api.routes.businesses import router as businesses_router
 from app.models.principal import Principal, PrincipalRole
 from app.schemas.admin_logs import GCPLogEntryRead, GCPLogsQueryRequest, GCPLogsQueryResponse
-from app.services.gcp_logs_query import GCPLogsQueryConfigurationError, GCPLogsQueryProviderError
+from app.services.gcp_logs_query import (
+    GCPLogsQueryConfigurationError,
+    GCPLogsQueryPermissionError,
+    GCPLogsQueryProviderError,
+)
 
 
 class _StubGCPLogsQueryService:
@@ -254,3 +258,25 @@ def test_gcp_logs_query_surfaces_actionable_missing_project_configuration_error(
     assert response.status_code == 503
     detail = response.json()["detail"]
     assert detail == "Cloud Logging query is not configured: missing GCP project id. Set GCP_PROJECT_ID."
+
+
+def test_gcp_logs_query_surfaces_permission_denied_error_with_actionable_detail(db_session, seeded_business) -> None:
+    stub_service = _StubGCPLogsQueryService()
+    stub_service.error = GCPLogsQueryPermissionError(
+        "Cloud Logging permission denied for runtime service account. Verify roles/logging.viewer on GCP_PROJECT_ID."
+    )
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        gcp_logs_service=stub_service,
+    )
+
+    response = client.post(
+        f"/api/businesses/{seeded_business.id}/gcp/logs/query",
+        json={"filter": 'jsonPayload.event="competitor_provider_request_error"'},
+    )
+
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert "permission denied" in detail.lower()
+    assert "roles/logging.viewer" in detail

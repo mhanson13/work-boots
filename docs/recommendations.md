@@ -44,6 +44,7 @@ Notes:
 - Clearing the override reverts to deployment/default fallback behavior.
 - Whitespace-only overrides are treated as unset and revert to fallback behavior.
 - Prompt preview payloads now include `source` attribution (`admin_config`, `env`, `default`) for operator/debug visibility.
+- Deployment manifests no longer wire deprecated legacy `AI_PROMPT_TEXT_RECOMMENDATION`; production recommendation prompt control should use persisted admin settings (and split env fallbacks only where explicitly configured by runtime).
 
 ## Admin Competitor Candidate Quality Controls (Operator Guidance)
 

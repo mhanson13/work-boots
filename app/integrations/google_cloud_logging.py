@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import logging
 import socket
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -9,6 +10,18 @@ from urllib.request import Request, urlopen
 
 _CLOUD_LOGGING_SCOPE = "https://www.googleapis.com/auth/logging.read"
 _CLOUD_LOGGING_ENTRIES_LIST_URL = "https://logging.googleapis.com/v2/entries:list"
+_ADC_ERROR_MAX_CHARS = 220
+_PROJECT_CONFIGURATION_MESSAGE_MARKERS = (
+    "resourcenames",
+    "resource names",
+    "projects/",
+    "project id",
+    "project_ids",
+    "project does not exist",
+    "requested entity was not found",
+)
+
+logger = logging.getLogger(__name__)
 
 
 class GoogleCloudLoggingADCError(ValueError):
@@ -47,6 +60,16 @@ class GoogleCloudLoggingAPIError(ValueError):
             return True
         return (self.error_status or "").upper() in {"INVALID_ARGUMENT", "FAILED_PRECONDITION"}
 
+    @property
+    def is_project_configuration_error(self) -> bool:
+        status_upper = (self.error_status or "").upper()
+        if self.status_code == 404 or status_upper == "NOT_FOUND":
+            return True
+        if self.status_code == 400 or status_upper in {"INVALID_ARGUMENT", "FAILED_PRECONDITION"}:
+            message_lower = str(self).lower()
+            return any(marker in message_lower for marker in _PROJECT_CONFIGURATION_MESSAGE_MARKERS)
+        return False
+
 
 @dataclass(frozen=True)
 class _GoogleErrorDetail:
@@ -60,6 +83,12 @@ class GoogleCloudLoggingClient:
         self.timeout_seconds = timeout_seconds
         self._credentials: Any | None = None
         self._auth_request: Any | None = None
+        self._adc_project_id: str | None = None
+        self._adc_success_logged = False
+
+    @property
+    def detected_project_id(self) -> str | None:
+        return self._adc_project_id
 
     def list_entries(
         self,
@@ -160,22 +189,49 @@ class GoogleCloudLoggingClient:
 
         try:
             if self._credentials is None:
-                credentials, _ = google_auth_default(scopes=[_CLOUD_LOGGING_SCOPE])
+                try:
+                    credentials, detected_project_id = google_auth_default(scopes=[_CLOUD_LOGGING_SCOPE])
+                except Exception as exc:  # noqa: BLE001
+                    raise GoogleCloudLoggingADCError("Unable to resolve Application Default Credentials.") from exc
                 self._credentials = credentials
                 self._auth_request = GoogleAuthRequest()
+                normalized_project_id = str(detected_project_id or "").strip()
+                self._adc_project_id = normalized_project_id or None
+                if not self._adc_success_logged:
+                    logger.info(
+                        "gcp_logs_adc_resolved adc_available=true detected_project_id=%s",
+                        self._adc_project_id or "",
+                    )
+                    self._adc_success_logged = True
             credentials = self._credentials
             if credentials is None:
                 raise GoogleCloudLoggingADCError("Unable to resolve Application Default Credentials.")
             if not credentials.valid or not getattr(credentials, "token", None):
                 auth_request = self._auth_request or GoogleAuthRequest()
-                credentials.refresh(auth_request)
+                try:
+                    credentials.refresh(auth_request)
+                except Exception as exc:  # noqa: BLE001
+                    raise GoogleCloudLoggingADCError(
+                        "Unable to refresh Application Default Credentials access token."
+                    ) from exc
             token = str(getattr(credentials, "token", "") or "").strip()
             if not token:
                 raise GoogleCloudLoggingADCError("Application Default Credentials did not return an access token.")
             return token
-        except GoogleCloudLoggingADCError:
+        except GoogleCloudLoggingADCError as exc:
+            root_error = exc.__cause__ if isinstance(exc.__cause__, Exception) else exc
+            logger.warning(
+                "gcp_logs_adc_authorization_failed detected_project_id=%s error=%s",
+                self._adc_project_id or "",
+                _summarize_exception_message(root_error),
+            )
             raise
         except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "gcp_logs_adc_authorization_failed detected_project_id=%s error=%s",
+                self._adc_project_id or "",
+                _summarize_exception_message(exc),
+            )
             raise GoogleCloudLoggingADCError(
                 "Unable to authorize Cloud Logging request with Application Default Credentials."
             ) from exc
@@ -217,3 +273,14 @@ def _extract_error_detail(exc: HTTPError) -> _GoogleErrorDetail:
         if parsed_message:
             message = parsed_message
     return _GoogleErrorDetail(message=message, status_code=status_code, error_status=error_status)
+
+
+def _summarize_exception_message(error: Exception | None = None) -> str:
+    if error is None:
+        return "unknown_error"
+    normalized = " ".join(str(error or "").split())
+    if not normalized:
+        normalized = error.__class__.__name__
+    if len(normalized) <= _ADC_ERROR_MAX_CHARS:
+        return normalized
+    return f"{normalized[: _ADC_ERROR_MAX_CHARS - 3]}..."

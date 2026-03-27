@@ -85,6 +85,7 @@ Notes:
 - Endpoint never returns token material.
 - If ADC is unavailable, endpoint returns `adc_available=false` with a bounded error message.
 - Local development without ADC is expected to return `adc_available=false`.
+- Deployment model is ADC-native only; do not wire `GOOGLE_APPLICATION_CREDENTIALS` for this feature.
 
 ## Common Failure Modes
 
@@ -102,3 +103,12 @@ Notes:
 
 5. Missing `GCP_PROJECT_ID`
 - Log query feature is not configured for a project scope.
+
+6. Invalid `GCP_PROJECT_ID`
+- Cloud Logging API returns project/resource-scope configuration failures.
+
+Error classes surfaced by logs query route:
+
+- `503` ADC failure: Workload Identity credentials could not be resolved/refreshed.
+- `503` config failure: project env missing/invalid for Cloud Logging scope.
+- `502` permission failure: runtime GSA authenticated but missing Cloud Logging read permission.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from app.integrations.google_cloud_logging import (
@@ -28,8 +29,14 @@ _PROJECT_CONFIG_ERROR_MESSAGE = (
 )
 _ADC_CONFIG_ERROR_MESSAGE = (
     "Cloud Logging query is not configured: runtime Application Default Credentials are unavailable. "
-    "Verify the deployed service account is attached and has Cloud Logging read access."
+    "Verify Workload Identity and deployed service account attachment for this environment."
 )
+_PROJECT_SCOPE_CONFIG_ERROR_MESSAGE = (
+    "Cloud Logging query is not configured: GCP_PROJECT_ID is invalid for Cloud Logging resource scope. "
+    "Verify GCP_PROJECT_ID."
+)
+
+logger = logging.getLogger(__name__)
 
 
 class GCPLogsQueryValidationError(ValueError):
@@ -68,10 +75,18 @@ class GCPLogsQueryService:
 
     def query_logs(self, *, payload: GCPLogsQueryRequest) -> GCPLogsQueryResponse:
         if not self.project_id:
+            logger.warning("gcp_logs_query_failed classification=configuration_error reason=missing_project_id")
             raise GCPLogsQueryConfigurationError(_PROJECT_CONFIG_ERROR_MESSAGE)
         effective_page_size = int(payload.page_size or self.default_page_size)
         if effective_page_size <= 0:
             raise GCPLogsQueryValidationError("page_size must be greater than zero.")
+        logger.info(
+            "gcp_logs_query_request_start project_id=%s page_size=%s has_page_token=%s filter_chars=%s",
+            self.project_id,
+            effective_page_size,
+            bool(payload.page_token),
+            len(payload.filter),
+        )
 
         try:
             response_payload = self.client.list_entries(
@@ -82,16 +97,53 @@ class GCPLogsQueryService:
                 order_by=self.order_by,
             )
         except GoogleCloudLoggingADCError as exc:
+            logger.warning(
+                "gcp_logs_query_failed classification=adc_unavailable project_id=%s error=%s",
+                self.project_id,
+                _summarize_error_message(exc),
+            )
             raise GCPLogsQueryConfigurationError(_ADC_CONFIG_ERROR_MESSAGE) from exc
         except GoogleCloudLoggingAPIError as exc:
+            if exc.is_project_configuration_error:
+                logger.warning(
+                    "gcp_logs_query_failed classification=project_configuration_error project_id=%s status_code=%s error_status=%s",
+                    self.project_id,
+                    exc.status_code if exc.status_code is not None else "",
+                    exc.error_status or "",
+                )
+                raise GCPLogsQueryConfigurationError(_PROJECT_SCOPE_CONFIG_ERROR_MESSAGE) from exc
             if exc.is_invalid_request:
+                logger.warning(
+                    "gcp_logs_query_failed classification=invalid_request project_id=%s status_code=%s error_status=%s",
+                    self.project_id,
+                    exc.status_code if exc.status_code is not None else "",
+                    exc.error_status or "",
+                )
                 raise GCPLogsQueryValidationError("Cloud Logging filter or pagination parameters are invalid.") from exc
             if exc.is_permission_denied:
+                logger.warning(
+                    "gcp_logs_query_failed classification=permission_denied project_id=%s status_code=%s error_status=%s",
+                    self.project_id,
+                    exc.status_code if exc.status_code is not None else "",
+                    exc.error_status or "",
+                )
                 raise GCPLogsQueryPermissionError(
-                    "Cloud Logging permission denied for runtime service account."
+                    "Cloud Logging permission denied for runtime service account. Verify roles/logging.viewer on GCP_PROJECT_ID."
                 ) from exc
             if exc.is_timeout:
+                logger.warning(
+                    "gcp_logs_query_failed classification=timeout project_id=%s status_code=%s error_status=%s",
+                    self.project_id,
+                    exc.status_code if exc.status_code is not None else "",
+                    exc.error_status or "",
+                )
                 raise GCPLogsQueryTimeoutError("Cloud Logging request timed out.") from exc
+            logger.warning(
+                "gcp_logs_query_failed classification=provider_error project_id=%s status_code=%s error_status=%s",
+                self.project_id,
+                exc.status_code if exc.status_code is not None else "",
+                exc.error_status or "",
+            )
             raise GCPLogsQueryProviderError("Cloud Logging request failed.") from exc
 
         raw_entries = response_payload.get("entries")
@@ -104,6 +156,23 @@ class GCPLogsQueryService:
         next_page_token = _normalize_optional_text(
             response_payload.get("nextPageToken"),
             max_chars=_MAX_PAGE_TOKEN_CHARS,
+        )
+        adc_project_id = _normalize_optional_text(
+            getattr(self.client, "detected_project_id", None),
+            max_chars=80,
+        )
+        if adc_project_id and adc_project_id != self.project_id:
+            logger.warning(
+                "gcp_logs_query_project_mismatch configured_project_id=%s detected_adc_project_id=%s",
+                self.project_id,
+                adc_project_id,
+            )
+        logger.info(
+            "gcp_logs_query_request_complete project_id=%s detected_adc_project_id=%s entry_count=%s next_page_token_present=%s",
+            self.project_id,
+            adc_project_id or "",
+            len(sanitized_entries),
+            bool(next_page_token),
         )
         return GCPLogsQueryResponse(
             entries=sanitized_entries,
@@ -200,3 +269,12 @@ def _truncate_summary(value: str) -> str:
     if len(value) <= _MAX_PAYLOAD_SUMMARY_CHARS:
         return value
     return f"{value[: _MAX_PAYLOAD_SUMMARY_CHARS - 3]}..."
+
+
+def _summarize_error_message(error: Exception) -> str:
+    normalized = " ".join(str(error or "").split())
+    if not normalized:
+        normalized = error.__class__.__name__
+    if len(normalized) <= 240:
+        return normalized
+    return f"{normalized[:237]}..."

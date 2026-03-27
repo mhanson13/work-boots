@@ -4,6 +4,7 @@ from app.integrations.google_cloud_logging import GoogleCloudLoggingADCError, Go
 from app.schemas.admin_logs import GCPLogsQueryRequest
 from app.services.gcp_logs_query import (
     GCPLogsQueryConfigurationError,
+    GCPLogsQueryPermissionError,
     GCPLogsQueryService,
     GCPLogsQueryValidationError,
 )
@@ -128,3 +129,46 @@ def test_gcp_logs_query_service_maps_invalid_request_errors() -> None:
         assert "invalid" in str(exc).lower()
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("Expected GCPLogsQueryValidationError")
+
+
+def test_gcp_logs_query_service_maps_permission_denied_errors() -> None:
+    service = GCPLogsQueryService(
+        client=_FakeCloudLoggingClient(
+            error=GoogleCloudLoggingAPIError(
+                "permission denied",
+                status_code=403,
+                error_status="PERMISSION_DENIED",
+            )
+        ),
+        project_id="test-project",
+    )
+
+    try:
+        service.query_logs(payload=GCPLogsQueryRequest(filter='severity="ERROR"'))
+    except GCPLogsQueryPermissionError as exc:
+        message = str(exc).lower()
+        assert "permission denied" in message
+        assert "roles/logging.viewer" in message
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected GCPLogsQueryPermissionError")
+
+
+def test_gcp_logs_query_service_maps_invalid_project_scope_to_configuration_error() -> None:
+    service = GCPLogsQueryService(
+        client=_FakeCloudLoggingClient(
+            error=GoogleCloudLoggingAPIError(
+                "Cloud Logging request failed: Invalid resource name in resourceNames: projects/not-a-project",
+                status_code=400,
+                error_status="INVALID_ARGUMENT",
+            )
+        ),
+        project_id="not-a-project",
+    )
+
+    try:
+        service.query_logs(payload=GCPLogsQueryRequest(filter='severity="ERROR"'))
+    except GCPLogsQueryConfigurationError as exc:
+        message = str(exc)
+        assert "GCP_PROJECT_ID is invalid for Cloud Logging resource scope" in message
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected GCPLogsQueryConfigurationError")

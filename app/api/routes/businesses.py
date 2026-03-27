@@ -129,7 +129,7 @@ def query_gcp_logs(
     except GCPLogsQueryPermissionError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Cloud Logging permission denied for runtime service account.",
+            detail=str(exc),
         ) from exc
     except GCPLogsQueryTimeoutError as exc:
         raise HTTPException(

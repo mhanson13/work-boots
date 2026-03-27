@@ -203,6 +203,7 @@ Auth and runtime model:
 - app user must be an admin principal (non-admins are denied)
 - backend authenticates to GCP with Application Default Credentials from the runtime attached service account
 - no user OAuth scopes and no browser-side GCP credentials are required
+- deployment model is ADC-only; do not set `GOOGLE_APPLICATION_CREDENTIALS` in this path
 
 Required backend project configuration:
 
@@ -210,6 +211,13 @@ Required backend project configuration:
 - value format: GCP project id string, for example `my-prod-project-123`
 
 If project configuration is missing, the API returns a 503 with an actionable message naming the expected env vars.
+
+Failure classification (runtime diagnostics):
+
+- ADC failure (`503`): runtime credentials could not be resolved/refreshed from Workload Identity.
+- project configuration failure (`503`): `GCP_PROJECT_ID` is missing or invalid for Cloud Logging resource scope.
+- permission failure (`502`): runtime service account is authenticated but lacks Cloud Logging read access (for example missing `roles/logging.viewer`).
+- request validation failure (`422`): invalid filter or pagination input.
 
 Scope and paging limits:
 
@@ -230,6 +238,16 @@ Runtime ADC diagnostic endpoint:
   - `project_id` (detected by ADC when available)
   - `error` (bounded message on failure)
 - endpoint never returns token material
+
+Rendered-manifest env source rule:
+
+- each Kubernetes `env` item must use exactly one source:
+  - literal `value`, or
+  - `valueFrom`
+- never render both `value` and `valueFrom` on the same env entry
+- treat empty optional literals as unset and omit that `value` branch entirely
+- deploy render validation now enforces this via:
+  - `python scripts/validate_k8s_env_sources.py <rendered-manifest...>`
 
 Deployment prerequisites (Workload Identity + env wiring):
 

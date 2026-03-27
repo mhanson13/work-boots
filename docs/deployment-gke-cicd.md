@@ -96,6 +96,10 @@ Notes:
 
 Kubernetes ConfigMap handles non-secret environment values.
 
+Env rendering rule:
+- every Kubernetes `env` entry must render from exactly one source (`value` or `valueFrom`, never both)
+- optional blank literals must be omitted rather than rendered as an empty `value` alongside `valueFrom`
+
 Schema management policy:
 - Application startup does not manage production schema evolution.
 - `DB_AUTO_CREATE_LOCAL` is a local/dev/test convenience guard only.
@@ -114,6 +118,10 @@ Kubernetes Secret handles sensitive values including:
 - provider credentials (Twilio/SMTP) when enabled
 
 `work-boots-secrets` is required by both API/UI Deployments and migration Job (`envFrom.secretRef`).
+
+Prompt configuration note:
+- production prompt overrides are managed in persisted business admin settings.
+- deprecated legacy env prompt `AI_PROMPT_TEXT_RECOMMENDATION` is not required for API deployment wiring.
 
 ## Operational Notes
 

@@ -42,7 +42,6 @@ env:
   AI_PROVIDER_NAME: ${{ vars.AI_PROVIDER_NAME || 'openai' }}
   AI_MODEL_NAME: ${{ vars.AI_MODEL_NAME || 'gpt-4o-mini' }}
   AI_TIMEOUT_VALUE: ${{ vars.AI_TIMEOUT_VALUE || '30' }}
-  AI_PROMPT_TEXT_RECOMMENDATION: ${{ vars.AI_PROMPT_TEXT_RECOMMENDATION || '' }}
   UI_CPU_REQUEST: ${{ vars.UI_CPU_REQUEST }}
   UI_MEMORY_REQUEST: ${{ vars.UI_MEMORY_REQUEST }}
   UI_EPHEMERAL_STORAGE_REQUEST: ${{ vars.UI_EPHEMERAL_STORAGE_REQUEST }}
@@ -413,6 +412,12 @@ jobs:
             fi
           done
 
+          python scripts/validate_k8s_env_sources.py \
+            "${render_dir}/api-deployment.yaml" \
+            "${render_dir}/api-migration-job.yaml" \
+            "${render_dir}/api-migration-baseline-job.yaml" \
+            "${render_dir}/api-seo-competitor-profile-retention-cronjob.yaml"
+
           echo "RENDER_DIR=${render_dir}" >> "${GITHUB_ENV}"
 
       - name: Apply workload manifests
@@ -445,7 +450,6 @@ jobs:
             --from-literal=AI_PROVIDER_NAME="${AI_PROVIDER_NAME}" \
             --from-literal=AI_MODEL_NAME="${AI_MODEL_NAME}" \
             --from-literal=AI_TIMEOUT_VALUE="${AI_TIMEOUT_VALUE}" \
-            --from-literal=AI_PROMPT_TEXT_RECOMMENDATION="${AI_PROMPT_TEXT_RECOMMENDATION}" \
             --dry-run=client -o yaml | kubectl apply -f -
           kubectl apply -n "${K8S_NAMESPACE}" -f "${RENDER_DIR}/ui-serviceaccount.yaml"
           kubectl apply -n "${K8S_NAMESPACE}" -f "${RENDER_DIR}/api-serviceaccount.yaml"
