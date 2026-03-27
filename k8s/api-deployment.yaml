@@ -28,8 +28,6 @@ spec:
                   name: mbsrn-api-auth
                   key: GCP_PROJECT_ID
                   optional: true
-            - name: DB_AUTO_CREATE_LOCAL
-              value: "false"
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

@@ -23,6 +23,7 @@ def _finalize_item(
     *,
     path: Path,
     line_number: int,
+    env_index: int,
     name: str | None,
     has_value: bool,
     has_value_from: bool,
@@ -31,7 +32,7 @@ def _finalize_item(
     if name and has_value and has_value_from:
         violations.append(
             (
-                f"{path}:{line_number}: env '{name}' defines both value and valueFrom "
+                f"{path}:{line_number}: env[{env_index}] '{name}' defines both value and valueFrom "
                 "(use exactly one source and omit empty literal value branches)."
             )
         )
@@ -46,6 +47,8 @@ def _scan_file(path: Path) -> list[str]:
     current_name: str | None = None
     current_line = 0
     current_item_indent = -1
+    current_env_index = -1
+    next_env_index = 0
     has_value = False
     has_value_from = False
 
@@ -64,6 +67,8 @@ def _scan_file(path: Path) -> list[str]:
                 current_name = None
                 current_line = 0
                 current_item_indent = -1
+                current_env_index = -1
+                next_env_index = 0
                 has_value = False
                 has_value_from = False
             continue
@@ -72,6 +77,7 @@ def _scan_file(path: Path) -> list[str]:
             _finalize_item(
                 path=path,
                 line_number=current_line,
+                env_index=current_env_index,
                 name=current_name,
                 has_value=has_value,
                 has_value_from=has_value_from,
@@ -82,6 +88,8 @@ def _scan_file(path: Path) -> list[str]:
             current_name = None
             current_line = 0
             current_item_indent = -1
+            current_env_index = -1
+            next_env_index = 0
             has_value = False
             has_value_from = False
 
@@ -89,6 +97,7 @@ def _scan_file(path: Path) -> list[str]:
             if env_match:
                 in_env_block = True
                 env_indent = len(env_match.group("indent"))
+                next_env_index = 0
             continue
 
         item_match = _ENV_ITEM_RE.match(line)
@@ -96,6 +105,7 @@ def _scan_file(path: Path) -> list[str]:
             _finalize_item(
                 path=path,
                 line_number=current_line,
+                env_index=current_env_index,
                 name=current_name,
                 has_value=has_value,
                 has_value_from=has_value_from,
@@ -104,6 +114,8 @@ def _scan_file(path: Path) -> list[str]:
             current_name = item_match.group("name").strip().strip("\"'")
             current_line = index
             current_item_indent = len(item_match.group("indent"))
+            current_env_index = next_env_index
+            next_env_index += 1
             has_value = False
             has_value_from = False
             continue
@@ -122,6 +134,7 @@ def _scan_file(path: Path) -> list[str]:
         _finalize_item(
             path=path,
             line_number=current_line,
+            env_index=current_env_index,
             name=current_name,
             has_value=has_value,
             has_value_from=has_value_from,

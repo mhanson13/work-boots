@@ -478,6 +478,7 @@ jobs:
 
           kubectl apply -n "${K8S_NAMESPACE}" -f "${RENDER_DIR}/ui-deployment.yaml"
           kubectl apply -n "${K8S_NAMESPACE}" -f "${RENDER_DIR}/ui-service.yaml"
+          kubectl apply --dry-run=server -n "${K8S_NAMESPACE}" -f "${RENDER_DIR}/api-deployment.yaml"
           kubectl apply -n "${K8S_NAMESPACE}" -f "${RENDER_DIR}/api-deployment.yaml"
           kubectl apply -n "${K8S_NAMESPACE}" -f "${RENDER_DIR}/api-service.yaml"
           kubectl apply -n "${K8S_NAMESPACE}" -f "${RENDER_DIR}/api-seo-competitor-profile-retention-cronjob.yaml"

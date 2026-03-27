@@ -249,6 +249,18 @@ Rendered-manifest env source rule:
 - deploy render validation now enforces this via:
   - `python scripts/validate_k8s_env_sources.py <rendered-manifest...>`
 
+Inspect rendered env entries by index/name before apply:
+
+```bash
+python - <<'PY' "${RENDER_DIR}/api-deployment.yaml"
+import sys, yaml
+doc = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))
+env = doc["spec"]["template"]["spec"]["containers"][0].get("env", [])
+for index, item in enumerate(env):
+    print(f"{index}: {item.get('name')} value={'value' in item} valueFrom={'valueFrom' in item}")
+PY
+```
+
 Deployment prerequisites (Workload Identity + env wiring):
 
 - GKE cluster has Workload Identity enabled (`workloadIdentityConfig.workloadPool` is set).
