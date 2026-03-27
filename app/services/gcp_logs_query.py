@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
 
 from app.integrations.google_cloud_logging import (
@@ -31,10 +32,18 @@ _ADC_CONFIG_ERROR_MESSAGE = (
     "Cloud Logging query is not configured: runtime Application Default Credentials are unavailable. "
     "Verify Workload Identity and deployed service account attachment for this environment."
 )
+_ADC_DEPENDENCY_CONFIG_ERROR_MESSAGE = (
+    "Cloud Logging query runtime is misconfigured: google-auth transport dependency is unavailable in the API image."
+)
+_ADC_REFRESH_CONFIG_ERROR_MESSAGE = (
+    "Cloud Logging query could not refresh runtime ADC access token. "
+    "Verify Workload Identity token exchange for the deployed service account."
+)
 _PROJECT_SCOPE_CONFIG_ERROR_MESSAGE = (
     "Cloud Logging query is not configured: GCP_PROJECT_ID is invalid for Cloud Logging resource scope. "
     "Verify GCP_PROJECT_ID."
 )
+_RUNTIME_POD_NAME = (os.getenv("HOSTNAME") or "").strip()
 
 logger = logging.getLogger(__name__)
 
@@ -81,11 +90,12 @@ class GCPLogsQueryService:
         if effective_page_size <= 0:
             raise GCPLogsQueryValidationError("page_size must be greater than zero.")
         logger.info(
-            "gcp_logs_query_request_start project_id=%s page_size=%s has_page_token=%s filter_chars=%s",
+            "gcp_logs_query_request_start project_id=%s page_size=%s has_page_token=%s filter_chars=%s runtime_pod=%s",
             self.project_id,
             effective_page_size,
             bool(payload.page_token),
             len(payload.filter),
+            _RUNTIME_POD_NAME,
         )
 
         try:
@@ -97,52 +107,71 @@ class GCPLogsQueryService:
                 order_by=self.order_by,
             )
         except GoogleCloudLoggingADCError as exc:
+            adc_phase = str(getattr(exc, "phase", "adc_resolution_failure") or "adc_resolution_failure")
+            adc_error_class = str(getattr(exc, "cause_class", "") or exc.__class__.__name__)
             logger.warning(
-                "gcp_logs_query_failed classification=adc_unavailable project_id=%s error=%s",
+                "gcp_logs_query_failed classification=adc_unavailable project_id=%s adc_phase=%s error_class=%s error=%s runtime_pod=%s",
                 self.project_id,
+                adc_phase,
+                adc_error_class,
                 _summarize_error_message(exc),
+                _RUNTIME_POD_NAME,
             )
+            if adc_phase == "dependency_missing":
+                raise GCPLogsQueryConfigurationError(_ADC_DEPENDENCY_CONFIG_ERROR_MESSAGE) from exc
+            if adc_phase == "token_refresh_failure":
+                raise GCPLogsQueryConfigurationError(_ADC_REFRESH_CONFIG_ERROR_MESSAGE) from exc
             raise GCPLogsQueryConfigurationError(_ADC_CONFIG_ERROR_MESSAGE) from exc
         except GoogleCloudLoggingAPIError as exc:
             if exc.is_project_configuration_error:
                 logger.warning(
-                    "gcp_logs_query_failed classification=project_configuration_error project_id=%s status_code=%s error_status=%s",
+                    "gcp_logs_query_failed classification=project_configuration_error project_id=%s status_code=%s error_status=%s error_class=%s runtime_pod=%s",
                     self.project_id,
                     exc.status_code if exc.status_code is not None else "",
                     exc.error_status or "",
+                    exc.__class__.__name__,
+                    _RUNTIME_POD_NAME,
                 )
                 raise GCPLogsQueryConfigurationError(_PROJECT_SCOPE_CONFIG_ERROR_MESSAGE) from exc
             if exc.is_invalid_request:
                 logger.warning(
-                    "gcp_logs_query_failed classification=invalid_request project_id=%s status_code=%s error_status=%s",
+                    "gcp_logs_query_failed classification=invalid_request project_id=%s status_code=%s error_status=%s error_class=%s runtime_pod=%s",
                     self.project_id,
                     exc.status_code if exc.status_code is not None else "",
                     exc.error_status or "",
+                    exc.__class__.__name__,
+                    _RUNTIME_POD_NAME,
                 )
                 raise GCPLogsQueryValidationError("Cloud Logging filter or pagination parameters are invalid.") from exc
             if exc.is_permission_denied:
                 logger.warning(
-                    "gcp_logs_query_failed classification=permission_denied project_id=%s status_code=%s error_status=%s",
+                    "gcp_logs_query_failed classification=permission_denied project_id=%s status_code=%s error_status=%s error_class=%s runtime_pod=%s",
                     self.project_id,
                     exc.status_code if exc.status_code is not None else "",
                     exc.error_status or "",
+                    exc.__class__.__name__,
+                    _RUNTIME_POD_NAME,
                 )
                 raise GCPLogsQueryPermissionError(
                     "Cloud Logging permission denied for runtime service account. Verify roles/logging.viewer on GCP_PROJECT_ID."
                 ) from exc
             if exc.is_timeout:
                 logger.warning(
-                    "gcp_logs_query_failed classification=timeout project_id=%s status_code=%s error_status=%s",
+                    "gcp_logs_query_failed classification=timeout project_id=%s status_code=%s error_status=%s error_class=%s runtime_pod=%s",
                     self.project_id,
                     exc.status_code if exc.status_code is not None else "",
                     exc.error_status or "",
+                    exc.__class__.__name__,
+                    _RUNTIME_POD_NAME,
                 )
                 raise GCPLogsQueryTimeoutError("Cloud Logging request timed out.") from exc
             logger.warning(
-                "gcp_logs_query_failed classification=provider_error project_id=%s status_code=%s error_status=%s",
+                "gcp_logs_query_failed classification=provider_error project_id=%s status_code=%s error_status=%s error_class=%s runtime_pod=%s",
                 self.project_id,
                 exc.status_code if exc.status_code is not None else "",
                 exc.error_status or "",
+                exc.__class__.__name__,
+                _RUNTIME_POD_NAME,
             )
             raise GCPLogsQueryProviderError("Cloud Logging request failed.") from exc
 
@@ -168,11 +197,12 @@ class GCPLogsQueryService:
                 adc_project_id,
             )
         logger.info(
-            "gcp_logs_query_request_complete project_id=%s detected_adc_project_id=%s entry_count=%s next_page_token_present=%s",
+            "gcp_logs_query_request_complete project_id=%s detected_adc_project_id=%s entry_count=%s next_page_token_present=%s runtime_pod=%s",
             self.project_id,
             adc_project_id or "",
             len(sanitized_entries),
             bool(next_page_token),
+            _RUNTIME_POD_NAME,
         )
         return GCPLogsQueryResponse(
             entries=sanitized_entries,

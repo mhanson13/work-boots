@@ -219,6 +219,28 @@ Failure classification (runtime diagnostics):
 - permission failure (`502`): runtime service account is authenticated but lacks Cloud Logging read access (for example missing `roles/logging.viewer`).
 - request validation failure (`422`): invalid filter or pagination input.
 
+Runtime log signals for precise diagnosis:
+
+- `gcp_logs_adc_resolved`:
+  - includes `detected_project_id` and `credentials_class` when ADC resolution succeeds.
+- `gcp_logs_adc_authorization_failed`:
+  - includes `phase` and `error_class`.
+  - key phases:
+    - `dependency_missing`
+    - `adc_resolution_failure`
+    - `token_refresh_failure`
+    - `token_missing`
+    - `adc_authorization_failure`
+- `gcp_logs_query_failed`:
+  - includes `classification`, `error_class`, `runtime_pod`, and API status metadata when applicable.
+
+Interpretation shortcut:
+
+- metadata token endpoint success from inside the pod proves platform metadata/identity path is available.
+- if logs then show `phase=dependency_missing`, the issue is runtime image dependency wiring, not Workload Identity itself.
+- if logs show `phase=token_refresh_failure`, inspect Workload Identity token exchange / GSA impersonation bindings.
+- if logs show `classification=permission_denied`, ADC is working and IAM on Cloud Logging is the failing layer.
+
 Scope and paging limits:
 
 - query scope is fixed to the configured project: `projects/<configured-project>`
@@ -290,6 +312,10 @@ kubectl -n mbsrn get deploy mbsrn-api -o jsonpath='{.spec.template.spec.serviceA
 
 # KSA must be mapped to a GSA
 kubectl -n mbsrn get sa mbsrn-api -o jsonpath='{.metadata.annotations.iam\.gke\.io/gcp-service-account}{"\n"}'
+
+# Verify running image reference and immutable image ID for current API pods
+kubectl -n mbsrn get deploy mbsrn-api -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+kubectl -n mbsrn get pods -l app=mbsrn-api -o jsonpath='{range .items[*]}{.metadata.name}{"  imageID="}{.status.containerStatuses[0].imageID}{"\n"}{end}'
 
 # Workload Identity must be enabled on cluster
 gcloud container clusters describe <CLUSTER_NAME> --location <CLUSTER_LOCATION> \

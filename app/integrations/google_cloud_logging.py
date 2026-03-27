@@ -25,7 +25,16 @@ logger = logging.getLogger(__name__)
 
 
 class GoogleCloudLoggingADCError(ValueError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        phase: str = "adc_resolution_failure",
+        cause_class: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.phase = phase
+        self.cause_class = cause_class
 
 
 class GoogleCloudLoggingAPIError(ValueError):
@@ -185,55 +194,81 @@ class GoogleCloudLoggingClient:
             from google.auth import default as google_auth_default
             from google.auth.transport.requests import Request as GoogleAuthRequest
         except ImportError as exc:
-            raise GoogleCloudLoggingADCError("google-auth dependency is required for Cloud Logging ADC access.") from exc
+            raise GoogleCloudLoggingADCError(
+                "google-auth transport dependency is unavailable for Cloud Logging ADC access.",
+                phase="dependency_missing",
+                cause_class=exc.__class__.__name__,
+            ) from exc
 
         try:
             if self._credentials is None:
                 try:
                     credentials, detected_project_id = google_auth_default(scopes=[_CLOUD_LOGGING_SCOPE])
                 except Exception as exc:  # noqa: BLE001
-                    raise GoogleCloudLoggingADCError("Unable to resolve Application Default Credentials.") from exc
+                    raise GoogleCloudLoggingADCError(
+                        "Unable to resolve Application Default Credentials.",
+                        phase="adc_resolution_failure",
+                        cause_class=exc.__class__.__name__,
+                    ) from exc
                 self._credentials = credentials
                 self._auth_request = GoogleAuthRequest()
                 normalized_project_id = str(detected_project_id or "").strip()
                 self._adc_project_id = normalized_project_id or None
                 if not self._adc_success_logged:
+                    credentials_class = credentials.__class__.__name__ if credentials is not None else ""
                     logger.info(
-                        "gcp_logs_adc_resolved adc_available=true detected_project_id=%s",
+                        "gcp_logs_adc_resolved adc_available=true detected_project_id=%s credentials_class=%s",
                         self._adc_project_id or "",
+                        credentials_class,
                     )
                     self._adc_success_logged = True
             credentials = self._credentials
             if credentials is None:
-                raise GoogleCloudLoggingADCError("Unable to resolve Application Default Credentials.")
+                raise GoogleCloudLoggingADCError(
+                    "Unable to resolve Application Default Credentials.",
+                    phase="adc_resolution_failure",
+                    cause_class="MissingCredentials",
+                )
             if not credentials.valid or not getattr(credentials, "token", None):
                 auth_request = self._auth_request or GoogleAuthRequest()
                 try:
                     credentials.refresh(auth_request)
                 except Exception as exc:  # noqa: BLE001
                     raise GoogleCloudLoggingADCError(
-                        "Unable to refresh Application Default Credentials access token."
+                        "Unable to refresh Application Default Credentials access token.",
+                        phase="token_refresh_failure",
+                        cause_class=exc.__class__.__name__,
                     ) from exc
             token = str(getattr(credentials, "token", "") or "").strip()
             if not token:
-                raise GoogleCloudLoggingADCError("Application Default Credentials did not return an access token.")
+                raise GoogleCloudLoggingADCError(
+                    "Application Default Credentials did not return an access token.",
+                    phase="token_missing",
+                    cause_class="MissingAccessToken",
+                )
             return token
         except GoogleCloudLoggingADCError as exc:
             root_error = exc.__cause__ if isinstance(exc.__cause__, Exception) else exc
             logger.warning(
-                "gcp_logs_adc_authorization_failed detected_project_id=%s error=%s",
+                "gcp_logs_adc_authorization_failed detected_project_id=%s phase=%s error_class=%s error=%s",
                 self._adc_project_id or "",
+                exc.phase,
+                exc.cause_class or root_error.__class__.__name__,
                 _summarize_exception_message(root_error),
             )
             raise
         except Exception as exc:  # noqa: BLE001
             logger.warning(
-                "gcp_logs_adc_authorization_failed detected_project_id=%s error=%s",
+                "gcp_logs_adc_authorization_failed detected_project_id=%s phase=%s error_class=%s error=%s",
                 self._adc_project_id or "",
+                "adc_authorization_failure",
+                exc.__class__.__name__,
                 _summarize_exception_message(exc),
             )
             raise GoogleCloudLoggingADCError(
-                "Unable to authorize Cloud Logging request with Application Default Credentials."
+                "Unable to authorize Cloud Logging request with Application Default Credentials.",
+                phase="adc_authorization_failure",
+                cause_class=exc.__class__.__name__,
             ) from exc
 
 

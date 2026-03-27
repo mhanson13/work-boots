@@ -111,6 +111,50 @@ def test_gcp_logs_query_service_surfaces_adc_unavailable_as_configuration_error(
         raise AssertionError("Expected GCPLogsQueryConfigurationError")
 
 
+def test_gcp_logs_query_service_maps_adc_dependency_missing_to_configuration_error() -> None:
+    service = GCPLogsQueryService(
+        client=_FakeCloudLoggingClient(
+            error=GoogleCloudLoggingADCError(
+                "google-auth transport dependency is unavailable for Cloud Logging ADC access.",
+                phase="dependency_missing",
+                cause_class="ImportError",
+            )
+        ),
+        project_id="test-project",
+    )
+
+    try:
+        service.query_logs(payload=GCPLogsQueryRequest(filter="severity>=ERROR"))
+    except GCPLogsQueryConfigurationError as exc:
+        message = str(exc).lower()
+        assert "runtime is misconfigured" in message
+        assert "google-auth transport dependency" in message
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected GCPLogsQueryConfigurationError")
+
+
+def test_gcp_logs_query_service_maps_adc_token_refresh_failure_to_configuration_error() -> None:
+    service = GCPLogsQueryService(
+        client=_FakeCloudLoggingClient(
+            error=GoogleCloudLoggingADCError(
+                "Unable to refresh Application Default Credentials access token.",
+                phase="token_refresh_failure",
+                cause_class="RefreshError",
+            )
+        ),
+        project_id="test-project",
+    )
+
+    try:
+        service.query_logs(payload=GCPLogsQueryRequest(filter="severity>=ERROR"))
+    except GCPLogsQueryConfigurationError as exc:
+        message = str(exc).lower()
+        assert "could not refresh runtime adc access token" in message
+        assert "workload identity token exchange" in message
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected GCPLogsQueryConfigurationError")
+
+
 def test_gcp_logs_query_service_maps_invalid_request_errors() -> None:
     service = GCPLogsQueryService(
         client=_FakeCloudLoggingClient(

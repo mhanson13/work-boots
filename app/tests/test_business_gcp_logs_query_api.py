@@ -260,6 +260,28 @@ def test_gcp_logs_query_surfaces_actionable_missing_project_configuration_error(
     assert detail == "Cloud Logging query is not configured: missing GCP project id. Set GCP_PROJECT_ID."
 
 
+def test_gcp_logs_query_surfaces_runtime_dependency_configuration_error(db_session, seeded_business) -> None:
+    stub_service = _StubGCPLogsQueryService()
+    stub_service.error = GCPLogsQueryConfigurationError(
+        "Cloud Logging query runtime is misconfigured: google-auth transport dependency is unavailable in the API image."
+    )
+    client = _make_client(
+        db_session,
+        business_id=seeded_business.id,
+        gcp_logs_service=stub_service,
+    )
+
+    response = client.post(
+        f"/api/businesses/{seeded_business.id}/gcp/logs/query",
+        json={"filter": 'jsonPayload.event="competitor_provider_request_start"'},
+    )
+
+    assert response.status_code == 503
+    detail = response.json()["detail"].lower()
+    assert "runtime is misconfigured" in detail
+    assert "google-auth transport dependency" in detail
+
+
 def test_gcp_logs_query_surfaces_permission_denied_error_with_actionable_detail(db_session, seeded_business) -> None:
     stub_service = _StubGCPLogsQueryService()
     stub_service.error = GCPLogsQueryPermissionError(

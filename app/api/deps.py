@@ -350,6 +350,11 @@ def get_business_settings_service(
 
 def get_google_cloud_logging_client() -> GoogleCloudLoggingClient:
     settings = get_settings()
+    logger.info(
+        "gcp_logs_query_client_init timeout_seconds=%s configured_project_id_present=%s",
+        settings.gcp_logging_api_timeout_seconds,
+        bool((settings.gcp_logging_project_id or "").strip()),
+    )
     return GoogleCloudLoggingClient(timeout_seconds=settings.gcp_logging_api_timeout_seconds)
 
 
@@ -357,6 +362,10 @@ def get_gcp_logs_query_service(
     client: GoogleCloudLoggingClient = Depends(get_google_cloud_logging_client),
 ) -> GCPLogsQueryService:
     settings = get_settings()
+    logger.info(
+        "gcp_logs_query_service_init configured_project_id=%s",
+        (settings.gcp_logging_project_id or "").strip(),
+    )
     return GCPLogsQueryService(
         client=client,
         project_id=settings.gcp_logging_project_id,
