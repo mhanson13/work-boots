@@ -73,6 +73,18 @@ Behavior:
 - On terminal status, the workspace updates action messaging and clears in-progress polling state.
 - No manual page refresh is required for completed-run draft visibility.
 
+## Competitor Generation State Model
+
+The competitor panel treats backend run data as the single source of truth on each load.
+
+Behavior:
+
+- On workspace load, the UI fetches run history, selects the latest run by `created_at` (with `id` as a tiebreaker), then fetches run detail for that exact run id.
+- Drafts, run status, and debug payloads are rendered from that run-detail response, not from prior in-memory polling state.
+- If latest run status is `running`/`queued`, polling starts as an enhancement.
+- If latest run status is `completed`/`failed`, polling is not required and terminal state renders immediately.
+- Stale local running indicators are cleared whenever backend run detail reports a terminal status.
+
 ## Recommendation Generation Action
 
 The workspace recommendations area now includes a primary `Generate Recommendations` action.

@@ -1683,7 +1683,13 @@ function competitorProfileTerminalMessage(status: CompetitorProfileGenerationRun
 function sortCompetitorProfileGenerationRuns(
   runs: CompetitorProfileGenerationRun[],
 ): CompetitorProfileGenerationRun[] {
-  return [...runs].sort((left, right) => right.created_at.localeCompare(left.created_at));
+  return [...runs].sort((left, right) => {
+    const createdAtOrder = right.created_at.localeCompare(left.created_at);
+    if (createdAtOrder !== 0) {
+      return createdAtOrder;
+    }
+    return right.id.localeCompare(left.id);
+  });
 }
 
 function upsertCompetitorProfileGenerationRun(
@@ -3496,7 +3502,10 @@ export default function SiteWorkspacePage() {
       setPendingAiApplyAttributionByPreviewKey({});
       setRecentTuningChanges([]);
       setCompetitorProfilePollingTargetRunId(null);
+      setCompetitorProfilePolling(false);
       setCompetitorProfileSummaryError(null);
+      setCompetitorProfileActionError(null);
+      setCompetitorProfileActionMessage(null);
       setRejectedCompetitorCandidateCount(0);
       setRejectedCompetitorCandidates([]);
       setTuningRejectedCompetitorCandidateCount(0);
@@ -3741,6 +3750,13 @@ export default function SiteWorkspacePage() {
             if (cancelled) {
               return;
             }
+            setCompetitorProfileGenerationRuns((current) =>
+              upsertCompetitorProfileGenerationRun(current, detail.run),
+            );
+            setLatestCompetitorProfileRunId(detail.run.id);
+            setCompetitorProfilePollingTargetRunId(
+              !isCompetitorProfileRunTerminalStatus(detail.run.status) ? detail.run.id : null,
+            );
             setCompetitorProfileDrafts(detail.drafts);
             setRejectedCompetitorCandidateCount(Math.max(0, detail.rejected_candidate_count || 0));
             setRejectedCompetitorCandidates(normalizeRejectedCompetitorCandidates(detail.rejected_candidates));
@@ -3889,18 +3905,29 @@ export default function SiteWorkspacePage() {
         const sortedRuns = sortCompetitorProfileGenerationRuns(runsResponse.items);
         setCompetitorProfileGenerationRuns(sortedRuns);
 
+        const latestRun = sortedRuns[0] || null;
+        const detailRunId = latestRun?.id || competitorProfilePollingTargetRunId;
+        if (!detailRunId) {
+          setCompetitorProfilePolling(false);
+          setCompetitorProfilePollingTargetRunId(null);
+          return;
+        }
+
         setCompetitorProfileLoading(true);
         const detail = await fetchCompetitorProfileGenerationRunDetail(
           context.token,
           context.businessId,
           siteId,
-          competitorProfilePollingTargetRunId,
+          detailRunId,
         );
         if (cancelled) {
           return;
         }
         setCompetitorProfileGenerationRuns(upsertCompetitorProfileGenerationRun(sortedRuns, detail.run));
         setLatestCompetitorProfileRunId(detail.run.id);
+        setCompetitorProfilePollingTargetRunId(
+          !isCompetitorProfileRunTerminalStatus(detail.run.status) ? detail.run.id : null,
+        );
         setCompetitorProfileDrafts(detail.drafts);
         setRejectedCompetitorCandidateCount(Math.max(0, detail.rejected_candidate_count || 0));
         setRejectedCompetitorCandidates(normalizeRejectedCompetitorCandidates(detail.rejected_candidates));

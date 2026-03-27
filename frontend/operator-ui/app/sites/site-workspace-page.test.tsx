@@ -4846,6 +4846,131 @@ describe("site workspace ai competitor profile drafts", () => {
     expect(mockFetchCompetitorProfileGenerationSummary).toHaveBeenCalled();
   });
 
+  it("reconstructs the latest completed run on page load and shows drafts without polling state", async () => {
+    seedRichWorkspaceData();
+    const olderRun = buildCompetitorProfileGenerationRun({
+      id: "gen-run-older",
+      status: "failed",
+      generated_draft_count: 0,
+      failure_category: "provider_request",
+      error_summary: "Older run failed",
+      created_at: "2026-03-21T01:00:00Z",
+      updated_at: "2026-03-21T01:01:00Z",
+      completed_at: "2026-03-21T01:01:00Z",
+    });
+    const latestRun = buildCompetitorProfileGenerationRun({
+      id: "gen-run-latest",
+      status: "completed",
+      generated_draft_count: 1,
+      created_at: "2026-03-21T02:00:00Z",
+      updated_at: "2026-03-21T02:01:00Z",
+      completed_at: "2026-03-21T02:01:00Z",
+    });
+    const latestDraft: CompetitorProfileDraft = {
+      id: "draft-latest-1",
+      business_id: "biz-1",
+      site_id: "site-1",
+      generation_run_id: latestRun.id,
+      suggested_name: "Reloaded Competitor",
+      suggested_domain: "reloaded-competitor.example",
+      competitor_type: "direct",
+      summary: "Recovered from backend state on load.",
+      why_competitor: "Service overlap and local intent.",
+      evidence: "Backend detail payload",
+      confidence_score: 0.79,
+      source: "ai_generated",
+      review_status: "pending",
+      edited_fields_json: null,
+      review_notes: null,
+      reviewed_by_principal_id: null,
+      reviewed_at: null,
+      accepted_competitor_set_id: null,
+      accepted_competitor_domain_id: null,
+      created_at: "2026-03-21T02:01:00Z",
+      updated_at: "2026-03-21T02:01:00Z",
+    };
+    mockFetchCompetitorProfileGenerationRuns.mockResolvedValue({
+      items: [olderRun, latestRun],
+      total: 2,
+    });
+    mockFetchCompetitorProfileGenerationRunDetail.mockResolvedValue({
+      run: latestRun,
+      drafts: [latestDraft],
+      total_drafts: 1,
+    });
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findAllByTestId("competitor-profile-draft-row");
+    expect(mockFetchCompetitorProfileGenerationRunDetail).toHaveBeenCalledWith(
+      "token-1",
+      "biz-1",
+      "site-1",
+      latestRun.id,
+    );
+    expect(screen.getByText(/Latest Run:/i)).toHaveTextContent("gen-run-latest");
+    expect(screen.getByText(/Latest Run:/i)).toHaveTextContent("(completed)");
+    expect(screen.queryByText("Generation is in progress for this run.")).not.toBeInTheDocument();
+  });
+
+  it("uses terminal run detail as source of truth when run list status is stale", async () => {
+    seedRichWorkspaceData();
+    const staleRunningRun = buildCompetitorProfileGenerationRun({
+      id: "gen-run-stale-status",
+      status: "running",
+      generated_draft_count: 0,
+      completed_at: null,
+      created_at: "2026-03-21T02:30:00Z",
+      updated_at: "2026-03-21T02:30:00Z",
+    });
+    const completedDetailRun = buildCompetitorProfileGenerationRun({
+      ...staleRunningRun,
+      status: "completed",
+      generated_draft_count: 1,
+      completed_at: "2026-03-21T02:31:00Z",
+      updated_at: "2026-03-21T02:31:00Z",
+    });
+    const completedDraft: CompetitorProfileDraft = {
+      id: "draft-stale-resolved-1",
+      business_id: "biz-1",
+      site_id: "site-1",
+      generation_run_id: staleRunningRun.id,
+      suggested_name: "Stale State Competitor",
+      suggested_domain: "stale-state-competitor.example",
+      competitor_type: "direct",
+      summary: "Detail endpoint returned completed state.",
+      why_competitor: "Same local service intent.",
+      evidence: "Run detail",
+      confidence_score: 0.73,
+      source: "ai_generated",
+      review_status: "pending",
+      edited_fields_json: null,
+      review_notes: null,
+      reviewed_by_principal_id: null,
+      reviewed_at: null,
+      accepted_competitor_set_id: null,
+      accepted_competitor_domain_id: null,
+      created_at: "2026-03-21T02:31:00Z",
+      updated_at: "2026-03-21T02:31:00Z",
+    };
+
+    mockFetchCompetitorProfileGenerationRuns.mockResolvedValue({
+      items: [staleRunningRun],
+      total: 1,
+    });
+    mockFetchCompetitorProfileGenerationRunDetail.mockResolvedValue({
+      run: completedDetailRun,
+      drafts: [completedDraft],
+      total_drafts: 1,
+    });
+
+    render(<SiteWorkspacePage />);
+
+    await screen.findAllByTestId("competitor-profile-draft-row");
+    expect(screen.getByText(/Latest Run:/i)).toHaveTextContent("(completed)");
+    expect(screen.queryByText("Generation is in progress for this run.")).not.toBeInTheDocument();
+  });
+
   it("renders non-zero exclusion reason aggregates in summary", async () => {
     seedCompetitorProfileGenerationWorkspaceData();
     mockFetchCompetitorProfileGenerationSummary.mockResolvedValue({
@@ -5429,8 +5554,15 @@ describe("site workspace ai competitor profile drafts", () => {
     render(<SiteWorkspacePage />);
 
     await screen.findByText("Competitor profile generation failed");
+    expect(mockFetchCompetitorProfileGenerationRunDetail).toHaveBeenCalledWith(
+      "token-1",
+      "biz-1",
+      "site-1",
+      "gen-run-failed",
+    );
     expect(screen.getByText(/Failure Category:/i)).toHaveTextContent("provider config");
     expect(screen.getByText("This run did not produce any reviewable drafts.")).toBeInTheDocument();
+    expect(screen.queryByText("Generation is in progress for this run.")).not.toBeInTheDocument();
   });
 
   it("shows retry action for failed generation runs", async () => {
