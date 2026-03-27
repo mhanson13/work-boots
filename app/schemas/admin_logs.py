@@ -46,3 +46,9 @@ class GCPLogsQueryResponse(BaseModel):
     page_size: int
     order_by: str
     resource_scope: list[str]
+
+
+class ADCRuntimeCheckResponse(BaseModel):
+    adc_available: bool
+    project_id: str | None = None
+    error: str | None = None

@@ -1,3 +1,4 @@
+from app.api.routes.admin_runtime import router as admin_runtime_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.businesses import router as businesses_router
 from app.api.routes.integrations import router as integrations_router
@@ -8,6 +9,7 @@ from app.api.routes.seo import router as seo_router
 from app.api.routes.seo import router_v1 as seo_v1_router
 
 __all__ = [
+    "admin_runtime_router",
     "auth_router",
     "businesses_router",
     "integrations_router",

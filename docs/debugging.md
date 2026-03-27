@@ -222,6 +222,15 @@ Runtime IAM requirement:
 
 - deployed runtime service account must have Cloud Logging read permission on the configured project (for example `logging.logEntries.list`, commonly provided by Logs Viewer or equivalent custom role)
 
+Runtime ADC diagnostic endpoint:
+
+- `GET /admin/runtime/adc-check` (admin-only)
+- returns:
+  - `adc_available` (`true`/`false`)
+  - `project_id` (detected by ADC when available)
+  - `error` (bounded message on failure)
+- endpoint never returns token material
+
 Deployment prerequisites (Workload Identity + env wiring):
 
 - GKE cluster has Workload Identity enabled (`workloadIdentityConfig.workloadPool` is set).

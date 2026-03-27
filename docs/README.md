@@ -14,6 +14,7 @@
 ## API and Architecture (Current)
 - [API Overview](api.md)
 - [Architecture](architecture.md)
+- [GCP Workload Identity (ADC)](gcp-workload-identity.md)
 - [Data Model](data-model.md)
 - [Automation](automation.md)
 - [Google Integration](google-integration.md)

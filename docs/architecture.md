@@ -51,6 +51,10 @@ Primary scoped entities:
 - Internal principal/business checks are the authorization boundary.
 - Google Business Profile authorization is a separate OAuth flow.
 - Long-lived provider credentials remain server-side and encrypted at rest.
+- GCP runtime ADC for admin Cloud Logging diagnostics/query uses GKE Workload Identity mapping (`KSA -> GSA`) and project-scoped IAM.
+
+Workload Identity runbook:
+- [GCP Workload Identity (ADC)](gcp-workload-identity.md)
 
 ## Normalization Boundary
 - Provider-specific payload and transport details stay in provider clients.
