@@ -46,6 +46,7 @@ This produces OCI-compatible images suitable for containerd on GKE.
 - `backend-ci.yml`
   - Python dependency install
   - Alembic migration-chain validation (`alembic upgrade head`) against CI Postgres
+  - CI Postgres service image is pulled from `public.ecr.aws/docker/library/postgres:16` (no Docker Hub login required)
   - pytest
 
 - `frontend-ci.yml`
@@ -91,6 +92,8 @@ Notes:
   - `service_account: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}`
 - Deploy validates cluster target and fails fast before `get-credentials` if the cluster is missing.
 - Deploy never creates foundational infrastructure (cluster/repository/WIF).
+- Docker Hub secrets are not required for backend CI Postgres pulls in this repo.
+- If your org later introduces Docker Hub auth for other workflows, use Docker Hub username + PAT (`DOCKERHUB_TOKEN`), not account password.
 
 ## Runtime Configuration
 

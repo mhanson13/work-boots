@@ -40,3 +40,9 @@ Pytest discovery is explicit in `pytest.ini`:
 - Frontend pipeline: `.github/workflows/frontend-ci.yml`
 
 Use the same command set locally before opening a PR to reduce CI-only failures.
+
+## CI Database Strategy
+- Backend CI intentionally starts an ephemeral Postgres service container for the migration gate:
+  - `alembic upgrade head`
+- This is CI-only isolation and is independent of production Cloud SQL/GKE runtime topology.
+- Most backend pytest coverage uses the in-memory SQLite `db_session` fixture from `app/tests/conftest.py`.
