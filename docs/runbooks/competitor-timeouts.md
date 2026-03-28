@@ -54,6 +54,8 @@ Use these filters in Logs Explorer:
 ## Candidate Filtering Checklist
 If competitor volume is low, inspect candidate pipeline observability before changing prompts or timeouts.
 
+Deterministic mitigation is also applied before provider execution: `SITE_CONTEXT_JSON.competitor_search_hints` is derived from local service/location context to improve discovery when search is unavailable or times out. These hints are guidance only, not confirmed competitor records.
+
 1. Query `jsonPayload.event="competitor_candidate_rejection_summary"` for the run id.
 2. Compare:
    - `raw_count` vs `valid_count` (provider-side candidate quality)

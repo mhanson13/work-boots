@@ -76,6 +76,13 @@ def test_prompt_builder_uses_expected_trusted_inputs() -> None:
             "Customers in Denver, CO and nearby service areas: Aurora, Denver seeking Home Services and evaluating "
             "comparable local providers."
         ),
+        "competitor_search_hints": [
+            "Home Services companies near Denver Colorado",
+            "Home Services services Denver Colorado",
+            "commercial Home Services contractors near Denver Colorado",
+            "Home Services installation companies Denver Colorado",
+            "local Home Services providers Denver Colorado",
+        ],
         "excluded_domains": ["client.example", "known.example", "other.example"],
         "existing_competitor_domains": ["known.example", "other.example"],
         "non_competitor_domain_hints": [
@@ -161,6 +168,65 @@ def test_prompt_builder_extracts_primary_business_zip_when_present() -> None:
     assert prompt.trusted_site_context["site_primary_business_zip"] == "80538"
     assert prompt.trusted_site_context["site_location_context_source"] == "zip_capture"
     assert prompt.trusted_site_context["site_location_context"] == "Serving area around ZIP code 80538"
+
+
+def test_search_hints_added_for_valid_context() -> None:
+    site = _build_site(display_name="TnM Fire")
+    site.industry = "Fire Protection Services"
+    site.primary_location = "Serving area around ZIP code 80501"
+    site.service_areas_json = None
+
+    prompt = build_seo_competitor_profile_prompt(
+        site=site,
+        existing_domains=[],
+        candidate_count=2,
+    )
+
+    hints = prompt.trusted_site_context.get("competitor_search_hints")
+    assert isinstance(hints, list)
+    assert 3 <= len(hints) <= 5
+    assert any("80501" in hint for hint in hints)
+    assert any("fire protection" in hint.lower() for hint in hints)
+
+
+def test_search_hints_empty_when_insufficient_context() -> None:
+    site = _build_site(display_name="Acme Holdings")
+    site.industry = None
+    site.primary_location = None
+    site.service_areas_json = None
+
+    prompt = build_seo_competitor_profile_prompt(
+        site=site,
+        existing_domains=[],
+        candidate_count=2,
+    )
+
+    assert prompt.trusted_site_context["service_focus_terms"] == []
+    assert prompt.trusted_site_context["competitor_search_hints"] == []
+
+
+def test_hints_do_not_include_domains_or_business_names() -> None:
+    site = _build_site(display_name="VMS Data")
+    site.industry = None
+    site.normalized_domain = "vmsdata.com"
+    _with_site_content_signals(
+        site,
+        "Managed IT services and cloud hosting for small businesses",
+        "SEO and digital marketing support for growth-stage teams",
+    )
+
+    prompt = build_seo_competitor_profile_prompt(
+        site=site,
+        existing_domains=[],
+        candidate_count=2,
+    )
+
+    hints = prompt.trusted_site_context.get("competitor_search_hints")
+    assert isinstance(hints, list)
+    assert hints
+    assert all("vmsdata.com" not in hint.lower() for hint in hints)
+    assert all("vms data" not in hint.lower() for hint in hints)
+    assert all(".com" not in hint.lower() for hint in hints)
 
 
 def test_prompt_builder_service_area_source_takes_precedence_over_zip_capture() -> None:

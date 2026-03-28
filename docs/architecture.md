@@ -182,8 +182,17 @@ Competitor prompt execution and preview use the same resolved prompt assembly pi
   - still rejects clearly invalid entries (for example missing name)
 - Forced drafts are tagged for review transparency:
   - `forced_inclusion=true`
-  - `forced_reason=no_valid_drafts_after_filtering`
+- `forced_reason=no_valid_drafts_after_filtering`
 - If provider candidates are truly empty, the run still completes with an empty draft list (valid zero-result outcome).
+
+## Competitor Discovery Hints
+- `SITE_CONTEXT_JSON` now includes optional `competitor_search_hints` values generated deterministically from:
+  - primary ZIP (when present)
+  - derivable normalized city/state context
+  - `service_focus_terms`
+- These hints are guidance-only strings to improve competitor discovery reliability for low-context sites.
+- Hints are not authoritative data and never treated as confirmed competitors.
+- No external lookups are used to generate hints; they are derived from existing site/business context only.
 
 ## Relaxed Competitor Eligibility
 - Unsupported competitor type labels are treated as a soft classification mismatch signal instead of an automatic hard reject.

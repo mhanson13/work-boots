@@ -21,6 +21,8 @@ _MAX_SERVICE_AREA_LENGTH = 120
 _MAX_SERVICE_AREAS = 25
 _MAX_SERVICE_FOCUS_TERM_LENGTH = 32
 _MAX_SERVICE_FOCUS_TERMS = 8
+_MAX_COMPETITOR_SEARCH_HINT_LENGTH = 120
+_MAX_COMPETITOR_SEARCH_HINTS = 5
 _MAX_SERVICE_FOCUS_DEBUG_SOURCES = 5
 _MAX_SERVICE_FOCUS_DROPPED_TERMS = 8
 _MAX_TARGET_CUSTOMER_CONTEXT_LENGTH = 220
@@ -37,6 +39,7 @@ _RETRY_REDUCED_CONTEXT_EXCLUDED_DOMAIN_CAP = 12
 _RETRY_REDUCED_CONTEXT_EXCLUDED_DOMAIN_TOTAL_CHARS = 320
 _RETRY_REDUCED_CONTEXT_SERVICE_AREA_CAP = 4
 _RETRY_REDUCED_CONTEXT_NON_COMPETITOR_HINT_CAP = 4
+_RETRY_REDUCED_CONTEXT_COMPETITOR_SEARCH_HINT_CAP = 4
 _RETRY_REDUCED_CONTEXT_SERVICE_FOCUS_TERMS_CAP = 6
 _BUDGET_CONTEXT_EXISTING_DOMAIN_CAP = 20
 _BUDGET_CONTEXT_EXISTING_DOMAIN_TOTAL_CHARS = 500
@@ -44,6 +47,7 @@ _BUDGET_CONTEXT_EXCLUDED_DOMAIN_CAP = 25
 _BUDGET_CONTEXT_EXCLUDED_DOMAIN_TOTAL_CHARS = 600
 _BUDGET_CONTEXT_SERVICE_AREA_CAP = 10
 _BUDGET_CONTEXT_NON_COMPETITOR_HINT_CAP = 6
+_BUDGET_CONTEXT_COMPETITOR_SEARCH_HINT_CAP = 4
 _LOCATION_FALLBACK_TEXT = "Location not yet established from available business/site data."
 _INDUSTRY_FALLBACK_TEXT = "Industry not yet confidently classified from available structured data."
 _TARGET_CUSTOMER_CONTEXT_FALLBACK = "Customers seeking clearly substitutable services in the same market context."
@@ -71,6 +75,61 @@ _NON_COMPETITOR_DOMAIN_HINTS = (
     "youtube.com",
 )
 _OVERRIDE_PLACEHOLDER_PATTERN = re.compile(r"\{([a-zA-Z0-9_]+)\}")
+_LOCATION_CITY_STATE_PATTERN = re.compile(r"([A-Za-z][A-Za-z '\-]{1,60})\s*,\s*([A-Za-z]{2,20})")
+_DOMAIN_TOKEN_PATTERN = re.compile(r"\b[a-z0-9][a-z0-9\-]*\.[a-z]{2,}\b", re.IGNORECASE)
+_US_STATE_ABBREVIATIONS = {
+    "AK": "Alaska",
+    "AL": "Alabama",
+    "AR": "Arkansas",
+    "AZ": "Arizona",
+    "CA": "California",
+    "CO": "Colorado",
+    "CT": "Connecticut",
+    "DC": "District of Columbia",
+    "DE": "Delaware",
+    "FL": "Florida",
+    "GA": "Georgia",
+    "HI": "Hawaii",
+    "IA": "Iowa",
+    "ID": "Idaho",
+    "IL": "Illinois",
+    "IN": "Indiana",
+    "KS": "Kansas",
+    "KY": "Kentucky",
+    "LA": "Louisiana",
+    "MA": "Massachusetts",
+    "MD": "Maryland",
+    "ME": "Maine",
+    "MI": "Michigan",
+    "MN": "Minnesota",
+    "MO": "Missouri",
+    "MS": "Mississippi",
+    "MT": "Montana",
+    "NC": "North Carolina",
+    "ND": "North Dakota",
+    "NE": "Nebraska",
+    "NH": "New Hampshire",
+    "NJ": "New Jersey",
+    "NM": "New Mexico",
+    "NV": "Nevada",
+    "NY": "New York",
+    "OH": "Ohio",
+    "OK": "Oklahoma",
+    "OR": "Oregon",
+    "PA": "Pennsylvania",
+    "RI": "Rhode Island",
+    "SC": "South Carolina",
+    "SD": "South Dakota",
+    "TN": "Tennessee",
+    "TX": "Texas",
+    "UT": "Utah",
+    "VA": "Virginia",
+    "VT": "Vermont",
+    "WA": "Washington",
+    "WI": "Wisconsin",
+    "WV": "West Virginia",
+    "WY": "Wyoming",
+}
 
 
 @dataclass(frozen=True)
@@ -169,6 +228,12 @@ def build_seo_competitor_profile_prompt(
         max_items=_MAX_EXCLUDED_DOMAINS,
         max_total_chars=_MAX_EXCLUDED_DOMAINS_TOTAL_CHARS,
     )
+    competitor_search_hints = _build_competitor_search_hints(
+        primary_business_zip=primary_business_zip,
+        primary_location=primary_location,
+        location_context=location_context,
+        service_focus_terms=service_focus_terms,
+    )
 
     context: dict[str, object] = {
         "site_display_name": display_name,
@@ -186,6 +251,7 @@ def build_seo_competitor_profile_prompt(
         "site_industry_context_strength": site_context_details.industry_context_strength,
         "service_focus_terms": service_focus_terms,
         "target_customer_context": target_customer_context,
+        "competitor_search_hints": competitor_search_hints,
         "excluded_domains": excluded_domains,
         "existing_competitor_domains": normalized_domains,
         "non_competitor_domain_hints": list(_NON_COMPETITOR_DOMAIN_HINTS[:_MAX_NON_COMPETITOR_HINTS]),
@@ -248,6 +314,7 @@ def build_seo_competitor_profile_prompt(
     context_existing_domains = context.get("existing_competitor_domains")
     context_excluded_domains = context.get("excluded_domains")
     context_non_competitor_hints = context.get("non_competitor_domain_hints")
+    context_competitor_search_hints = context.get("competitor_search_hints")
     prompt_telemetry: dict[str, int] = {
         "system_prompt_chars": system_prompt_chars,
         "user_prompt_chars": user_prompt_chars,
@@ -263,6 +330,9 @@ def build_seo_competitor_profile_prompt(
         "excluded_domains_count": len(context_excluded_domains) if isinstance(context_excluded_domains, list) else 0,
         "non_competitor_domain_hints_count": (
             len(context_non_competitor_hints) if isinstance(context_non_competitor_hints, list) else 0
+        ),
+        "competitor_search_hints_count": (
+            len(context_competitor_search_hints) if isinstance(context_competitor_search_hints, list) else 0
         ),
         "supplemental_competitor_text_chars": supplemental_competitor_text_chars,
         "context_budget_trimmed": 1 if context_budget_trimmed else 0,
@@ -476,6 +546,111 @@ def _build_excluded_domains(
     )
 
 
+def _build_competitor_search_hints(
+    *,
+    primary_business_zip: str | None,
+    primary_location: str | None,
+    location_context: str,
+    service_focus_terms: list[str],
+) -> list[str]:
+    normalized_terms = _normalize_service_terms_for_hints(service_focus_terms)
+    if not normalized_terms:
+        return []
+
+    location_phrase = _derive_competitor_hint_location_phrase(
+        primary_business_zip=primary_business_zip,
+        primary_location=primary_location,
+        location_context=location_context,
+    )
+    if location_phrase is None:
+        return []
+
+    primary_term = normalized_terms[0]
+    secondary_term = normalized_terms[1] if len(normalized_terms) > 1 else primary_term
+    tertiary_term = normalized_terms[2] if len(normalized_terms) > 2 else secondary_term
+    near_phrase = primary_business_zip or location_phrase
+
+    hint_candidates = [
+        f"{primary_term} companies near {near_phrase}",
+        f"{primary_term} services {location_phrase}",
+        f"commercial {secondary_term} contractors near {near_phrase}",
+        f"{tertiary_term} installation companies {location_phrase}",
+        f"local {primary_term} providers {location_phrase}",
+    ]
+    return _sanitize_competitor_search_hints(hint_candidates)
+
+
+def _normalize_service_terms_for_hints(service_focus_terms: list[str]) -> list[str]:
+    normalized_terms: list[str] = []
+    seen: set[str] = set()
+    for term in service_focus_terms:
+        cleaned = _sanitize_optional(term, max_length=_MAX_SERVICE_FOCUS_TERM_LENGTH)
+        if not cleaned:
+            continue
+        lowered = cleaned.lower()
+        if lowered in seen:
+            continue
+        if _DOMAIN_TOKEN_PATTERN.search(lowered):
+            continue
+        seen.add(lowered)
+        normalized_terms.append(cleaned)
+        if len(normalized_terms) >= 3:
+            break
+    return normalized_terms
+
+
+def _derive_competitor_hint_location_phrase(
+    *,
+    primary_business_zip: str | None,
+    primary_location: str | None,
+    location_context: str,
+) -> str | None:
+    for raw in (primary_location, location_context):
+        phrase = _extract_city_state_phrase(raw)
+        if phrase:
+            return phrase
+    if primary_business_zip and len(primary_business_zip) == 5 and primary_business_zip.isdigit():
+        return primary_business_zip
+    return None
+
+
+def _extract_city_state_phrase(raw: str | None) -> str | None:
+    cleaned = _sanitize_optional(raw, max_length=_MAX_LOCATION_LENGTH)
+    if not cleaned:
+        return None
+    match = _LOCATION_CITY_STATE_PATTERN.search(cleaned)
+    if not match:
+        return None
+    city = _sanitize_optional(match.group(1), max_length=64)
+    state_token = _sanitize_optional(match.group(2), max_length=20)
+    if not city or not state_token:
+        return None
+    state_name = _US_STATE_ABBREVIATIONS.get(state_token.upper(), state_token)
+    city_state = _sanitize_optional(f"{city} {state_name}", max_length=_MAX_LOCATION_LENGTH)
+    if not city_state:
+        return None
+    return city_state
+
+
+def _sanitize_competitor_search_hints(hints: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for hint in hints:
+        normalized = _sanitize_optional(hint, max_length=_MAX_COMPETITOR_SEARCH_HINT_LENGTH)
+        if not normalized:
+            continue
+        if _DOMAIN_TOKEN_PATTERN.search(normalized):
+            continue
+        lowered = normalized.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        cleaned.append(normalized)
+        if len(cleaned) >= _MAX_COMPETITOR_SEARCH_HINTS:
+            break
+    return cleaned
+
+
 def _limit_domains_for_prompt(
     domains: list[str],
     *,
@@ -548,6 +723,9 @@ def _apply_context_budget(
     non_competitor_hints = budgeted.get("non_competitor_domain_hints")
     if isinstance(non_competitor_hints, list):
         budgeted["non_competitor_domain_hints"] = non_competitor_hints[:_BUDGET_CONTEXT_NON_COMPETITOR_HINT_CAP]
+    competitor_search_hints = budgeted.get("competitor_search_hints")
+    if isinstance(competitor_search_hints, list):
+        budgeted["competitor_search_hints"] = competitor_search_hints[:_BUDGET_CONTEXT_COMPETITOR_SEARCH_HINT_CAP]
 
     context_json = _serialize_context_json(budgeted)
     if len(context_json) > _MAX_CONTEXT_JSON_CHARS:
@@ -555,6 +733,7 @@ def _apply_context_budget(
         budgeted["excluded_domains"] = [site_domain]
         budgeted["site_service_areas"] = []
         budgeted["non_competitor_domain_hints"] = []
+        budgeted["competitor_search_hints"] = []
         service_focus_terms = budgeted.get("service_focus_terms")
         if isinstance(service_focus_terms, list):
             budgeted["service_focus_terms"] = service_focus_terms[:4]
@@ -573,6 +752,7 @@ def _apply_context_budget(
             "site_industry_context_strength": budgeted.get("site_industry_context_strength"),
             "service_focus_terms": budgeted.get("service_focus_terms"),
             "target_customer_context": budgeted.get("target_customer_context"),
+            "competitor_search_hints": budgeted.get("competitor_search_hints"),
             "excluded_domains": [site_domain],
             "existing_competitor_domains": [],
         }
@@ -612,6 +792,11 @@ def _apply_retry_reduced_context_mode(
     non_competitor_hints = reduced.get("non_competitor_domain_hints")
     if isinstance(non_competitor_hints, list):
         reduced["non_competitor_domain_hints"] = non_competitor_hints[:_RETRY_REDUCED_CONTEXT_NON_COMPETITOR_HINT_CAP]
+    competitor_search_hints = reduced.get("competitor_search_hints")
+    if isinstance(competitor_search_hints, list):
+        reduced["competitor_search_hints"] = (
+            competitor_search_hints[:_RETRY_REDUCED_CONTEXT_COMPETITOR_SEARCH_HINT_CAP]
+        )
 
     service_focus_terms = reduced.get("service_focus_terms")
     if isinstance(service_focus_terms, list):
@@ -735,6 +920,11 @@ def _sanitize_structured_context_data(
         ),
         max_length=_MAX_TARGET_CUSTOMER_CONTEXT_LENGTH,
         fallback=_TARGET_CUSTOMER_CONTEXT_FALLBACK,
+    )
+    sanitized["competitor_search_hints"] = _sanitize_data_string_list(
+        sanitized.get("competitor_search_hints"),
+        max_length=_MAX_COMPETITOR_SEARCH_HINT_LENGTH,
+        max_items=_MAX_COMPETITOR_SEARCH_HINTS,
     )
     sanitized["existing_competitor_domains"] = _limit_domains_for_prompt(
         _sanitize_data_domain_list(sanitized.get("existing_competitor_domains")),
